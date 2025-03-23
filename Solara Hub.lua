@@ -6,5 +6,4 @@
 ███████║╚██████╔╝███████╗██║  ██║██║  ██║██║  ██║    ██║  ██║╚██████╔╝██████╔╝
 ╚══════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚═════╝                                                                            
 ]]
-loadstring(game:HttpGet("https://raw.githubusercontent.com/samuraa1/LibraryOfScripts/refs/heads/main/Protected_9058945493645532.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/samuraa1/Solara-Hub/refs/heads/main/Solara%20Hub"))()
