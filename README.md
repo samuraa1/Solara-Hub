@@ -7,7 +7,7 @@ Welcome to **Solara Hub** — the **ultimate Roblox script hub** you’ve been l
 🎨 **Beautiful and Modern UI**  
 ⚡ **Fast, Powerful, and Easy to Use**
 
-Solara Hub is built for performance, style, and versatility. Whether you're grinding, exploring, or dominating — Solara has everything you need in one sleek package.
+Solara Hub is built for performance, style, and versatility. Whether you're grinding, exploring, or dominating — Solara Hub has everything you need in one sleek package.
 
 ## ✨ Features
 
