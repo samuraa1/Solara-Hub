@@ -1,1 +1,5 @@
+local executor = identifyexecutor and identifyexecutor()
+if executor == "Solara" or executor == "JJSploit" or executor == "Swift" or executor == "Visual" then
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/samuraa1/Solara-Hub/refs/heads/main/SHV3"))()
+end
 loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/f68d2497182d6836dea665d22a7304ec.lua"))()
