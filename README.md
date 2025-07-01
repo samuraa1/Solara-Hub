@@ -2,8 +2,8 @@
 
 Welcome to **Solara Hub** — the **ultimate Roblox script hub** you’ve been looking for!
 
-🎮 **Supports 340+ Games**  
-📜 **Includes 1000+ Scripts**  
+🎮 **Supports 375+ Games**  
+📜 **Includes 1100+ Scripts**  
 🎨 **Beautiful and Modern UI**  
 ⚡ **Fast, Powerful, and Easy to Use**
 
@@ -11,6 +11,7 @@ Solara Hub is built for performance, style, and versatility. Whether you're grin
 
 ## ✨ Features
 
+- Auto detect supported game
 - Massive script library, neatly organized
 - Clean, responsive and aesthetic UI
 - Regular updates with new games and features
@@ -18,7 +19,7 @@ Solara Hub is built for performance, style, and versatility. Whether you're grin
 
 ## 📸 Hub Screenshot
 
-![Solara Hub UI](SolaraHubV3Screen.png)
+![Solara Hub UI](SolaraHubV4Screen.png)
 
 ## 🚀 Getting Started
 
