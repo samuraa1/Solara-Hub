@@ -2,8 +2,8 @@
 
 Welcome to **Solara Hub** — the **ultimate Roblox script hub** you’ve been looking for!
 
-🎮 **Supports 375+ Games**  
-📜 **Includes 1100+ Scripts**  
+🎮 **Supports 430+ Games**  
+📜 **Includes 1250+ Scripts**  
 🎨 **Beautiful and Modern UI**  
 ⚡ **Fast, Powerful, and Easy to Use**
 
