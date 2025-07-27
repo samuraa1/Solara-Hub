@@ -22,7 +22,7 @@ Hunter (Nebula Softworks) | Designing And Programming | Main Developer
 JustHey (Nebula Softworks) | Configurations, Bug Fixing And More! | Co Developer
 Throit | Color Picker
 Wally | Dragging And Certain Functions
-Samuraa1 | Fixed Some Bugs
+Samuraa1 | Fixed Some Bugs + Some Optimization
 Sirius | PCall Parsing, Notifications, Slider And Home Tab
 Luna Executor | Original UI
 
