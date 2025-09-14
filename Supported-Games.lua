@@ -333,7 +333,7 @@ Library:CreateChangelogDialog({
 328. Red Light Green Light
 329. Red VS Blue Plane Wars
 330. Realm Rampage
-331. Restaurant Tycoon 2
+331. Restaurant Tycoon 2 & Restaurant Tycoon 3
 332. Rob The Place
 333. Roblox Titanic
 334. Ro-Ghoul
