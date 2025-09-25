@@ -1,7 +1,7 @@
 local Library = loadstring(game:HttpGet('https://raw.githubusercontent.com/EnesXVC/librarys/main/SearchAndChangeLogLibrary/Source'))()
 
 Library:CreateChangelogDialog({
-    Title = "Supported Games - 451",
+    Title = "Supported Games - 452",
     ChangelogText = [[
     1. +1 Slayer Blade
 2. +1 Speed Maze
