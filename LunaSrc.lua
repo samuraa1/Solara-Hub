@@ -1574,58 +1574,76 @@ local PresetGradients = {
 	Blossom = {Color3.fromRGB(255, 165, 243), Color3.fromRGB(213, 129, 231), Color3.fromRGB(170, 92, 218)},
 }
 
+local IconCache = {}
 local function GetIcon(icon, source)
-	if source == "Custom" then
-		return "rbxassetid://" .. icon
-	elseif source == "Lucide" then
-		-- Full Credit To Latte Softworks :)
-		local iconData = not isStudio and game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
-		local icons = isStudio and IconModule.Lucide or loadstring(iconData)()
-		if not isStudio then
-			icon = string.match(string.lower(icon), "^%s*(.*)%s*$") :: string
-			local sizedicons = icons['48px']
+    if not icon or not source then
+        return nil
+    end
+    
+    local cacheKey = icon .. "_" .. source
+    if IconCache[cacheKey] then
+        return IconCache[cacheKey]
+    end
 
-			local r = sizedicons[icon]
-			if not r then
-				error("Lucide Icons: Failed to find icon by the name of \"" .. icon .. "\.", 2)
-			end
+    local result
 
-			local rirs = r[2]
-			local riro = r[3]
+    if source == "Custom" then
+        result = "rbxassetid://" .. icon
+    elseif source == "Lucide" then
+        -- Full Credit To Latte Softworks :)
+        local iconData = not isStudio and game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
+        local icons = isStudio and IconModule.Lucide or loadstring(iconData)()
+        if not isStudio then
+            icon = string.match(string.lower(icon), "^%s*(.*)%s*$") :: string
+            local sizedicons = icons['48px']
 
-			if type(r[1]) ~= "number" or type(rirs) ~= "table" or type(riro) ~= "table" then
-				error("Lucide Icons: Internal error: Invalid auto-generated asset entry")
-			end
+            local r = sizedicons[icon]
+            if not r then
+                warn("Lucide Icons: Failed to find icon by the name of \"" .. icon .. "\"")
+                return nil
+            end
 
-			local irs = Vector2.new(rirs[1], rirs[2])
-			local iro = Vector2.new(riro[1], riro[2])
+            local rirs = r[2]
+            local riro = r[3]
 
-			local asset = {
-				id = r[1],
-				imageRectSize = irs,
-				imageRectOffset = iro,
-			}
+            if type(r[1]) ~= "number" or type(rirs) ~= "table" or type(riro) ~= "table" then
+                error("Lucide Icons: Internal error: Invalid auto-generated asset entry")
+            end
 
-			return asset
-		else
-			return "rbxassetid://10723434557"
-		end
-	else	
-		if icon ~= nil and IconModule[source] then
-			local sourceicon = IconModule[source]
-			return sourceicon[icon]
-		else
-			return nil
-		end
-	end
+            local irs = Vector2.new(rirs[1], rirs[2])
+            local iro = Vector2.new(riro[1], riro[2])
+
+            result = {
+                id = r[1],
+                imageRectSize = irs,
+                imageRectOffset = iro,
+            }
+        else
+            result = "rbxassetid://10723434557"
+        end
+    else
+        if icon ~= nil and IconModule[source] then
+            local sourceicon = IconModule[source]
+            result = sourceicon[icon]
+        else
+            result = nil
+        end
+    end
+    
+    if result then
+        IconCache[cacheKey] = result
+    end
+    
+    return result
 end
 
 local function RemoveTable(tablre, value)
-	for i,v in pairs(tablre) do
-		if tostring(v) == tostring(value) then
-			table.remove(tablre, i)
-		end
-	end
+    for i = #tablre, 1, -1 do
+        if tostring(tablre[i]) == tostring(value) then
+            table.remove(tablre, i)
+            break
+        end
+    end
 end
 
 local function Kwargify(defaults, passed)
@@ -1695,7 +1713,6 @@ local function Hide(Window, bind, notif)
 	Window.Elements.Parent.Visible = false
 	Window.Visible = false
 end
-
 
 if gethui then
 	LunaUI.Parent = gethui()
@@ -3609,7 +3626,7 @@ function Luna:CreateWindow(WindowSettings)
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Dropdown.Title.Text = "Callback Error"
-						print("Luna Interface Suite | "..DropdownSettings.Name.." Callback Error " ..tostring(Response))
+						warn("Luna Interface Suite | "..DropdownSettings.Name.." Callback Error " ..tostring(Response))
 						wait(0.5)
 						Dropdown.Title.Text = DropdownSettings.Name
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
