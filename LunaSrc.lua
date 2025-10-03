@@ -1,7 +1,6 @@
 --[[
 
 
-
 ██╗     ██╗   ██╗███╗   ██╗ █████╗     ██╗███╗   ██╗████████╗███████╗██████╗ ███████╗ █████╗  ██████╗███████╗    ███████╗██╗   ██╗██╗████████╗███████╗
 ██║     ██║   ██║████╗  ██║██╔══██╗    ██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██╔════╝██╔══██╗██╔════╝██╔════╝    ██╔════╝██║   ██║██║╚══██╔══╝██╔════╝
 ██║     ██║   ██║██╔██╗ ██║███████║    ██║██╔██╗ ██║   ██║   █████╗  ██████╔╝█████╗  ███████║██║     █████╗      ███████╗██║   ██║██║   ██║   █████╗  
@@ -69,7 +68,7 @@ if RunService:IsStudio() then
 	isStudio = true
 end
 
--- Credits To Latte Softworks And qweery for Lucide And Material Icons Respectively.
+-- Credits To Latte Softworks And qweery for Lucide And Material Icons Respectively
 local IconModule = {
 	Lucide = nil,
 	Material = {
@@ -1579,7 +1578,7 @@ local function GetIcon(icon, source)
 	if source == "Custom" then
 		return "rbxassetid://" .. icon
 	elseif source == "Lucide" then
-		-- full credit to latte softworks :)
+		-- Full Credit To Latte Softworks :)
 		local iconData = not isStudio and game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
 		local icons = isStudio and IconModule.Lucide or loadstring(iconData)()
 		if not isStudio then
@@ -1744,89 +1743,89 @@ local Tabs = Navigation.Tabs
 local Notifications = LunaUI.Notifications
 local KeySystem : Frame = Main.KeySystem
 
--- local function LoadConfiguration(Configuration, autoload)
--- 	local Data = HttpService:JSONDecode(Configuration)
--- 	local changed
--- 	local notified = false
+--[[ local function LoadConfiguration(Configuration, autoload)
+ 	local Data = HttpService:JSONDecode(Configuration)
+ 	local changed
+ 	local notified = false
 
--- 	-- Iterate through current UI elements' flags
--- 	for FlagName, Flag in pairs(Luna.Flags) do
--- 		local FlagValue = Data[FlagName]
+ 	-- Iterate through current UI elements' flags
+ 	for FlagName, Flag in pairs(Luna.Flags) do
+ 		local FlagValue = Data[FlagName]
 
--- 		if FlagValue then
--- 			task.spawn(function()
--- 				if Flag.Type == "ColorPicker" then
--- 					changed = true
--- 					Flag:Set(UnpackColor(FlagValue))
--- 				else
--- 					if (Flag.CurrentValue or Flag.CurrentKeybind or Flag.CurrentOption or Flag.Color) ~= FlagValue then 
--- 						changed = true
--- 						Flag:Set(FlagValue) 	
--- 					end
--- 				end
--- 			end)
--- 		else
--- 			notified = true
--- 			Luna:Notification({Title = "Config Error", Content = "Luna was unable to load or find '"..FlagName.. "'' in the current script. Check ".. website .." for help.", Icon = "flag"})
--- 		end
--- 	end
--- 	if autoload and notified == false then
--- 		Luna:Notification({
--- 			Title = "Config Autoloaded",
--- 			Content = "The Configuration Has Been Automatically Loaded. Thank You For Using Luna Library",
--- 			Icon = "file-code-2",
--- 			ImageSource = "Lucide"
--- 		})
--- 	elseif notified == false then
--- 		Luna:Notification({
--- 			Title = "Config Loaded",
--- 			Content = "The Configuration Has Been Loaded. Thank You For Using Luna Library",
--- 			Icon = "file-code-2",
--- 			ImageSource = "Lucide"
--- 		})
--- 	end
+ 		if FlagValue then
+ 			task.spawn(function()
+ 				if Flag.Type == "ColorPicker" then
+ 					changed = true
+ 					Flag:Set(UnpackColor(FlagValue))
+				else
+ 					if (Flag.CurrentValue or Flag.CurrentKeybind or Flag.CurrentOption or Flag.Color) ~= FlagValue then 
+ 						changed = true
+ 						Flag:Set(FlagValue) 	
+ 					end
+ 				end
+ 			end)
+ 		else
+ 			notified = true
+ 			Luna:Notification({Title = "Config Error", Content = "Luna was unable to load or find '"..FlagName.. "'' in the current script. Check ".. website .." for help.", Icon = "flag"})
+ 		end
+ 	end
+ 	if autoload and notified == false then
+ 		Luna:Notification({
+ 			Title = "Config Autoloaded",
+ 			Content = "The Configuration Has Been Automatically Loaded. Thank You For Using Luna Library",
+ 			Icon = "file-code-2",
+ 			ImageSource = "Lucide"
+ 		})
+ 	elseif notified == false then
+ 		Luna:Notification({
+ 			Title = "Config Loaded",
+ 			Content = "The Configuration Has Been Loaded. Thank You For Using Luna Library",
+ 			Icon = "file-code-2",
+ 			ImageSource = "Lucide"
+ 		})
+ 	end
 
--- 	return changed
--- end
+ 	return changed
+ end
 
--- local function SaveConfiguration(Configuration, ConfigFolder, hasRoot)
--- 	local Data = {}
--- 	for i,v in pairs(Luna.Flags) do
--- 		if v.Type == "ColorPicker" then
--- 			Data[i] = PackColor(v.Color)
--- 		else
--- 			Data[i] = v.CurrentValue or v.CurrentBind or v.CurrentOption or v.Color
--- 		end
--- 	end	
--- 	if hasRoot then
--- 		writefile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. Configuration .. ConfigurationExtension, tostring(HttpService:JSONEncode(Data)))
--- 	else
--- 		writefile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. Configuration .. ConfigurationExtension, tostring(HttpService:JSONEncode(Data)))
--- 	end
--- end
+ local function SaveConfiguration(Configuration, ConfigFolder, hasRoot)
+ 	local Data = {}
+ 	for i,v in pairs(Luna.Flags) do
+ 		if v.Type == "ColorPicker" then
+ 			Data[i] = PackColor(v.Color)
+ 		else
+ 			Data[i] = v.CurrentValue or v.CurrentBind or v.CurrentOption or v.Color
+ 		end
+ 	end	
+ 	if hasRoot then
+ 		writefile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. Configuration .. ConfigurationExtension, tostring(HttpService:JSONEncode(Data)))
+ 	else
+ 		writefile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. Configuration .. ConfigurationExtension, tostring(HttpService:JSONEncode(Data)))
+ 	end
+ end
 
--- local function SetAutoload(ConfigName, ConfigFolder, hasRoot)
--- 	if hasRoot then
--- 		writefile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt", tostring(ConfigName) .. ConfigurationExtension)
--- 	else
--- 		writefile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. "autoload.txt", tostring(ConfigName) .. ConfigurationExtension)
--- 	end
--- end
+ local function SetAutoload(ConfigName, ConfigFolder, hasRoot)
+ 	if hasRoot then
+ 		writefile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt", tostring(ConfigName) .. ConfigurationExtension)
+ 	else
+ 		writefile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. "autoload.txt", tostring(ConfigName) .. ConfigurationExtension)
+ 	end
+ end
 
--- local function LoadAutoLoad(ConfigFolder, hasRoot)
--- 	local autoload = isfile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. "autoload.txt")
--- 	if hasRoot then
--- 		autoload = isfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt")
--- 	end
+ local function LoadAutoLoad(ConfigFolder, hasRoot)
+ 	local autoload = isfile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. "autoload.txt")
+ 	if hasRoot then
+ 		autoload = isfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt")
+ 	end
 
--- 	if autoload then
--- 		if hasRoot then
--- 			LoadConfiguration(readfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. readfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt")), true)
--- 		else
--- 			LoadConfiguration(readfile(ConfigurationFolder .. "/" .. ConfigFolder .. "/" .. readfile(ConfigurationFolder .. "/" .. ConfigFolder .. "/" .. "autoload.txt")), true)
--- 		end
--- 	end
--- end
+ 	if autoload then
+ 		if hasRoot then
+ 			LoadConfiguration(readfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. readfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt")), true)
+ 		else
+ 			LoadConfiguration(readfile(ConfigurationFolder .. "/" .. ConfigFolder .. "/" .. readfile(ConfigurationFolder .. "/" .. ConfigFolder .. "/" .. "autoload.txt")), true)
+ 		end
+ 	end
+ end ]]
 
 local function Draggable(Bar, Window, enableTaptic, tapticOffset)
 	pcall(function()
@@ -1896,7 +1895,7 @@ local function Draggable(Bar, Window, enableTaptic, tapticOffset)
 	end)
 end
 
-function Luna:Notification(data) -- action e.g open messages
+function Luna:Notification(data) -- Action e.g Open Messages
 	task.spawn(function()
 		data = Kwargify({
 			Title = "Missing Title",
@@ -2034,7 +2033,6 @@ local function Minimize(Window)
 	tween(Window, {Size = MinSize})
 end
 
-
 function Luna:CreateWindow(WindowSettings)
 
 	WindowSettings = Kwargify({
@@ -2060,16 +2058,16 @@ function Luna:CreateWindow(WindowSettings)
 		Title = WindowSettings.Name,
 		Subtitle = "Key System",
 		Note = "No Instructions",
-		SaveInRoot = false, -- Enabling will save the key in your RootFolder (YOU MUST HAVE ONE BEFORE ENABLING THIS OPTION)
-		SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-		Key = {""}, -- List of keys that will be accepted by the system, please use a system like Pelican or Luarmor that provide key strings based on your HWID since putting a simple string is very easy to bypass
+		SaveInRoot = false,
+		SaveKey = true,
+		Key = {""},
 		SecondAction = {}	
 	}, WindowSettings.KeySettings or {})
 
 	WindowSettings.KeySettings.SecondAction = Kwargify({
 		Enabled = false,
-		Type = "Discord", -- Link/Discord
-		Parameter = "" -- for discord, add the invite link like home tab. for link, type the link of ur key sys
+		Type = "Discord",
+		Parameter = ""
 	}, WindowSettings.KeySettings.SecondAction)
 
 	local Passthrough = false
@@ -2113,25 +2111,25 @@ function Luna:CreateWindow(WindowSettings)
 
 	LoadingFrame.Visible = true
 
-	-- pcall(function()
-	-- 	if not isfolder(ConfigurationFolder) then
-	-- 		makefolder(ConfigurationFolder)
-	-- 	end
-	-- 	if WindowSettings.ConfigSettings.RootFolder then
-	-- 		if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder) then
-	-- 			makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder)
-	-- 			if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder .. WindowSettings.ConfigSettings.ConfigFolder) then
-	-- 				makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder .. WindowSettings.ConfigSettings.ConfigFolder)
-	-- 			end
-	-- 		end
-	-- 	else
-	-- 		if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.ConfigFolder) then
-	-- 			makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.ConfigFolder)
-	-- 		end
-	-- 	end
+	--[[ pcall(function()
+	 	if not isfolder(ConfigurationFolder) then
+	 		makefolder(ConfigurationFolder)
+	 	end
+	 	if WindowSettings.ConfigSettings.RootFolder then
+	 		if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder) then
+	 			makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder)
+	 			if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder .. WindowSettings.ConfigSettings.ConfigFolder) then
+	 				makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder .. WindowSettings.ConfigSettings.ConfigFolder)
+	 			end
+	 		end
+	 	else
+	 		if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.ConfigFolder) then
+	 			makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.ConfigFolder)
+	 		end
+	 	end
 
-	-- 	LoadAutoLoad(WindowSettings.ConfigSettings.ConfigFolder, WindowSettings.ConfigSettings.RootFolder)
-	-- end)
+	 	LoadAutoLoad(WindowSettings.ConfigSettings.ConfigFolder, WindowSettings.ConfigSettings.RootFolder)
+	 end) ]]
 
 	LunaUI.Enabled = true
 
@@ -2184,7 +2182,7 @@ function Luna:CreateWindow(WindowSettings)
 			
 			Btn.Interact.MouseButton1Click:Connect(function()
 				if typesys == "Discord" then
-					setclipboard(tostring("https://discord.gg/"..KeySettings.SecondAction.Parameter)) -- Hunter if you see this I added copy also was too lazy to send u msg
+					setclipboard(tostring("https://discord.gg/"..KeySettings.SecondAction.Parameter))
 					if request then
 						request({
 							Url = 'http://127.0.0.1:6463/rpc?v=1',
@@ -2315,7 +2313,7 @@ function Luna:CreateWindow(WindowSettings)
 		HomeTabSettings = Kwargify({
 			Icon = 1,
 			SupportedExecutors = {"Vega X", "Delta", "Nihon", "Xeno"}, -- THESE DEFAULTS ARE PLACEHOLDERS!! I DO NOT ADVERTISE THESE, THEY ARE JUS THE FIRST THAT CAME TO MIND. I HAVE NO IDEA WHETHER THEYA RE RATS (they prob are) AND IM NOT RESPONSIBLE IF U GET VIRUSES FROM INSTALLING AFTER SEEING THIS LIST
-			DiscordInvite = "noinvitelink" -- The disvord invite link. Do not include the link so for example if my invite was discord.gg/nebula I would put nebula
+			DiscordInvite = "noinvitelink"
 		}, HomeTabSettings or {})
 
 		local HomeTab = {}
@@ -2404,17 +2402,15 @@ function Luna:CreateWindow(WindowSettings)
 				local friendsInGame = 0 
 
 				local list = Players:GetFriendsAsync(Player.UserId)
-				while true do -- loop through all the pages
+				while true do
 					for _, data in list:GetCurrentPage() do
 						friendsInTotal +=1
 						table.insert(playersFriends, Data)
 					end
 
 					if list.IsFinished then
-						-- stop the loop since this is the last page
 						break
 					else 
-						-- go to the next page
 						list:AdvanceToNextPageAsync()
 					end
 				end
@@ -2452,19 +2448,13 @@ function Luna:CreateWindow(WindowSettings)
 
 		coroutine.wrap(function()
 			while task.wait() do
-
-
-				-- Players
 				HomeTabPage.detailsholder.dashboard.Server.Players.Value.Text = #Players:GetPlayers().." playing"
 				HomeTabPage.detailsholder.dashboard.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
 
-				-- Ping
 				HomeTabPage.detailsholder.dashboard.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
 
-				-- Time
 				HomeTabPage.detailsholder.dashboard.Server.Time.Value.Text = convertToHMS(time())
 
-				-- Region
 				HomeTabPage.detailsholder.dashboard.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
 
 				checkFriends()
@@ -2472,7 +2462,6 @@ function Luna:CreateWindow(WindowSettings)
 		end)()
 
 		-- Stolen From Sirius Stuff ends here
-
 	end
 
 	function Window:CreateTab(TabSettings)
@@ -2912,7 +2901,6 @@ function Luna:CreateWindow(WindowSettings)
 
 								SliderSettings.CurrentValue = NewValue
 								SliderV.CurrentValue = SliderSettings.CurrentValue
-								-- Luna.Flags[SliderSettings.Flag] = SliderSettings
 							end
 						else
 							TweenService:Create(Slider.Main.Progress, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0, false), {Size = UDim2.new(0, Location - Slider.Main.AbsolutePosition.X > 5 and Location - Slider.Main.AbsolutePosition.X or 5, 1, 0)}):Play()
@@ -2945,7 +2933,6 @@ function Luna:CreateWindow(WindowSettings)
 
 					SliderSettings.CurrentValue = NewVal
 					SliderV.CurrentValue = SliderSettings.CurrentValue
-					-- Luna.Flags[SliderSettings.Flag] = SliderSettings
 
 				end
 
@@ -2980,7 +2967,6 @@ function Luna:CreateWindow(WindowSettings)
 
 					Set()
 
-					-- Luna.Flags[SliderSettings.Flag] = SliderSettings
 				end
 
 				function SliderV:Destroy()
@@ -3187,15 +3173,13 @@ function Luna:CreateWindow(WindowSettings)
 					Name = "Bind",
 					Description = nil,
 					CurrentBind = "Q",
-					HoldToInteract = false, -- setting this makes the Bind in toggle mode
+					HoldToInteract = false,
 					Callback = function(Bind)
-						-- The function that takes place when the Bind is pressed
-						-- The variable (Bind) is a boolean for whether the Bind is being held or not (HoldToInteract needs to be true) or whether the Bind is currently active
+						
 					end,
 
 					OnChangedCallback = function(Bind)
-						-- The function that takes place when the binded key changes
-						-- The variable (Bind) is a Enum.KeyCode for the new Binded Key
+						
 					end,
 				}, BindSettings or {})
 
@@ -3392,8 +3376,6 @@ function Luna:CreateWindow(WindowSettings)
 					Luna.Options[Flag] = BindV
 				end
 
-				-- Luna.Flags[BindSettings.Flag] = BindSettings
-
 				return BindV
 
 			end
@@ -3414,7 +3396,7 @@ function Luna:CreateWindow(WindowSettings)
 					MaxCharacters = nil,
 					Callback = function(Text)
 
-					end, -- 52
+					end,
 				}, InputSettings or {})
 
 				InputV.CurrentValue = InputSettings.CurrentValue
@@ -3529,7 +3511,6 @@ function Luna:CreateWindow(WindowSettings)
 					tween(Input.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
 
-
 				function InputV:Set(NewInputSettings)
 
 					NewInputSettings = Kwargify(InputSettings, NewInputSettings or {})
@@ -3560,7 +3541,6 @@ function Luna:CreateWindow(WindowSettings)
 					Luna.Options[Flag] = InputV
 				end
 
-
 				return InputV
 
 			end
@@ -3576,10 +3556,9 @@ function Luna:CreateWindow(WindowSettings)
 					Options = {"Option 1", "Option 2"},
 					CurrentOption = {"Option 1"},
 					MultipleOptions = false,
-					SpecialType = nil, -- currently onl player, might add more soon
+					SpecialType = nil,
 					Callback = function(Options)
-						-- The function that takes place when the selected option is changed
-						-- The variable (Options) is a table of strings for the current selected options or a string if multioptions is false
+						
 					end,
 				}, DropdownSettings or {})
 
@@ -3642,7 +3621,7 @@ function Luna:CreateWindow(WindowSettings)
 					end
 				end
 
-				-- fixed by justhey
+				-- Fixed By justhey
 				Dropdown.Selected:GetPropertyChangedSignal("Text"):Connect(function()
 					local text = Dropdown.Selected.Text:lower()
 					for _, Item in ipairs(Dropdown.List:GetChildren()) do
@@ -3651,7 +3630,6 @@ function Luna:CreateWindow(WindowSettings)
 						end
 					end
 				end)
-
 
 				local function Clear()
 					for _, option in ipairs(Dropdown.List:GetChildren()) do
@@ -3899,8 +3877,6 @@ function Luna:CreateWindow(WindowSettings)
 					end
 					Dropdown.Selected.Text = ""
 
-					-- Luna.Flags[DropdownSettings.Flag] = DropdownSettings
-
 				end
 
 				function DropdownV:Destroy()
@@ -3911,8 +3887,6 @@ function Luna:CreateWindow(WindowSettings)
 				if Flag then
 					Luna.Options[Flag] = DropdownV
 				end
-
-				-- Luna.Flags[DropdownSettings.Flag] = DropdownSettings
 
 				return DropdownV
 
@@ -3927,8 +3901,7 @@ function Luna:CreateWindow(WindowSettings)
 					Name = "Color Picker",
 					Color = Color3.fromRGB(255,255,255),
 					Callback = function(Value)
-						-- The function that takes place every time the color picker is moved/changed
-						-- The variable (Value) is a Color3fromRGB value based on which color is selected
+						
 					end
 				}, ColorPickerSettings or {})
 
@@ -4501,7 +4474,6 @@ function Luna:CreateWindow(WindowSettings)
 
 							SliderSettings.CurrentValue = NewValue
 							SliderV.CurrentValue = SliderSettings.CurrentValue
-							-- Luna.Flags[SliderSettings.Flag] = SliderSettings
 						end
 					else
 						TweenService:Create(Slider.Main.Progress, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0, false), {Size = UDim2.new(0, Location - Slider.Main.AbsolutePosition.X > 5 and Location - Slider.Main.AbsolutePosition.X or 5, 1, 0)}):Play()
@@ -4534,7 +4506,6 @@ function Luna:CreateWindow(WindowSettings)
 
 				SliderSettings.CurrentValue = NewVal
 				SliderV.CurrentValue = SliderSettings.CurrentValue
-				-- Luna.Flags[SliderSettings.Flag] = SliderSettings
 
 			end
 
@@ -4569,7 +4540,6 @@ function Luna:CreateWindow(WindowSettings)
 
 				Set()
 
-				-- Luna.Flags[SliderSettings.Flag] = SliderSettings
 			end
 
 			function SliderV:Destroy()
@@ -4774,15 +4744,13 @@ function Luna:CreateWindow(WindowSettings)
 				Name = "Bind",
 				Description = nil,
 				CurrentBind = "Q",
-				HoldToInteract = false, -- setting this makes the Bind in toggle mode
+				HoldToInteract = false,
 				Callback = function(Bind)
-					-- The function that takes place when the Bind is pressed
-					-- The variable (Bind) is a boolean for whether the Bind is being held or not (HoldToInteract needs to be true) or whether the Bind is currently active
+					
 				end,
 
 				OnChangedCallback = function(Bind)
-					-- The function that takes place when the binded key changes
-					-- The variable (Bind) is a Enum.KeyCode for the new Binded Key
+					
 				end,
 			}, BindSettings or {})
 
@@ -4979,8 +4947,6 @@ function Luna:CreateWindow(WindowSettings)
 				Luna.Options[Flag] = BindV
 			end
 
-			-- Luna.Flags[BindSettings.Flag] = BindSettings
-
 			return BindV
 
 		end
@@ -4991,10 +4957,9 @@ function Luna:CreateWindow(WindowSettings)
 				Name = "Bind",
 				Description = nil,
 				CurrentBind = "Q",
-				HoldToInteract = false, -- setting this makes the Bind in toggle mode
+				HoldToInteract = false,
 				Callback = function(Bind)
-					-- The function that takes place when the Bind is pressed
-					-- The variable (Bind) is a boolean for whether the Bind is being held or not (HoldToInteract needs to be true) or whether the Bind is currently active
+					
 				end
 			}, BindSettings or {})
 
@@ -5033,7 +4998,6 @@ function Luna:CreateWindow(WindowSettings)
 			TweenService:Create(Bind.BindFrame, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.9}):Play()
 			TweenService:Create(Bind.BindFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 			TweenService:Create(Bind.BindFrame.BindBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-
 
 			Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 			Bind.BindFrame.BindBox.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 16, 0, 42)
@@ -5164,16 +5128,12 @@ function Luna:CreateWindow(WindowSettings)
 				Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 				Bind.BindFrame.BindBox.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 16, 0, 42)
 
-				-- Luna.Flags[BindSettings.Flag] = BindSettings
-
 			end
 
 			function BindV:Destroy()
 				Bind.Visible = false
 				Bind:Destroy()
 			end
-
-			-- Luna.Flags[BindSettings.Flag] = BindSettings
 
 			return BindV
 
@@ -5194,7 +5154,7 @@ function Luna:CreateWindow(WindowSettings)
 				MaxCharacters = nil,
 				Callback = function(Text)
 
-				end, -- 52
+				end,
 			}, InputSettings or {})
 
 			InputV.CurrentValue = InputSettings.CurrentValue
@@ -5309,7 +5269,6 @@ function Luna:CreateWindow(WindowSettings)
 				tween(Input.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
 
-
 			function InputV:Set(NewInputSettings)
 
 				NewInputSettings = Kwargify(InputSettings, NewInputSettings or {})
@@ -5340,7 +5299,6 @@ function Luna:CreateWindow(WindowSettings)
 				Luna.Options[Flag] = InputV
 			end
 
-
 			return InputV
 
 		end
@@ -5355,10 +5313,9 @@ function Luna:CreateWindow(WindowSettings)
 				Options = {"Option 1", "Option 2"},
 				CurrentOption = {"Option 1"},
 				MultipleOptions = false,
-				SpecialType = nil, -- currently onl player, might add more soon
+				SpecialType = nil,
 				Callback = function(Options)
-					-- The function that takes place when the selected option is changed
-					-- The variable (Options) is a table of strings for the current selected options or a string if multioptions is false
+					
 				end,
 			}, DropdownSettings or {})
 
@@ -5421,7 +5378,7 @@ function Luna:CreateWindow(WindowSettings)
 				end
 			end
 
-			-- fixed by justhey
+			-- Fixed By justhey
 			Dropdown.Selected:GetPropertyChangedSignal("Text"):Connect(function()
 				local text = Dropdown.Selected.Text:lower()
 				for _, Item in ipairs(Dropdown.List:GetChildren()) do
@@ -5678,8 +5635,6 @@ function Luna:CreateWindow(WindowSettings)
 				end
 				Dropdown.Selected.Text = ""
 
-				-- Luna.Flags[DropdownSettings.Flag] = DropdownSettings
-
 			end
 
 			function DropdownV:Destroy()
@@ -5690,8 +5645,6 @@ function Luna:CreateWindow(WindowSettings)
 			if Flag then
 				Luna.Options[Flag] = DropdownV
 			end
-
-			-- Luna.Flags[DropdownSettings.Flag] = DropdownSettings
 
 			return DropdownV
 
@@ -5705,8 +5658,7 @@ function Luna:CreateWindow(WindowSettings)
 				Name = "Color Picker",
 				Color = Color3.fromRGB(255,255,255),
 				Callback = function(Value)
-					-- The function that takes place every time the color picker is moved/changed
-					-- The variable (Value) is a Color3fromRGB value based on which color is selected
+					
 				end
 			}, ColorPickerSettings or {})
 
@@ -5944,7 +5896,6 @@ function Luna:CreateWindow(WindowSettings)
 			return ColorPickerV
 		end
 
-
 		function Tab:BuildConfigSection()
 			if isStudio then
 				Tab:CreateLabel({Text = "Config system unavailable. (Environment isStudio)", Style = 3})
@@ -6014,7 +5965,6 @@ function Luna:CreateWindow(WindowSettings)
 			})
 
 			Tab:CreateSection("Config Load/Settings")
-
 
 			configSelection = Tab:CreateDropdown({
 				Name = "Select Config",
@@ -6187,7 +6137,7 @@ function Luna:CreateWindow(WindowSettings)
 					end
 				end
 			},
-			-- buggy as hell stil
+			-- buggy as hell still
 			["Colorpicker"] = {
 				Save = function(Flag, data)
 					local function Color3ToHex(color)
@@ -6215,7 +6165,6 @@ function Luna:CreateWindow(WindowSettings)
 				end
 			}
 		}
-
 
 		function Tab:BuildThemeSection()
 
@@ -6286,7 +6235,6 @@ function Luna:CreateWindow(WindowSettings)
 			end
 
 		end
-
 
 		local function BuildFolderTree()
 			if isStudio then return "Config system unavailable." end
@@ -6546,13 +6494,13 @@ if isStudio then
 			Title = "Nebula Client | Key System",
 			Subtitle = "Blade Ball",
 			Note = "Please Enter Your Key To Use Nebula Client",
-			FileName = "Key", -- the name of the key file. this will be saved in ur RootFolder. However, if you don't have one, it'll save in ur config folder instead
-			SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-			Key = {"Example Key"}, -- List of keys that will be accepted by the system, please use a system like Pelican or Luarmor that provide key strings based on your HWID since putting a simple string is very easy to bypass
+			FileName = "Key",
+			SaveKey = true,
+			Key = {"Example Key"},
 			SecondAction = {
 				Enabled = true,
-				Type = "Link", -- Link/Discord
-				Parameter = "" -- for discord, add the invite link like home tab. for link, type the link of ur key sys
+				Type = "Link",
+				Parameter = ""
 			}
 		}
 	})
@@ -6606,7 +6554,6 @@ if isStudio then
 			Icon = "settings"
 		})
 	}
-
 
 	Window:CreateHomeTab()
 	local bleh =Tabs.Debug:CreateColorPicker()
