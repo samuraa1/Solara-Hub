@@ -2326,218 +2326,160 @@ function Luna:CreateWindow(WindowSettings)
 	local FirstTab = true
 
 function Window:CreateHomeTab(HomeTabSettings)
-	HomeTabSettings = Kwargify({
-		Icon = 1,
-		SupportedExecutors = {"Vega X", "Delta", "Nihon", "Xeno"},
-		DiscordInvite = "noinvitelink"
-	}, HomeTabSettings or {})
 
-	local HomeTab = {}
+		HomeTabSettings = Kwargify({
+			Icon = 1,
+			SupportedExecutors = {"Vega X", "Delta", "Nihon", "Xeno"}, -- THESE DEFAULTS ARE PLACEHOLDERS!! I DO NOT ADVERTISE THESE, THEY ARE JUS THE FIRST THAT CAME TO MIND. I HAVE NO IDEA WHETHER THEYA RE RATS (they prob are) AND IM NOT RESPONSIBLE IF U GET VIRUSES FROM INSTALLING AFTER SEEING THIS LIST
+			DiscordInvite = "noinvitelink"
+		}, HomeTabSettings or {})
 
-	local HomeTabButton = Navigation.Tabs.Home
-	HomeTabButton.Visible = true
-	if HomeTabSettings.Icon == 2 then
-		HomeTabButton.ImageLabel.Image = GetIcon("dashboard", "Material")
-	end
+		local HomeTab = {}
 
-	local HomeTabPage = Elements.Home
-	HomeTabPage.Visible = true
-
-	local CustomElementsContainer = CreateElement("ScrollingFrame", {
-		Parent = HomeTabPage.detailsholder,
-		Name = "CustomElements",
-		Size = UDim2.new(1, 0, 0.4, 0),
-		Position = UDim2.new(0, 0, 0.6, 0),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 3,
-		ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255),
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y
-	})
-
-	local UIListLayout = CreateElement("UIListLayout", {
-		Parent = CustomElementsContainer,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 10)
-	})
-
-	function HomeTab:CreateButton(ButtonSettings)
-		ButtonSettings.Section = CustomElementsContainer
-		return Window:CreateButton(ButtonSettings)
-	end
-
-	function HomeTab:CreateLabel(LabelSettings)
-		LabelSettings.Section = CustomElementsContainer
-		return Window:CreateLabel(LabelSettings)
-	end
-
-	function HomeTab:CreateParagraph(ParagraphSettings)
-		ParagraphSettings.Section = CustomElementsContainer
-		return Window:CreateParagraph(ParagraphSettings)
-	end
-
-	function HomeTab:CreateToggle(ToggleSettings)
-		ToggleSettings.Section = CustomElementsContainer
-		return Window:CreateToggle(ToggleSettings)
-	end
-
-	function HomeTab:CreateSlider(SliderSettings)
-		SliderSettings.Section = CustomElementsContainer
-		return Window:CreateSlider(SliderSettings)
-	end
-
-	function HomeTab:CreateDropdown(DropdownSettings)
-		DropdownSettings.Section = CustomElementsContainer
-		return Window:CreateDropdown(DropdownSettings)
-	end
-
-	function HomeTab:CreateKeybind(KeybindSettings)
-		KeybindSettings.Section = CustomElementsContainer
-		return Window:CreateKeybind(KeybindSettings)
-	end
-
-	function HomeTab:CreateTextBox(TextBoxSettings)
-		TextBoxSettings.Section = CustomElementsContainer
-		return Window:CreateTextBox(TextBoxSettings)
-	end
-
-	function HomeTab:CreateColorpicker(ColorpickerSettings)
-		ColorpickerSettings.Section = CustomElementsContainer
-		return Window:CreateColorpicker(ColorpickerSettings)
-	end
-
-	function HomeTab:Activate()
-		tween(HomeTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
-		tween(HomeTabButton, {BackgroundTransparency = 0})
-		tween(HomeTabButton.UIStroke, {Transparency = 0.41})
-
-		Elements.UIPageLayout:JumpTo(HomeTabPage)
-
-		task.wait(0.05)
-
-		for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
-			if OtherTabButton.Name ~= "InActive Template" and OtherTabButton.ClassName == "Frame" and OtherTabButton ~= HomeTabButton then
-				tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
-				tween(OtherTabButton, {BackgroundTransparency = 1})
-				tween(OtherTabButton.UIStroke, {Transparency = 1})
-			end
+		local HomeTabButton = Navigation.Tabs.Home
+		HomeTabButton.Visible = true
+		if HomeTabSettings.Icon == 2 then
+			HomeTabButton.ImageLabel.Image = GetIcon("dashboard", "Material")
 		end
 
-		Window.CurrentTab = "Home"
-	end
+		local HomeTabPage = Elements.Home
+		HomeTabPage.Visible = true
 
-	HomeTab:Activate()
-	FirstTab = false
-	HomeTabButton.Interact.MouseButton1Click:Connect(function()
+		function HomeTab:Activate()
+			tween(HomeTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
+			tween(HomeTabButton, {BackgroundTransparency = 0})
+			tween(HomeTabButton.UIStroke, {Transparency = 0.41})
+
+			Elements.UIPageLayout:JumpTo(HomeTabPage)
+
+			task.wait(0.05)
+
+			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
+				if OtherTabButton.Name ~= "InActive Template" and OtherTabButton.ClassName == "Frame" and OtherTabButton ~= HomeTabButton then
+					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
+					tween(OtherTabButton, {BackgroundTransparency = 1})
+					tween(OtherTabButton.UIStroke, {Transparency = 1})
+				end
+
+			end
+
+			Window.CurrentTab = "Home"
+		end
+
 		HomeTab:Activate()
-	end)
+		FirstTab = false
+		HomeTabButton.Interact.MouseButton1Click:Connect(function()
+			HomeTab:Activate()
+		end)
 
-	HomeTabPage.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
-	HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
-	HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
+		HomeTabPage.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
+		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
 
-	HomeTabPage.detailsholder.dashboard.Client.Title.Text = (isStudio and "Debugging (Studio)" or identifyexecutor()) or "Your Executor Does Not Support identifyexecutor."
-	for i,v in pairs(HomeTabSettings.SupportedExecutors) do
-		if isStudio then HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Luna Interface Suite - Debugging Mode" break end
-		if v == identifyexecutor() then
-			HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Your Executor Supports This Script."
-			break
-		end
-	end
+		HomeTabPage.detailsholder.dashboard.Client.Title.Text = (isStudio and "Debugging (Studio)" or identifyexecutor()) or "Your Executor Does Not Support identifyexecutor."
+        for i,v in pairs(HomeTabSettings.SupportedExecutors) do
+                if isStudio then HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Luna Interface Suite - Debugging Mode" break end
+                if v == identifyexecutor() then
+                        HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Your Executor Supports This Script."
+                        break
+                end
+        end
 
-	-- Stolen From Sirius Stuff Begins Here
-	HomeTabPage.detailsholder.dashboard.Discord.Interact.MouseButton1Click:Connect(function()
-		setclipboard(tostring("https://discord.gg/"..HomeTabSettings.DiscordInvite))
-		if request then
-			request({
-				Url = 'http://127.0.0.1:6463/rpc?v=1',
-				Method = 'POST',
-				Headers = {
-					['Content-Type'] = 'application/json',
-					Origin = 'https://discord.com'
-				},
-				Body = HttpService:JSONEncode({
-					cmd = 'INVITE_BROWSER',
-					nonce = HttpService:GenerateGUID(false),
-					args = {code = HomeTabSettings.DiscordInvite}
+		-- Stolen From Sirius Stuff Begins Here
+
+		HomeTabPage.detailsholder.dashboard.Discord.Interact.MouseButton1Click:Connect(function()
+			setclipboard(tostring("https://discord.gg/"..HomeTabSettings.DiscordInvite))
+			if request then
+				request({
+					Url = 'http://127.0.0.1:6463/rpc?v=1',
+					Method = 'POST',
+					Headers = {
+						['Content-Type'] = 'application/json',
+						Origin = 'https://discord.com'
+					},
+					Body = HttpService:JSONEncode({
+						cmd = 'INVITE_BROWSER',
+						nonce = HttpService:GenerateGUID(false),
+						args = {code = HomeTabSettings.DiscordInvite}
+					})
 				})
-			})
-		end
-	end)
+			end
+		end)
 
-	local friendsCooldown = 0
-	local function getPing() return math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
+		local friendsCooldown = 0
+		local function getPing() return math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
 
-	local function checkFriends()
-		if friendsCooldown == 0 then
-			friendsCooldown = 25
-			local playersFriends = {}
-			local friendsInTotal = 0
-			local onlineFriends = 0 
-			local friendsInGame = 0 
+		local function checkFriends()
+			if friendsCooldown == 0 then
 
-			local list = Players:GetFriendsAsync(Player.UserId)
-			while true do
-				for _, data in list:GetCurrentPage() do
-					friendsInTotal +=1
-					table.insert(playersFriends, Data)
+				friendsCooldown = 25
+
+				local playersFriends = {}
+				local friendsInTotal = 0
+				local onlineFriends = 0 
+				local friendsInGame = 0 
+
+				local list = Players:GetFriendsAsync(Player.UserId)
+				while true do
+					for _, data in list:GetCurrentPage() do
+						friendsInTotal +=1
+						table.insert(playersFriends, Data)
+					end
+
+					if list.IsFinished then
+						break
+					else 
+						list:AdvanceToNextPageAsync()
+					end
+				end
+				for i, v in pairs(Player:GetFriendsOnline()) do
+					onlineFriends += 1
 				end
 
-				if list.IsFinished then
-					break
-				else 
-					list:AdvanceToNextPageAsync()
+				for i,v in pairs(playersFriends) do
+					if Players:FindFirstChild(v.Username) then
+						friendsInGame = friendsInGame + 1
+					end
 				end
-			end
-			for i, v in pairs(Player:GetFriendsOnline()) do
-				onlineFriends += 1
-			end
 
-			for i,v in pairs(playersFriends) do
-				if Players:FindFirstChild(v.Username) then
-					friendsInGame = friendsInGame + 1
-				end
-			end
+				HomeTabPage.detailsholder.dashboard.Friends.All.Value.Text = tostring(friendsInTotal).." friends"
+				HomeTabPage.detailsholder.dashboard.Friends.Offline.Value.Text = tostring(friendsInTotal - onlineFriends).." friends"
+				HomeTabPage.detailsholder.dashboard.Friends.Online.Value.Text = tostring(onlineFriends).." friends"
+				HomeTabPage.detailsholder.dashboard.Friends.InGame.Value.Text = tostring(friendsInGame).." friends"
 
-			HomeTabPage.detailsholder.dashboard.Friends.All.Value.Text = tostring(friendsInTotal).." friends"
-			HomeTabPage.detailsholder.dashboard.Friends.Offline.Value.Text = tostring(friendsInTotal - onlineFriends).." friends"
-			HomeTabPage.detailsholder.dashboard.Friends.Online.Value.Text = tostring(onlineFriends).." friends"
-			HomeTabPage.detailsholder.dashboard.Friends.InGame.Value.Text = tostring(friendsInGame).." friends"
-		else
-			friendsCooldown -= 1
+			else
+				friendsCooldown -= 1
+			end
 		end
-	end
 
-	local function format(Int)
-		return string.format("%02i", Int)
-	end
-
-	local function convertToHMS(Seconds)
-		local Minutes = (Seconds - Seconds%60)/60
-		Seconds = Seconds - Minutes*60
-		local Hours = (Minutes - Minutes%60)/60
-		Minutes = Minutes - Hours*60
-		return format(Hours)..":"..format(Minutes)..":"..format(Seconds)
-	end
-
-	coroutine.wrap(function()
-		while task.wait() do
-			HomeTabPage.detailsholder.dashboard.Server.Players.Value.Text = #Players:GetPlayers().." playing"
-			HomeTabPage.detailsholder.dashboard.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
-
-			HomeTabPage.detailsholder.dashboard.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
-
-			HomeTabPage.detailsholder.dashboard.Server.Time.Value.Text = convertToHMS(time())
-
-			HomeTabPage.detailsholder.dashboard.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
-
-			checkFriends()
+		local function format(Int)
+			return string.format("%02i", Int)
 		end
-	end)()
 
-	return HomeTab
-end
+		local function convertToHMS(Seconds)
+			local Minutes = (Seconds - Seconds%60)/60
+			Seconds = Seconds - Minutes*60
+			local Hours = (Minutes - Minutes%60)/60
+			Minutes = Minutes - Hours*60
+			return format(Hours)..":"..format(Minutes)..":"..format(Seconds)
+		end
+
+		coroutine.wrap(function()
+			while task.wait() do
+				HomeTabPage.detailsholder.dashboard.Server.Players.Value.Text = #Players:GetPlayers().." playing"
+				HomeTabPage.detailsholder.dashboard.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
+
+				HomeTabPage.detailsholder.dashboard.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
+
+				HomeTabPage.detailsholder.dashboard.Server.Time.Value.Text = convertToHMS(time())
+
+				HomeTabPage.detailsholder.dashboard.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
+
+				checkFriends()
+			end
+		end)()
+
+		-- Stolen From Sirius Stuff ends here
+	end
 	
 function Window:CreateTab(TabSettings)
 
