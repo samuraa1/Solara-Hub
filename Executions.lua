@@ -10,7 +10,6 @@
 
 -- Open Source
 -- Who Will Delete Or Spam Webhook - Gay + Nigger
--- k5utils dumb nigger. can you imagine how much i don't care? solara hub is just a collection of scripts that i didn't even create. i don't give a shit that you decompiled solara hub
 
 
 
