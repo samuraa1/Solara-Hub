@@ -1,2 +1,2 @@
 -- Hello skidders
-loadstring(game:HttpGet("https://api.junkie-development.de/api/v1/luascripts/public/f980e14e548bcba23e77401ac15b59a987e0b4899f25dccd6578c1197e55eae1/download"))()
+loadstring(game:HttpGet('https://raw.githubusercontent.com/samuraa1/Solara-Hub/c8644f0a7d7ec88d4ab27497573c399452ea95c4/SH.lua'))()
