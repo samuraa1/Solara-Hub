@@ -4220,7 +4220,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Button.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					Luna:Notification({Title="Callback Error", Content="Luna Interface Suite | "..tostring(BindSettings and BindSettings.Name or "Unknown").." Callback Error "..tostring(Response), Icon="error"})
 					wait(0.5)
 					Button.Title.Text = ButtonSettings.Name
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
