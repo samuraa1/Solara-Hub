@@ -3,15 +3,33 @@ local Library = loadstring(game:HttpGet('https://raw.githubusercontent.com/EnesX
 Library:CreateChangelogDialog({
     Title = "Solara Hub - Changelogs",
     ChangelogText = [[
-        Version: 4.914
+        Version: 4.915
         [+] Main Changes:
-        + Changed Subtitle
++ Added CMD Admin In 'Universal Scripts' Tab
++ Removed Sigma Spy (Deleted By Script Owner)
 
-+ Removed Xenith Hub In: All Star Tower Defense X, Build A Plane, Build A Zoo, Steal A Fish, Garden Tower Defense, My Singing Brainrot, Project Slayers, Prospecting!, Restaurant Tycoon 3 and TYPE://SOUL (Reason: Script Is Discontinued)
++ Updated FE Invisible
 
-[+] Checked Scripts For This Games:
-+ Checked All Scripts For Brainrot Evolution - Removed Xenith Hub, Other Scripts Is Working, Added DP Hub + Other Description For H4xScripts
-+ Checked All Scripts For Taxi Boss - Renamed Auto Farm, Auto Customers etc. to Marco Hub + Removed Key System + Other UI, Added DP Hub
++ Fixed FE Ragdoll Character
++ Fixed FE Super Lag
+
++ Updated Feedback
++ Updated Solara Hub Info
+
+[+] New Games:
++ Added Abyss - Added All Best Scripts For This New Game!
++ Added Survive LAVA for Brainrots!
++ Added Climb For Brainrots
++ Added Escape Waves For Lucky Blocks
++ Added Escape Guards to Steal Brainrots
++ Added Escape Quicksand for Brainrots!
++ Added Steal From Brainrots
++ Added Save Brainrots from LAVA
++ Added Catch And Tame!
++ Added Knockout! (Just Added Info Label)
++ Added a true baseplate (Just Added Info Label)
+
+- Solara Hub Now Supports 450 Games!
     ]],
     Search = false,
     NotifyLibrary = "Luna",
