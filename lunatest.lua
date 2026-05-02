@@ -45,10 +45,10 @@ by Nebula Softworks
 
 local Release = "Prerelease Beta 6.1"
 
-local Luna = {
-	Folder = "Luna",
-	Options = {},
-	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))}
+local Luna = { 
+	Folder = "Luna", 
+	Options = {}, 
+	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))} 
 }
 
 local UserInputService = game:GetService("UserInputService")
@@ -60,31 +60,6 @@ local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local CoreGui = game:GetService("CoreGui")
-
-local function RandomizedName()
-    return HttpService:GenerateGUID(false)
-end
-
-local function HideGuiInstance(guiObject)
-    if not guiObject then
-        return
-    end
-
-    guiObject.Archivable = false
-    if guiObject:IsA("GuiObject") then
-        guiObject.Name = RandomizedName()
-    end
-
-    for _, descendant in ipairs(guiObject:GetDescendants()) do
-        descendant.Archivable = false
-    end
-end
-
-local function CloneHidden(template)
-    local cloned = template:Clone()
-    HideGuiInstance(cloned)
-    return cloned
-end
 
 local isStudio
 local website = "github.com/Nebula-Softworks"
@@ -1583,6 +1558,49 @@ local IconModule = {
 	}
 }
 
+-- Non-descriptive Instance names reduce trivial string scans on GUI instances (labels stay user-facing).
+local _luna_nid = 0
+local function LunaNewGuiName(prefix: string?): string
+	_luna_nid += 1
+	return (prefix or "") .. HttpService:GenerateGUID(false):sub(1, 28) .. tostring(_luna_nid)
+end
+
+local LunaLucideTable: any = false
+local LunaLucideHttpFailed = false
+local function LunaEnsureLucideTable(): any?
+	if LunaLucideHttpFailed then
+		return nil
+	end
+	if LunaLucideTable ~= false then
+		return LunaLucideTable
+	end
+	LunaLucideTable = nil
+	if isStudio then
+		LunaLucideTable = IconModule.Lucide
+		return LunaLucideTable
+	end
+	local okFetch, raw = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
+	if not okFetch or type(raw) ~= "string" or raw == "" then
+		LunaLucideHttpFailed = true
+		return nil
+	end
+	local okLs, ls = pcall(loadstring, raw)
+	if okLs and type(ls) == "function" then
+		local okIcons, tbl = pcall(ls)
+		if okIcons and type(tbl) == "table" then
+			LunaLucideTable = tbl
+			return tbl
+		end
+	end
+	LunaLucideHttpFailed = true
+	return nil
+end
+
+local function LunaPlatformDisallowsResize(): boolean
+	local p = UserInputService:GetPlatform()
+	return p == Enum.Platform.IOS or p == Enum.Platform.Android
+end
+
 -- Other Variables
 local request = (syn and syn.request) or (http and http.request) or http_request or nil
 local tweeninfo = TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
@@ -1615,36 +1633,32 @@ local function GetIcon(icon, source)
     if source == "Custom" then
         result = "rbxassetid://" .. icon
     elseif source == "Lucide" then
-        -- Full Credit To Latte Softworks :)
-        local iconData = not isStudio and game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
-        local icons = isStudio and IconModule.Lucide or loadstring(iconData)()
-        if not isStudio then
-            icon = string.match(string.lower(icon), "^%s*(.*)%s*$") :: string
-            local sizedicons = icons['48px']
-
-            local r = sizedicons[icon]
-            if not r then
-                warn("Lucide Icons: Failed to find icon by the name of \"" .. icon .. "\"")
-                return nil
-            end
-
-            local rirs = r[2]
-            local riro = r[3]
-
-            if type(r[1]) ~= "number" or type(rirs) ~= "table" or type(riro) ~= "table" then
-                error("Lucide Icons: Internal error: Invalid auto-generated asset entry")
-            end
-
-            local irs = Vector2.new(rirs[1], rirs[2])
-            local iro = Vector2.new(riro[1], riro[2])
-
-            result = {
-                id = r[1],
-                imageRectSize = irs,
-                imageRectOffset = iro,
-            }
-        else
+        local icons = LunaEnsureLucideTable()
+        if isStudio or not icons then
             result = "rbxassetid://10723434557"
+        else
+            icon = string.match(string.lower(icon), "^%s*(.*)%s*$") :: string
+            local sizedicons = icons["48px"]
+            if typeof(sizedicons) ~= "table" then
+                result = nil
+            else
+                local r = sizedicons[icon]
+                if not r then
+                    result = nil
+                else
+                    local rirs = r[2]
+                    local riro = r[3]
+                    if type(r[1]) ~= "number" or type(rirs) ~= "table" or type(riro) ~= "table" then
+                        result = nil
+                    else
+                        result = {
+                            id = r[1],
+                            imageRectSize = Vector2.new(rirs[1], rirs[2]),
+                            imageRectOffset = Vector2.new(riro[1], riro[2]),
+                        }
+                    end
+                end
+            end
         end
     else
         if icon ~= nil and IconModule[source] then
@@ -1739,22 +1753,16 @@ local function Hide(Window, bind, notif)
 	Window.Visible = false
 end
 
-LunaUI.Name = RandomizedName()
-LunaUI.Archivable = false
-
 if gethui then
 	LunaUI.Parent = gethui()
-end
-
-if syn and syn.protect_gui then
+elseif syn and syn.protect_gui then 
 	syn.protect_gui(LunaUI)
-end
-
-if LunaUI.Parent ~= CoreGui then
+	LunaUI.Parent = CoreGui
+elseif not isStudio and CoreGui:FindFirstChild("RobloxGui") then
+	LunaUI.Parent = CoreGui:FindFirstChild("RobloxGui")
+elseif not isStudio then
 	LunaUI.Parent = CoreGui
 end
-
-LunaUI.DisplayOrder = 1000000000
 
 if gethui then
 	for _, Interface in ipairs(gethui():GetChildren()) do
@@ -1954,7 +1962,7 @@ function Luna:Notification(data) -- Action e.g Open Messages
 
 		-- Notification Object Creation
 		local newNotification = Notifications.Template:Clone()
-		newNotification.Name = data.Title
+		newNotification.Name = LunaNewGuiName("n")
 		newNotification.Parent = Notifications
 		newNotification.LayoutOrder = #Notifications:GetChildren()
 		newNotification.Visible = false
@@ -2023,6 +2031,35 @@ function Luna:Notification(data) -- Action e.g Open Messages
 	end)
 end
 
+local function LunaNotifyCallbackError(err: any)
+	local msg = typeof(err) == "string" and err or (function()
+		local ok, s = pcall(tostring, err)
+		return ok and s or "unknown error"
+	end)()
+	Luna:Notification({
+		Title = "Callback Error",
+		Content = msg,
+		Icon = "error",
+		ImageSource = "Material",
+		Duration = 14,
+	})
+end
+
+local function LunaFlashGui(gobj: GuiObject?)
+	if not gobj or not gobj.Parent then
+		return
+	end
+	task.spawn(function()
+		local stroke = gobj:FindFirstChild("UIStroke", true)
+		if stroke and stroke:IsA("UIStroke") then
+			local ot = stroke.Transparency
+			TweenService:Create(stroke, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0.2 }):Play()
+			task.wait(0.18)
+			TweenService:Create(stroke, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), { Transparency = ot }):Play()
+		end
+	end)
+end
+
 local function Unhide(Window, currentTab)
 	Window.Size = SizeBleh
 	Window.Elements.Visible = true
@@ -2060,7 +2097,7 @@ end
 local MainSize
 local MinSize 
 if Camera.ViewportSize.X > 774 and Camera.ViewportSize.Y > 503 then
-	MainSize = UDim2.fromOffset(675, 424)
+	MainSize = UDim2.fromOffset(758, 462)
 	MinSize = UDim2.fromOffset(500, 42)
 else
 	MainSize = UDim2.fromOffset(Camera.ViewportSize.X - 100, Camera.ViewportSize.Y - 100)
@@ -2081,20 +2118,331 @@ local function Minimize(Window)
 	tween(Window, {Size = MinSize})
 end
 
+local function LunaRegisterSearchEntry(Window, searchOn: boolean, tabLabel: string, title: string, desc: string?, kind: string, target: GuiObject?, onPick: () -> ())
+	if searchOn ~= true or typeof(Window._SearchCatalog) ~= "table" then
+		return
+	end
+	local kindLower = string.lower(kind or "control")
+	local line = tabLabel .. " › " .. title .. (kindLower ~= "button" and string.format(" (%s)", kind) or "")
+	table.insert(Window._SearchCatalog :: { any }, {
+		hay = string.lower(tabLabel .. " " .. title .. " " .. (desc or "") .. " " .. kindLower),
+		label = line,
+		target = target,
+		onPick = onPick,
+	})
+end
+
+local function LunaSetupWindowExtras(WindowTbl, MainFrame: Frame, LunaRoot: Instance, shadowHolder: Instance?, searchEnabled: boolean)
+	if typeof(MainFrame) ~= "Instance" then
+		return
+	end
+
+	if searchEnabled then
+		local controls = MainFrame:FindFirstChild("Controls")
+		local toggleRef = controls and controls:FindFirstChild("ToggleSize")
+		if toggleRef then
+			local searchBtnFrame = toggleRef:Clone()
+			searchBtnFrame.Name = LunaNewGuiName("qf")
+			if typeof((searchBtnFrame :: any).LayoutOrder) == "number" then
+				searchBtnFrame.LayoutOrder = toggleRef.LayoutOrder - 1
+			end
+			local searchIl = searchBtnFrame:FindFirstChild("ImageLabel", true)
+			if searchIl and searchIl:IsA("ImageLabel") then
+				local si = GetIcon("youtube_searched_for", "Material")
+				if si then
+					searchIl.Image = si :: any
+				end
+			end
+			searchBtnFrame.Parent = controls
+
+			local ov = Instance.new("Frame")
+			ov.Name = LunaNewGuiName("qs")
+			ov.BackgroundTransparency = 1
+			ov.BorderSizePixel = 0
+			ov.ClipsDescendants = false
+			ov.Active = true
+			ov.Visible = false
+			ov.Size = UDim2.fromScale(1, 1)
+			ov.ZIndex = 500
+			ov.Parent = LunaRoot
+
+			local dim = Instance.new("TextButton")
+			dim.Name = LunaNewGuiName("qxo")
+			dim.AutoButtonColor = false
+			dim.BackgroundColor3 = Color3.new()
+			dim.BackgroundTransparency = 0.45
+			dim.BorderSizePixel = 0
+			dim.Size = UDim2.fromScale(1, 1)
+			dim.Text = ""
+			dim.ZIndex = 501
+			dim.Parent = ov
+
+			local panel = Instance.new("Frame")
+			panel.Name = LunaNewGuiName("qp")
+			panel.AnchorPoint = Vector2.new(0.5, 0.5)
+			panel.Position = UDim2.fromScale(0.5, 0.46)
+			panel.Size = UDim2.fromOffset(420, 320)
+			panel.BackgroundTransparency = 0.12
+			panel.BackgroundColor3 = Color3.fromRGB(26, 24, 32)
+			panel.BorderSizePixel = 0
+			panel.Active = true
+			panel.ZIndex = 503
+			panel.Parent = ov
+			do
+				local cr = Instance.new("UICorner")
+				cr.CornerRadius = UDim.new(0, 12)
+				cr.Parent = panel
+			end
+			do
+				local s = Instance.new("UIStroke")
+				s.Transparency = 0.4
+				s.Thickness = 1
+				s.Color = Color3.fromRGB(90, 86, 110)
+				s.Parent = panel
+			end
+
+			dim.MouseButton1Click:Connect(function()
+				ov.Visible = false
+			end)
+
+			local title = Instance.new("TextLabel")
+			title.Name = LunaNewGuiName("qt")
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamMedium
+			title.TextSize = 16
+			title.Text = "Search here…"
+			title.TextColor3 = Color3.fromRGB(238, 236, 244)
+			title.Size = UDim2.new(1, -32, 0, 34)
+			title.Position = UDim2.fromOffset(16, 14)
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.Parent = panel
+
+			local tb = Instance.new("TextBox")
+			tb.Name = LunaNewGuiName("qx")
+			tb.ClearTextOnFocus = false
+			tb.CursorPosition = 1
+			tb.MultiLine = false
+			tb.Font = Enum.Font.Gotham
+			tb.PlaceholderColor3 = Color3.fromRGB(150, 145, 168)
+			tb.PlaceholderText = "Find tab, toggle, slider…"
+			tb.Size = UDim2.new(1, -32, 0, 38)
+			tb.Position = UDim2.fromOffset(16, 46)
+			tb.BackgroundColor3 = Color3.fromRGB(24, 22, 30)
+			tb.BackgroundTransparency = 0
+			tb.Text = ""
+			tb.TextColor3 = Color3.fromRGB(246, 244, 255)
+			tb.TextScaled = false
+			tb.TextSize = 15
+			tb.BorderSizePixel = 0
+			tb.Parent = panel
+			local tbCr = Instance.new("UICorner")
+			tbCr.CornerRadius = UDim.new(0, 8)
+			tbCr.Parent = tb
+			do
+				local px = Instance.new("UIPadding")
+				px.PaddingLeft = UDim.new(0, 10)
+				px.PaddingRight = UDim.new(0, 10)
+				px.Parent = tb
+			end
+
+			local scroll = Instance.new("ScrollingFrame")
+			scroll.Name = LunaNewGuiName("qy")
+			scroll.BackgroundTransparency = 1
+			scroll.ScrollBarThickness = 4
+			scroll.CanvasSize = UDim2.new()
+			scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			scroll.Size = UDim2.new(1, -32, 1, -102)
+			scroll.Position = UDim2.fromOffset(16, 92)
+			scroll.BorderSizePixel = 0
+			scroll.Parent = panel
+
+			local listLay = Instance.new("UIListLayout")
+			listLay.Padding = UDim.new(0, 6)
+			listLay.SortOrder = Enum.SortOrder.LayoutOrder
+			listLay.FillDirection = Enum.FillDirection.Vertical
+			listLay.Parent = scroll
+
+			local function rebuildResults(raw: string)
+				for _, c in ipairs(scroll:GetChildren()) do
+					if c.ClassName ~= "UIListLayout" then
+						c:Destroy()
+					end
+				end
+				local q = string.lower(string.gsub(string.gsub(raw or "", "^%s+", ""), "%s+$", ""))
+				if q == "" then
+					local hClone = Instance.new("TextLabel")
+					hClone.BackgroundTransparency = 1
+					hClone.Font = Enum.Font.Gotham
+					hClone.TextWrapped = true
+					hClone.TextSize = 13
+					hClone.TextColor3 = Color3.fromRGB(148, 145, 170)
+					hClone.Size = UDim2.new(1, -12, 0, 72)
+					hClone.Text = "Type above to locate a control."
+					hClone.Parent = scroll
+					return
+				end
+				local anyFound = false
+				for idx, entry in ipairs(WindowTbl._SearchCatalog :: { any }) do
+					if string.find(entry.hay, q, 1, true) then
+						anyFound = true
+						local row = Instance.new("TextButton")
+						row.Name = LunaNewGuiName("qr")
+						row.AutoButtonColor = true
+						row.BackgroundColor3 = Color3.fromRGB(34, 32, 42)
+						row.BackgroundTransparency = 0.3
+						row.Size = UDim2.new(1, -8, 0, 36)
+						row.Font = Enum.Font.Gotham
+						row.TextSize = 14
+						row.TextXAlignment = Enum.TextXAlignment.Left
+						row.TextColor3 = Color3.fromRGB(228, 225, 244)
+						row.Text = "  " .. entry.label
+						row.LayoutOrder = idx
+						row.Parent = scroll
+						do
+							local rc = Instance.new("UICorner")
+							rc.CornerRadius = UDim.new(0, 7)
+							rc.Parent = row
+						end
+						row.MouseButton1Click:Connect(function()
+							ov.Visible = false
+							pcall(entry.onPick)
+							if entry.target then
+								LunaFlashGui(entry.target)
+							end
+						end)
+					end
+				end
+				if not anyFound then
+					local none = Instance.new("TextLabel")
+					none.BackgroundTransparency = 1
+					none.Font = Enum.Font.Gotham
+					none.TextSize = 13
+					none.TextWrapped = true
+					none.TextColor3 = Color3.fromRGB(170, 150, 150)
+					none.Size = UDim2.new(1, -10, 0, 54)
+					none.Text = "Nothing matched \"" .. tb.Text .. "\""
+					none.Parent = scroll
+				end
+			end
+
+			tb:GetPropertyChangedSignal("Text"):Connect(function()
+				rebuildResults(tb.Text)
+			end)
+
+			local function openOv()
+				ov.Visible = true
+				task.defer(function()
+					tb:CaptureFocus()
+					rebuildResults(tb.Text)
+				end)
+			end
+
+			do
+				local il = searchBtnFrame:FindFirstChild("ImageLabel", true)
+				if il then
+					il.InputBegan:Connect(function(inp)
+						if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+							openOv()
+						end
+					end)
+					il.MouseEnter:Connect(function()
+						tween(il, { ImageColor3 = Color3.new(1, 1, 1) })
+					end)
+					il.MouseLeave:Connect(function()
+						tween(il, { ImageColor3 = Color3.fromRGB(195, 195, 195) })
+					end)
+				end
+			end
+
+		end
+	end
+
+	if LunaPlatformDisallowsResize() then
+		return
+	end
+
+	local grip = Instance.new("TextButton")
+	grip.Name = LunaNewGuiName("rz")
+	grip.AutoButtonColor = false
+	grip.Active = true
+	grip.Size = UDim2.fromOffset(24, 24)
+	grip.AnchorPoint = Vector2.new(1, 1)
+	grip.Position = UDim2.new(1, -3, 1, -3)
+	grip.BackgroundTransparency = 1
+	grip.Text = ""
+	grip.ZIndex = 48
+	grip.Parent = MainFrame
+
+	local gripIcon = Instance.new("ImageLabel")
+	gripIcon.Name = LunaNewGuiName("rzi")
+	gripIcon.BackgroundTransparency = 1
+	gripIcon.BorderSizePixel = 0
+	gripIcon.ScaleType = Enum.ScaleType.Fit
+	gripIcon.Size = UDim2.fromScale(0.72, 0.72)
+	gripIcon.AnchorPoint = Vector2.new(1, 1)
+	gripIcon.Position = UDim2.new(1, -1, 1, -1)
+	gripIcon.ZIndex = 49
+	gripIcon.Parent = grip
+	local gimg = GetIcon("open_with", "Material")
+	if gimg ~= nil then
+		gripIcon.Image = gimg :: any
+	end
+
+	local rsActive = false
+	local rsConn
+
+	grip.MouseButton1Down:Connect(function()
+		if WindowTbl.Size == true then
+			return
+		end
+		rsActive = true
+		local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+		local startMouse = UserInputService:GetMouseLocation()
+		local startW = math.max(440, math.floor(MainFrame.AbsoluteSize.X + 0.5))
+		local startH = math.max(300, math.floor(MainFrame.AbsoluteSize.Y + 0.5))
+
+		rsConn = RunService.RenderStepped:Connect(function()
+			if not rsActive or not grip.Parent then
+				if rsConn then
+					rsConn:Disconnect()
+				end
+				return
+			end
+			if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+				rsActive = false
+				if rsConn then
+					rsConn:Disconnect()
+				end
+				return
+			end
+			local now = UserInputService:GetMouseLocation()
+			local d = now - startMouse
+			local mw = math.clamp(startW + d.X, 520, math.max(520, vp.X - 12))
+			local mh = math.clamp(startH + d.Y, 300, math.max(300, vp.Y - 12))
+			MainFrame.Size = UDim2.fromOffset(math.floor(mw + 0.5), math.floor(mh + 0.5))
+			if shadowHolder and typeof(shadowHolder) == "Instance" and shadowHolder:IsA("GuiObject") then
+				shadowHolder.Size = MainFrame.Size
+			end
+		end)
+	end)
+end
+
 function Luna:CreateWindow(WindowSettings)
 
 	WindowSettings = Kwargify({
-		Name = RandomizedName(),
+		Name = "Luna UI Example Window",
 		Subtitle = "",
 		LogoID = "6031097225",
 		LoadingEnabled = true,
-		LoadingTitle = RandomizedName(),
-		LoadingSubtitle = RandomizedName(),
+		LoadingTitle = "Luna Interface Suite",
+		LoadingSubtitle = "by Nebula Softworks",
 
 		ConfigSettings = {},
 
 		KeySystem = false,
-		KeySettings = {}
+		KeySettings = {},
+
+		SearchBarEnabled = true,
 	}, WindowSettings or {})
 
 	WindowSettings.ConfigSettings = Kwargify({
@@ -2120,7 +2468,7 @@ function Luna:CreateWindow(WindowSettings)
 
 	local Passthrough = false
 
-	local Window = { Bind = Enum.KeyCode.K, CurrentTab = nil, State = true, Size = false, Settings = nil }
+	local Window = { Bind = Enum.KeyCode.K, CurrentTab = nil, State = true, Size = false, Settings = nil, _SearchCatalog = {} }
 
 	Main.Title.Title.Text = WindowSettings.Name
 	Main.Title.subtitle.Text = WindowSettings.Subtitle
@@ -2369,11 +2717,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 		local HomeTabButton = Navigation.Tabs.Home
 		HomeTabButton.Visible = true
 		if HomeTabSettings.Icon == 2 then
-			HomeTabButton.ImageLabel.Image = GetIcon("dashboard", "Material")
+			HomeTabButton.ImageLabel.Image = GetIcon("layout-dashboard", "Lucide") or GetIcon("dashboard", "Material")
 		end
 
 		local HomeTabPage = Elements.Home
 		HomeTabPage.Visible = true
+
+		LunaRegisterSearchEntry(Window, WindowSettings.SearchBarEnabled, "Home", "Home tab", "", "tab", HomeTabPage, function()
+			HomeTab:Activate()
+			LunaFlashGui(HomeTabPage)
+		end)
 
 		function HomeTab:Activate()
 			tween(HomeTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
@@ -2523,17 +2876,27 @@ function Window:CreateTab(TabSettings)
 			ImageSource = "Material" 
 		}, TabSettings or {})
 
-		local TabButton = CloneHidden(Navigation.Tabs["InActive Template"])
+		if TabSettings.IconSource ~= nil then
+			TabSettings.ImageSource = TabSettings.IconSource
+		elseif TabSettings.ImageSource == nil and typeof(TabSettings.Icon) == "string" and string.find(TabSettings.Icon, "%-") ~= nil then
+			TabSettings.ImageSource = "Lucide"
+		elseif TabSettings.ImageSource == nil then
+			TabSettings.ImageSource = "Material"
+		end
 
-		TabButton.Name = RandomizedName()
+		Tab.Label = TabSettings.Name
+
+		local TabButton = Navigation.Tabs["InActive Template"]:Clone()
+
+		TabButton.Name = TabSettings.Name
 		TabButton.TextLabel.Text = TabSettings.Name
 		TabButton.Parent = Navigation.Tabs
 		TabButton.ImageLabel.Image = GetIcon(TabSettings.Icon, TabSettings.ImageSource)
 
 		TabButton.Visible = true
 
-		local TabPage = CloneHidden(Elements.Template)
-		TabPage.Name = RandomizedName()
+		local TabPage = Elements.Template:Clone()
+		TabPage.Name = TabSettings.Name
 		TabPage.Title.Visible = TabSettings.ShowTitle
 		TabPage.Title.Text = TabSettings.Name
 		TabPage.Visible = true
@@ -2552,6 +2915,11 @@ function Window:CreateTab(TabSettings)
 			end
 		end
 		TabPage.Parent = Elements
+
+		LunaRegisterSearchEntry(Window, WindowSettings.SearchBarEnabled, Tab.Label or TabSettings.Name, TabSettings.Name, nil, "tab", TabPage, function()
+			Tab:Activate()
+			LunaFlashGui(TabPage)
+		end)
 
 		function Tab:Activate()
 			tween(TabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
@@ -2595,8 +2963,7 @@ function Window:CreateTab(TabSettings)
 
 			Section.Name = name
 
-			local Sectiont = CloneHidden(Elements.Template.Section)
-			Sectiont.Name = RandomizedName()
+			local Sectiont = Elements.Template.Section:Clone()
 			Sectiont.Text = name
 			Sectiont.Visible = true
 			Sectiont.Parent = TabPage
@@ -2616,8 +2983,7 @@ function Window:CreateTab(TabSettings)
 			-- Divider
 			function Section:CreateDivider()
 				TabPage.Position = UDim2.new(0,0,0,28)
-				local b = CloneHidden(Elements.Template.Divider)
-				b.Name = RandomizedName()
+				local b = Elements.Template.Divider:Clone()
 				b.Parent = TabPage
 				b.Size = UDim2.new(1,0,0,18)
 				b.Line.BackgroundTransparency = 1
@@ -2648,13 +3014,17 @@ function Window:CreateTab(TabSettings)
 				else
 					Button = Elements.Template.ButtonDesc:Clone()
 				end
-				Button.Name = ButtonSettings.Name
+				Button.Name = LunaNewGuiName("b")
 				Button.Title.Text = ButtonSettings.Name
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
 					Button.Desc.Text = ButtonSettings.Description
 				end
 				Button.Visible = true
 				Button.Parent = TabPage
+
+				LunaRegisterSearchEntry(Window, WindowSettings.SearchBarEnabled, Tab.Label or TabSettings.Name, ButtonSettings.Name, ButtonSettings.Description, "button", Button, function()
+					Tab:Activate()
+				end)
 
 				Button.UIStroke.Transparency = 1
 				Button.Title.TextTransparency = 1
@@ -2677,7 +3047,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Button.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						Button.Title.Text = ButtonSettings.Name
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -2714,7 +3084,7 @@ function Window:CreateTab(TabSettings)
 					ButtonSettings = ButtonSettings2
 					ButtonV.Settings = ButtonSettings2
 
-					Button.Name = ButtonSettings.Name
+					Button.Name = LunaNewGuiName("b")
 					Button.Title.Text = ButtonSettings.Name
 					if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
 						Button.Desc.Text = ButtonSettings.Description
@@ -2941,7 +3311,7 @@ function Window:CreateTab(TabSettings)
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 									TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 									Slider.Title.Text = "Callback Error"
-									Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+									LunaNotifyCallbackError(Response)
 									wait(0.5)
 									Slider.Title.Text = SliderSettings.Name
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -2973,7 +3343,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Slider.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						Slider.Title.Text = SliderSettings.Name
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3062,7 +3432,11 @@ function Window:CreateTab(TabSettings)
 				Toggle.Visible = true
 				Toggle.Parent = TabPage
 
-				Toggle.Name = ToggleSettings.Name .. " - Toggle"
+				Toggle.Name = LunaNewGuiName("t")
+
+				LunaRegisterSearchEntry(Window, WindowSettings.SearchBarEnabled, Tab.Label or TabSettings.Name, ToggleSettings.Name, ToggleSettings.Description, "toggle", Toggle, function()
+					Tab:Activate()
+				end)
 				Toggle.Title.Text = ToggleSettings.Name
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 					Toggle.Desc.Text = ToggleSettings.Description
@@ -3116,7 +3490,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3143,7 +3517,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3169,7 +3543,7 @@ function Window:CreateTab(TabSettings)
 					ToggleV.Settings = NewToggleSettings
 					ToggleSettings = NewToggleSettings
 
-					Toggle.Name = ToggleSettings.Name .. " - Toggle"
+					Toggle.Name = LunaNewGuiName("t")
 					Toggle.Title.Text = ToggleSettings.Name
 					if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle.Desc ~= nil then
 						Toggle.Desc.Text = ToggleSettings.Description
@@ -3187,7 +3561,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3307,7 +3681,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Bind.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaNotifyCallbackError(Response)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3336,7 +3710,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Bind.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaNotifyCallbackError(Response)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3356,7 +3730,7 @@ function Window:CreateTab(TabSettings)
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 											Bind.Title.Text = "Callback Error"
-											Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+											LunaNotifyCallbackError(Response)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3373,7 +3747,7 @@ function Window:CreateTab(TabSettings)
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 											Bind.Title.Text = "Callback Error"
-											Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+											LunaNotifyCallbackError(Response)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3501,7 +3875,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Input.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaNotifyCallbackError(Response)
 								wait(0.5)
 								Input.Title.Text = InputSettings.Name
 								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3542,7 +3916,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Input.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaNotifyCallbackError(Response)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3659,7 +4033,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Dropdown.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						Dropdown.Title.Text = DropdownSettings.Name
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3994,7 +4368,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						ColorPicker.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						ColorPicker.Title.Text = ColorPickerSettings.Name
 						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4220,17 +4594,21 @@ function Window:CreateTab(TabSettings)
 
 			local Button
 			if ButtonSettings.Description == nil and ButtonSettings.Description ~= "" then
-				Button = CloneHidden(Elements.Template.Button)
+				Button = Elements.Template.Button:Clone()
 			else
-				Button = CloneHidden(Elements.Template.ButtonDesc)
+				Button = Elements.Template.ButtonDesc:Clone()
 			end
-			Button.Name = RandomizedName()
+			Button.Name = LunaNewGuiName("b")
 			Button.Title.Text = ButtonSettings.Name
 			if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
 				Button.Desc.Text = ButtonSettings.Description
 			end
 			Button.Visible = true
 			Button.Parent = TabPage
+
+			LunaRegisterSearchEntry(Window, WindowSettings.SearchBarEnabled, Tab.Label or TabSettings.Name, ButtonSettings.Name, ButtonSettings.Description, "button", Button, function()
+				Tab:Activate()
+			end)
 
 			Button.UIStroke.Transparency = 1
 			Button.Title.TextTransparency = 1
@@ -4253,7 +4631,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Button.Title.Text = "Callback Error"
-					Luna:Notification({Title="Callback Error", Content="Luna Interface Suite | "..tostring(BindSettings and BindSettings.Name or "Unknown").." Callback Error "..tostring(Response), Icon="error"})
+					LunaNotifyCallbackError(Response)
 					wait(0.5)
 					Button.Title.Text = ButtonSettings.Name
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4290,7 +4668,7 @@ function Window:CreateTab(TabSettings)
 				ButtonSettings = ButtonSettings2
 				ButtonV.Settings = ButtonSettings2
 
-				Button.Name = ButtonSettings.Name
+				Button.Name = LunaNewGuiName("b")
 				Button.Title.Text = ButtonSettings.Name
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
 					Button.Desc.Text = ButtonSettings.Description
@@ -4319,14 +4697,13 @@ function Window:CreateTab(TabSettings)
 
 			local Label
 			if LabelSettings.Style == 1 then
-				Label = CloneHidden(Elements.Template.Label)
+				Label = Elements.Template.Label:Clone()
 			elseif LabelSettings.Style == 2 then
-				Label = CloneHidden(Elements.Template.Info)
+				Label = Elements.Template.Info:Clone()
 			elseif LabelSettings.Style == 3 then
-				Label = CloneHidden(Elements.Template.Warn)
+				Label = Elements.Template.Warn:Clone()
 			end
 
-			Label.Name = RandomizedName()
 			Label.Text.Text = LabelSettings.Text
 			Label.Visible = true
 			Label.Parent = TabPage
@@ -4369,8 +4746,7 @@ function Window:CreateTab(TabSettings)
 				Settings = ParagraphSettings
 			}
 
-			local Paragraph = CloneHidden(Elements.Template.Paragraph)
-			Paragraph.Name = RandomizedName()
+			local Paragraph = Elements.Template.Paragraph:Clone()
 			Paragraph.Title.Text = ParagraphSettings.Title
 			Paragraph.Text.Text = ParagraphSettings.Text
 			Paragraph.Visible = true
@@ -4433,8 +4809,8 @@ function Window:CreateTab(TabSettings)
 			}, SliderSettings or {})
 
 			local SLDragging = false
-			local Slider = CloneHidden(Elements.Template.Slider)
-			Slider.Name = RandomizedName()
+			local Slider = Elements.Template.Slider:Clone()
+			Slider.Name = SliderSettings.Name .. " - Slider"
 			Slider.Title.Text = SliderSettings.Name
 			Slider.Visible = true
 			Slider.Parent = TabPage
@@ -4516,7 +4892,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Slider.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaNotifyCallbackError(Response)
 								wait(0.5)
 								Slider.Title.Text = SliderSettings.Name
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4548,7 +4924,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Slider.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaNotifyCallbackError(Response)
 					wait(0.5)
 					Slider.Title.Text = SliderSettings.Name
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4628,15 +5004,19 @@ function Window:CreateTab(TabSettings)
 			local Toggle
 
 			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
-				Toggle = CloneHidden(Elements.Template.ToggleDesc)
+				Toggle = Elements.Template.ToggleDesc:Clone()
 			else
-				Toggle = CloneHidden(Elements.Template.Toggle)
+				Toggle = Elements.Template.Toggle:Clone()
 			end
 
 			Toggle.Visible = true
 			Toggle.Parent = TabPage
 
-			Toggle.Name = RandomizedName()
+			Toggle.Name = LunaNewGuiName("t")
+
+			LunaRegisterSearchEntry(Window, WindowSettings.SearchBarEnabled, Tab.Label or TabSettings.Name, ToggleSettings.Name, ToggleSettings.Description, "toggle", Toggle, function()
+				Tab:Activate()
+			end)
 			Toggle.Title.Text = ToggleSettings.Name
 			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 				Toggle.Desc.Text = ToggleSettings.Description
@@ -4690,7 +5070,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaNotifyCallbackError(Response)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4717,7 +5097,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaNotifyCallbackError(Response)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4743,7 +5123,8 @@ function Window:CreateTab(TabSettings)
 				ToggleV.Settings = NewToggleSettings
 				ToggleSettings = NewToggleSettings
 
-				Toggle.Name = ToggleSettings.Name .. " - Toggle"
+				Toggle.Name = LunaNewGuiName("t")
+
 				Toggle.Title.Text = ToggleSettings.Name
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle.Desc ~= nil then
 					Toggle.Desc.Text = ToggleSettings.Description
@@ -4761,7 +5142,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaNotifyCallbackError(Response)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4880,7 +5261,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaNotifyCallbackError(Response)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4909,7 +5290,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaNotifyCallbackError(Response)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4929,7 +5310,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaNotifyCallbackError(Response)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4946,7 +5327,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaNotifyCallbackError(Response)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5103,7 +5484,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaNotifyCallbackError(Response)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5123,7 +5504,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaNotifyCallbackError(Response)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5140,7 +5521,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaNotifyCallbackError(Response)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5261,7 +5642,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Input.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaNotifyCallbackError(Response)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5302,7 +5683,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Input.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaNotifyCallbackError(Response)
 						wait(0.5)
 						Input.Title.Text = InputSettings.Name
 						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5418,7 +5799,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Dropdown.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaNotifyCallbackError(Response)
 					wait(0.5)
 					Dropdown.Title.Text = DropdownSettings.Name
 					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5753,7 +6134,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					ColorPicker.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaNotifyCallbackError(Response)
 					wait(0.5)
 					ColorPicker.Title.Text = ColorPickerSettings.Name
 					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -6518,6 +6899,8 @@ function Window:CreateTab(TabSettings)
 		Window.State = true
 		LunaUI.MobileSupport.Visible = false
 	end)
+
+	LunaSetupWindowExtras(Window, Main, LunaUI, Main.Parent and Main.Parent:FindFirstChild("ShadowHolder"), WindowSettings.SearchBarEnabled == true)
 
 	return Window
 end
