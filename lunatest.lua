@@ -2025,7 +2025,11 @@ local function Draggable(Bar, Window, enableTaptic, tapticOffset)
 				TweenService:Create(Window, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Position = newMainPosition}):Play()
 
 				if dragBar then
-					local newDragBarPosition = UDim2.new(FramePos.X.Scale, FramePos.X.Offset + Delta.X, FramePos.Y.Scale, FramePos.Y.Offset + Delta.Y + 240)
+					-- The legacy code hard-coded +240 here, which only matched the old
+					-- default window height. Scale with the actual size so dragBar
+					-- stays anchored to the visual bottom-center regardless of resize.
+					local yOffset = (Window.AbsoluteSize.Y * 0.5) + 12
+					local newDragBarPosition = UDim2.new(FramePos.X.Scale, FramePos.X.Offset + Delta.X, FramePos.Y.Scale, FramePos.Y.Offset + Delta.Y + yOffset)
 					dragBar.Position = newDragBarPosition
 				end
 			end
@@ -2116,8 +2120,18 @@ end
 
 local function Unhide(Window, currentTab)
 	Window.Size = SizeBleh
+	-- Hide() sets Elements.Parent.Visible = false. Restore that here as well as
+	-- Elements.Visible so the panel actually re-appears after a re-open.
+	if Window.Elements and Window.Elements.Parent then
+		Window.Elements.Parent.Visible = true
+	end
 	Window.Elements.Visible = true
 	Window.Visible = true
+	-- Restore the drop-shadow that Hide() turned off. Without this the window
+	-- appears flat after re-opening with the keybind.
+	if Window.Parent and Window.Parent:FindFirstChild("ShadowHolder") then
+		Window.Parent.ShadowHolder.Visible = true
+	end
 	task.wait()
 	tween(Window, {BackgroundTransparency = 0.2})
 	tween(Window.Elements, {BackgroundTransparency = 0.08})
@@ -2643,6 +2657,68 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end)()
 
 		-- Stolen From Sirius Stuff ends here
+
+		-- Adds a dashboard card by cloning the Discord card so it inherits the same
+		-- gradient/stroke styling. Returns the cloned frame for further customization.
+		function HomeTab:CreateButton(opts)
+			opts = Kwargify({
+				Name = "Button",
+				Description = "",
+				Callback = function() end,
+			}, opts or {})
+
+			local dashboard = HomeTabPage.detailsholder.dashboard
+			local template = dashboard:FindFirstChild("Discord")
+			if not template then return nil end
+
+			local card = template:Clone()
+			card.Name = RandomName()
+			card.LayoutOrder = (template.LayoutOrder or 0) + 1 + (#dashboard:GetChildren())
+			card.Parent = dashboard
+
+			-- Try to update title + description regardless of their exact child names.
+			-- The Discord card visually shows two text labels: title (top) and description.
+			local labels = {}
+			for _, descendant in ipairs(card:GetDescendants()) do
+				if descendant:IsA("TextLabel") then
+					table.insert(labels, descendant)
+				end
+			end
+			table.sort(labels, function(a, b)
+				return (a.TextSize or 0) > (b.TextSize or 0)
+			end)
+			if labels[1] then labels[1].Text = tostring(opts.Name) end
+			if labels[2] then labels[2].Text = tostring(opts.Description) end
+
+			-- Rewire interact: clear inherited Discord click + bind ours.
+			local interact = card:FindFirstChild("Interact")
+			if interact then
+				pcall(function()
+					-- Clone-disconnect trick: re-clone the interact so prior connections are gone.
+					local fresh = interact:Clone()
+					fresh.Parent = card
+					interact:Destroy()
+					interact = fresh
+					interact.Name = "Interact"
+				end)
+				if interact:IsA("GuiButton") then
+					interact.MouseButton1Click:Connect(function()
+						local ok, err = pcall(opts.Callback)
+						if not ok then
+							Luna:Notification({
+								Title = "Callback Error",
+								Content = "Luna Interface Suite | " .. tostring(opts.Name) .. " | " .. tostring(err),
+								Icon = "error",
+							})
+						end
+					end)
+				end
+			end
+
+			return card
+		end
+
+		return HomeTab
 	end
 	
 function Window:CreateTab(TabSettings)
@@ -2752,14 +2828,58 @@ function Window:CreateTab(TabSettings)
 				Sectiont:Destroy()
 			end
 
-			-- Divider
-			function Section:CreateDivider()
+			-- Divider (optional centered label)
+			function Section:CreateDivider(DividerSettings)
 				TabPage.Position = UDim2.new(0,0,0,28)
+				-- Backwards-compat: accept either a settings table or a plain string,
+				-- and stay valid when called with no arguments.
+				local text
+				if type(DividerSettings) == "string" then
+					text = DividerSettings
+				elseif type(DividerSettings) == "table" then
+					text = DividerSettings.Text
+				end
+
 				local b = Elements.Template.Divider:Clone()
 				b.Parent = TabPage
 				b.Size = UDim2.new(1,0,0,18)
 				b.Line.BackgroundTransparency = 1
 				tween(b.Line, {BackgroundTransparency = 0})
+
+				if text and text ~= "" then
+					local line = b.Line
+					-- Match the divider's full-width line, then split it visually by
+					-- shrinking the original and adding a mirrored line + centered label.
+					line.AnchorPoint = Vector2.new(0, 0.5)
+					line.Position = UDim2.new(0, 0, 0.5, 0)
+					line.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+
+					local rightLine = line:Clone()
+					rightLine.Name = RandomName()
+					rightLine.AnchorPoint = Vector2.new(1, 0.5)
+					rightLine.Position = UDim2.new(1, 0, 0.5, 0)
+					rightLine.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+					rightLine.Parent = b
+					rightLine.BackgroundTransparency = 1
+					tween(rightLine, {BackgroundTransparency = 0})
+
+					local label = Instance.new("TextLabel")
+					label.Name = RandomName()
+					label.BackgroundTransparency = 1
+					label.AnchorPoint = Vector2.new(0.5, 0.5)
+					label.Position = UDim2.fromScale(0.5, 0.5)
+					label.Size = UDim2.new(0, 80, 0, 18)
+					label.AutomaticSize = Enum.AutomaticSize.X
+					label.Text = tostring(text)
+					label.Font = Enum.Font.GothamMedium
+					label.TextSize = 12
+					label.TextColor3 = Color3.fromRGB(200, 200, 210)
+					label.TextTransparency = 1
+					label.Parent = b
+					tween(label, {TextTransparency = 0.15})
+				end
+
+				return b
 			end
 
 			-- Button
@@ -4331,12 +4451,52 @@ function Window:CreateTab(TabSettings)
 
 		end
 
-		-- Divider
-		function Tab:CreateDivider()
+		-- Divider (optional centered label)
+		function Tab:CreateDivider(DividerSettings)
+			local text
+			if type(DividerSettings) == "string" then
+				text = DividerSettings
+			elseif type(DividerSettings) == "table" then
+				text = DividerSettings.Text
+			end
+
 			local b = Elements.Template.Divider:Clone()
 			b.Parent = TabPage
 			b.Line.BackgroundTransparency = 1
 			tween(b.Line, {BackgroundTransparency = 0})
+
+			if text and text ~= "" then
+				local line = b.Line
+				line.AnchorPoint = Vector2.new(0, 0.5)
+				line.Position = UDim2.new(0, 0, 0.5, 0)
+				line.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+
+				local rightLine = line:Clone()
+				rightLine.Name = RandomName()
+				rightLine.AnchorPoint = Vector2.new(1, 0.5)
+				rightLine.Position = UDim2.new(1, 0, 0.5, 0)
+				rightLine.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+				rightLine.Parent = b
+				rightLine.BackgroundTransparency = 1
+				tween(rightLine, {BackgroundTransparency = 0})
+
+				local label = Instance.new("TextLabel")
+				label.Name = RandomName()
+				label.BackgroundTransparency = 1
+				label.AnchorPoint = Vector2.new(0.5, 0.5)
+				label.Position = UDim2.fromScale(0.5, 0.5)
+				label.Size = UDim2.new(0, 80, 0, 18)
+				label.AutomaticSize = Enum.AutomaticSize.X
+				label.Text = tostring(text)
+				label.Font = Enum.Font.GothamMedium
+				label.TextSize = 12
+				label.TextColor3 = Color3.fromRGB(200, 200, 210)
+				label.TextTransparency = 1
+				label.Parent = b
+				tween(label, {TextTransparency = 0.15})
+			end
+
+			return b
 		end
 
 		-- Button
@@ -6585,6 +6745,7 @@ function Window:CreateTab(TabSettings)
 		Hide(Main, Window.Bind, true)
 		dragBar.Visible = false
 		Window.State = false
+		if Window._ResizeHandle then Window._ResizeHandle.Visible = false end
 		if UserInputService.KeyboardEnabled == false then
 			LunaUI.MobileSupport.Visible = true
 		end
@@ -6604,6 +6765,9 @@ function Window:CreateTab(TabSettings)
 			LunaUI.MobileSupport.Visible = false
 			dragBar.Visible = true
 			Window.State = true
+			if Window._ResizeHandle and Window.Size == false then
+				Window._ResizeHandle.Visible = true
+			end
 		end
 	end)
 
@@ -6622,9 +6786,11 @@ function Window:CreateTab(TabSettings)
 		if Window.Size then
 			Minimize(Main)
 			dragBar.Visible = false
+			if Window._ResizeHandle then Window._ResizeHandle.Visible = false end
 		else
 			Maximise(Main)
 			dragBar.Visible = true
+			if Window._ResizeHandle then Window._ResizeHandle.Visible = true end
 		end
 	end)
 	Main.Controls.ToggleSize["MouseEnter"]:Connect(function()
@@ -6652,6 +6818,9 @@ function Window:CreateTab(TabSettings)
 		Unhide(Main, Window.CurrentTab)
 		dragBar.Visible = true
 		Window.State = true
+		if Window._ResizeHandle and Window.Size == false then
+			Window._ResizeHandle.Visible = true
+		end
 		LunaUI.MobileSupport.Visible = false
 	end)
 
@@ -6684,18 +6853,50 @@ function Window:CreateTab(TabSettings)
 			)
 		end
 
-		-- The search modal lives inside Main, centered, hidden by default.
+		-- The modal lives at the LunaUI (ScreenGui) root so it overlays the SmartWindow,
+		-- dragBar, and every other UI element. We use a backdrop frame for click-outside
+		-- close + a dim effect, with the actual panel anchored to the window's bounds.
+		local SearchLayer = Instance.new("Frame")
+		SearchLayer.Name = RandomName()
+		SearchLayer.AnchorPoint = Vector2.new(0, 0)
+		SearchLayer.Position = UDim2.fromScale(0, 0)
+		SearchLayer.Size = UDim2.fromScale(1, 1)
+		SearchLayer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		SearchLayer.BackgroundTransparency = 1
+		SearchLayer.BorderSizePixel = 0
+		SearchLayer.Visible = false
+		SearchLayer.ZIndex = 5000
+		SearchLayer.Parent = LunaUI
+
+		local Backdrop = Instance.new("TextButton")
+		Backdrop.Name = RandomName()
+		Backdrop.AutoButtonColor = false
+		Backdrop.Text = ""
+		Backdrop.Size = UDim2.fromScale(1, 1)
+		Backdrop.BackgroundTransparency = 1
+		Backdrop.BorderSizePixel = 0
+		Backdrop.ZIndex = 5000
+		Backdrop.Parent = SearchLayer
+
 		local SearchModal = Instance.new("Frame")
 		SearchModal.Name = RandomName()
 		SearchModal.AnchorPoint = Vector2.new(0.5, 0.5)
-		SearchModal.Position = UDim2.fromScale(0.5, 0.5)
-		SearchModal.Size = UDim2.new(0.7, 0, 0.7, 0)
 		SearchModal.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
 		SearchModal.BackgroundTransparency = 0.05
 		SearchModal.BorderSizePixel = 0
-		SearchModal.ZIndex = 50
-		SearchModal.Visible = false
-		SearchModal.Parent = Main
+		SearchModal.ZIndex = 5010
+		SearchModal.Parent = SearchLayer
+
+		-- Re-anchor the modal to Main so it tracks the window (position + size).
+		local function repositionModal()
+			local pos = Main.AbsolutePosition
+			local sz = Main.AbsoluteSize
+			SearchModal.Position = UDim2.fromOffset(pos.X + sz.X * 0.5, pos.Y + sz.Y * 0.5)
+			SearchModal.Size = UDim2.fromOffset(math.min(sz.X * 0.72, 560), math.min(sz.Y * 0.72, 420))
+		end
+		repositionModal()
+		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(repositionModal)
+		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionModal)
 
 		local modalCorner = Instance.new("UICorner")
 		modalCorner.CornerRadius = UDim.new(0, 10)
@@ -6729,7 +6930,7 @@ function Window:CreateTab(TabSettings)
 		SearchInput.TextSize = 15
 		SearchInput.TextXAlignment = Enum.TextXAlignment.Left
 		SearchInput.ClearTextOnFocus = false
-		SearchInput.ZIndex = 51
+		SearchInput.ZIndex = 5011
 		SearchInput.Parent = SearchModal
 
 		local inputPadding = Instance.new("UIPadding")
@@ -6756,7 +6957,7 @@ function Window:CreateTab(TabSettings)
 		Results.ScrollBarImageColor3 = Color3.fromRGB(120, 120, 130)
 		Results.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Results.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		Results.ZIndex = 51
+		Results.ZIndex = 5011
 		Results.Parent = SearchModal
 
 		local resultsList = Instance.new("UIListLayout")
@@ -6772,7 +6973,7 @@ function Window:CreateTab(TabSettings)
 		EmptyLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
 		EmptyLabel.Font = Enum.Font.Gotham
 		EmptyLabel.TextSize = 13
-		EmptyLabel.ZIndex = 51
+		EmptyLabel.ZIndex = 5011
 		EmptyLabel.Parent = Results
 
 		-- Cache to avoid rebuilding the result rows for identical queries.
@@ -6796,7 +6997,7 @@ function Window:CreateTab(TabSettings)
 			Row.BorderSizePixel = 0
 			Row.Text = ""
 			Row.LayoutOrder = layoutOrder
-			Row.ZIndex = 52
+			Row.ZIndex = 5012
 			Row.Parent = Results
 
 			local rowCorner = Instance.new("UICorner")
@@ -6818,7 +7019,7 @@ function Window:CreateTab(TabSettings)
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Font = Enum.Font.GothamMedium
 			title.TextSize = 14
-			title.ZIndex = 53
+			title.ZIndex = 5013
 			title.Parent = Row
 
 			local sub = Instance.new("TextLabel")
@@ -6831,7 +7032,7 @@ function Window:CreateTab(TabSettings)
 			sub.TextXAlignment = Enum.TextXAlignment.Left
 			sub.Font = Enum.Font.Gotham
 			sub.TextSize = 11
-			sub.ZIndex = 53
+			sub.ZIndex = 5013
 			sub.Parent = Row
 
 			Row.MouseEnter:Connect(function()
@@ -6847,8 +7048,7 @@ function Window:CreateTab(TabSettings)
 					tabRef.Activate()
 				end
 
-				-- Close the modal
-				SearchModal.Visible = false
+				Window.CloseSearch()
 
 				-- Highlight the target element briefly
 				local frame = entry.Frame
@@ -6865,8 +7065,6 @@ function Window:CreateTab(TabSettings)
 					end)
 
 					-- Scroll the containing ScrollingFrame to make the element visible.
-					-- Section-nested elements live below a section Frame so we walk up
-					-- the parent chain until we find a ScrollingFrame.
 					local container = frame.Parent
 					local guard = 0
 					while container and not container:IsA("ScrollingFrame") and container.Parent and guard < 8 do
@@ -6898,7 +7096,7 @@ function Window:CreateTab(TabSettings)
 			end
 
 			local matches = 0
-			for i, entry in ipairs(Window._SearchIndex) do
+			for _, entry in ipairs(Window._SearchIndex) do
 				if entry.Frame and entry.Frame.Parent then
 					if string.find(string.lower(entry.Name), query, 1, true) then
 						matches += 1
@@ -6916,15 +7114,64 @@ function Window:CreateTab(TabSettings)
 
 		SearchInput:GetPropertyChangedSignal("Text"):Connect(refreshResults)
 
-		local function setOpen(open)
+		-- Smooth fade in / out
+		local OPEN_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local CLOSE_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+		local function applyVisible(open)
 			if open then
-				-- If the window is minimized, expand it first so the modal is visible.
+				SearchLayer.Visible = true
+				SearchModal.BackgroundTransparency = 1
+				SearchInput.BackgroundTransparency = 1
+				SearchInput.TextTransparency = 1
+				modalStroke.Transparency = 1
+				inputStroke.Transparency = 1
+				EmptyLabel.TextTransparency = 1
+
+				TweenService:Create(Backdrop, OPEN_INFO, {BackgroundTransparency = 0.55}):Play()
+				TweenService:Create(SearchModal, OPEN_INFO, {BackgroundTransparency = 0.05}):Play()
+				TweenService:Create(SearchInput, OPEN_INFO, {BackgroundTransparency = 0.25, TextTransparency = 0}):Play()
+				TweenService:Create(modalStroke, OPEN_INFO, {Transparency = 0.5}):Play()
+				TweenService:Create(inputStroke, OPEN_INFO, {Transparency = 0.5}):Play()
+				TweenService:Create(EmptyLabel, OPEN_INFO, {TextTransparency = 0.2}):Play()
+			else
+				TweenService:Create(Backdrop, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
+				TweenService:Create(SearchModal, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
+				TweenService:Create(SearchInput, CLOSE_INFO, {BackgroundTransparency = 1, TextTransparency = 1}):Play()
+				TweenService:Create(modalStroke, CLOSE_INFO, {Transparency = 1}):Play()
+				TweenService:Create(inputStroke, CLOSE_INFO, {Transparency = 1}):Play()
+				TweenService:Create(EmptyLabel, CLOSE_INFO, {TextTransparency = 1}):Play()
+				task.delay(0.16, function()
+					-- Don't hide if user reopened in the meantime
+					if not Window._SearchOpen then
+						SearchLayer.Visible = false
+					end
+				end)
+			end
+		end
+
+		Window._SearchOpen = false
+		Window._SearchEnabled = true
+
+		local function setOpen(open)
+			if not Window._SearchEnabled then open = false end
+			if Window._SearchOpen == open then return end
+			Window._SearchOpen = open
+
+			if open then
+				-- If minimized, expand first so the modal lines up visibly with the window.
 				if Window.Size then
 					Maximise(Main)
 					Window.Size = false
 					if dragBar then dragBar.Visible = true end
 				end
-				SearchModal.Visible = true
+				-- If hidden by keybind, restore first.
+				if not Window.State then
+					Unhide(Main, Window.CurrentTab)
+					Window.State = true
+				end
+				repositionModal()
+				applyVisible(true)
 				SearchInput.Text = ""
 				lastQuery = nil
 				refreshResults()
@@ -6932,13 +7179,13 @@ function Window:CreateTab(TabSettings)
 					pcall(function() SearchInput:CaptureFocus() end)
 				end)
 			else
-				SearchModal.Visible = false
+				applyVisible(false)
 				SearchInput:ReleaseFocus()
 			end
 		end
 
 		SearchControl.ImageLabel.MouseButton1Click:Connect(function()
-			setOpen(not SearchModal.Visible)
+			setOpen(not Window._SearchOpen)
 		end)
 		SearchControl["MouseEnter"]:Connect(function()
 			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.new(1,1,1)})
@@ -6947,47 +7194,128 @@ function Window:CreateTab(TabSettings)
 			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
 		end)
 
-		-- Esc closes the modal
+		-- Click outside (backdrop) closes the modal.
+		Backdrop.MouseButton1Click:Connect(function()
+			setOpen(false)
+		end)
+
+		-- Default keybind: configurable, defaults to Ctrl+F. Esc closes regardless.
+		Window._SearchKeybind = WindowSettings.SearchKeybind or Enum.KeyCode.F
+		Window._SearchKeybindRequiresCtrl = WindowSettings.SearchKeybindRequiresCtrl ~= false
+
 		UserInputService.InputBegan:Connect(function(input, gpe)
 			if gpe then return end
-			if input.KeyCode == Enum.KeyCode.Escape and SearchModal.Visible then
+			if not Window._SearchEnabled then return end
+			if input.KeyCode == Enum.KeyCode.Escape and Window._SearchOpen then
 				setOpen(false)
+				return
+			end
+			if input.KeyCode == Window._SearchKeybind then
+				if Window._SearchKeybindRequiresCtrl then
+					if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+						return
+					end
+				end
+				setOpen(not Window._SearchOpen)
 			end
 		end)
 
 		Window._SearchControl = SearchControl
+		Window._SearchLayer = SearchLayer
 		Window._SearchModal = SearchModal
+
 		Window.OpenSearch = function() setOpen(true) end
 		Window.CloseSearch = function() setOpen(false) end
+		Window.IsSearchOpen = function() return Window._SearchOpen end
+
+		-- Runtime control: toggle SearchBar on/off without rebuilding the window.
+		Window.SetSearchEnabled = function(enabled)
+			Window._SearchEnabled = enabled and true or false
+			if not Window._SearchEnabled and Window._SearchOpen then
+				setOpen(false)
+			end
+			if SearchControl then
+				SearchControl.Visible = Window._SearchEnabled
+			end
+		end
+
+		-- Runtime control: change the keybind. Accepts an Enum.KeyCode or a single
+		-- uppercase letter string (e.g. "F"). `requireCtrl` is a boolean (default true).
+		Window.SetSearchKeybind = function(key, requireCtrl)
+			if typeof(key) == "EnumItem" then
+				Window._SearchKeybind = key
+			elseif type(key) == "string" then
+				local kc = Enum.KeyCode[key:upper()]
+				if kc then Window._SearchKeybind = kc end
+			end
+			if requireCtrl ~= nil then
+				Window._SearchKeybindRequiresCtrl = requireCtrl and true or false
+			end
+		end
 	end
 
 	-- ============================================================
 	-- Resize handle (PC only, opt-in via WindowSettings.Resizable)
 	-- ============================================================
 	if WindowSettings.Resizable and IsDesktop() then
+		-- Small backing chip so the icon stays visible against any background.
+		local HandleBack = Instance.new("Frame")
+		HandleBack.Name = RandomName()
+		HandleBack.AnchorPoint = Vector2.new(1, 1)
+		HandleBack.Position = UDim2.new(1, -8, 1, -8)
+		HandleBack.Size = UDim2.fromOffset(24, 24)
+		HandleBack.BackgroundColor3 = Color3.fromRGB(32, 30, 38)
+		HandleBack.BackgroundTransparency = 0.3
+		HandleBack.BorderSizePixel = 0
+		HandleBack.ZIndex = 30
+		HandleBack.Parent = Main
+
+		local backCorner = Instance.new("UICorner")
+		backCorner.CornerRadius = UDim.new(0, 6)
+		backCorner.Parent = HandleBack
+
+		local backStroke = Instance.new("UIStroke")
+		backStroke.Color = Color3.fromRGB(120, 117, 140)
+		backStroke.Transparency = 0.5
+		backStroke.Parent = HandleBack
+
 		local Handle = Instance.new("ImageButton")
 		Handle.Name = RandomName()
-		Handle.AnchorPoint = Vector2.new(1, 1)
-		Handle.Position = UDim2.new(1, -6, 1, -6)
-		Handle.Size = UDim2.fromOffset(18, 18)
+		Handle.AnchorPoint = Vector2.new(0.5, 0.5)
+		Handle.Position = UDim2.fromScale(0.5, 0.5)
+		Handle.Size = UDim2.fromOffset(16, 16)
 		Handle.BackgroundTransparency = 1
 		-- Material "open_in_full" - diagonal expansion arrows
 		ApplyIcon(Handle, GetIcon("open_in_full", "Material"))
-		Handle.ImageColor3 = Color3.fromRGB(180, 180, 190)
-		Handle.ImageTransparency = 0.25
+		Handle.ImageColor3 = Color3.fromRGB(235, 235, 245)
+		Handle.ImageTransparency = 0
 		Handle.AutoButtonColor = false
-		Handle.ZIndex = 30
-		Handle.Parent = Main
+		Handle.ZIndex = 31
+		Handle.Parent = HandleBack
 
-		Handle.MouseEnter:Connect(function()
-			tween(Handle, {ImageTransparency = 0})
+		HandleBack.MouseEnter:Connect(function()
+			tween(HandleBack, {BackgroundTransparency = 0.05})
+			tween(backStroke, {Transparency = 0.1})
 		end)
-		Handle.MouseLeave:Connect(function()
-			tween(Handle, {ImageTransparency = 0.25})
+		HandleBack.MouseLeave:Connect(function()
+			tween(HandleBack, {BackgroundTransparency = 0.3})
+			tween(backStroke, {Transparency = 0.5})
 		end)
 
 		local resizing = false
 		local startMouse, startSize
+
+		-- Keep dragBar visually anchored to the bottom-center of Main regardless of
+		-- how the user resized the window. We snap to absolute screen coordinates
+		-- because dragBar lives at the ScreenGui root, not under Main.
+		local function syncDragBar()
+			if not dragBar then return end
+			local p = Main.AbsolutePosition
+			local s = Main.AbsoluteSize
+			-- 12px below the bottom edge keeps the rescue handle visible without
+			-- overlapping the bottom border or stroke.
+			dragBar.Position = UDim2.fromOffset(p.X + s.X * 0.5, p.Y + s.Y + 12)
+		end
 
 		Handle.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
@@ -7004,14 +7332,42 @@ function Window:CreateTab(TabSettings)
 			local nx = math.clamp(startSize.X + delta.X, ResizeMin.X, ResizeMax.X)
 			local ny = math.clamp(startSize.Y + delta.Y, ResizeMin.Y, ResizeMax.Y)
 			Main.Size = UDim2.fromOffset(nx, ny)
-			-- Keep MainSize in sync so Maximise() restores the latest user size.
 			MainSize = Main.Size
+			syncDragBar()
 		end)
 
 		UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				resizing = false
 			end
+		end)
+
+		-- Re-sync on every Main size/position change too so toggling minimize,
+		-- maximise, or restoring from a hide always keeps the dragBar in line.
+		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if dragBar and dragBar.Visible then syncDragBar() end
+		end)
+		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+			if dragBar and dragBar.Visible then syncDragBar() end
+		end)
+
+		Window._ResizeHandle = HandleBack
+
+		-- Hide the resize handle when the window is minimized or hidden, restore otherwise.
+		local function syncHandleVisibility()
+			HandleBack.Visible = (Window.Size == false) and Window.State
+		end
+		-- Mirror visibility on size/state changes by observing Main visually.
+		Main:GetPropertyChangedSignal("Size"):Connect(function()
+			-- Heuristic: if Main is in the minimized state we shrink the height below 60px.
+			if Main.AbsoluteSize.Y < 60 then
+				HandleBack.Visible = false
+			else
+				syncHandleVisibility()
+			end
+		end)
+		Main:GetPropertyChangedSignal("Visible"):Connect(function()
+			if not Main.Visible then HandleBack.Visible = false end
 		end)
 	end
 
