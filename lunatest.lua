@@ -1867,22 +1867,81 @@ local function _translateOne(obj, target)
 end
 
 -- Walks a root Instance and translates every descendant text element.
--- Async: yields between batches so we don't stall the game thread on the
--- HTTP round-trips.
+-- Uses a worker pool to fire many HTTP requests in parallel; on a typical
+-- UI this brings a full retranslate from minutes to ~10-20s.
+local LunaTranslateWorkers = 14
 local function _translateTree(root, target)
     if not root then return end
+    -- Pre-collect & dedupe queue. Objects sharing the same source text only
+    -- need the API to translate them once - the cache handles the rest.
     local queue = {}
     for _, descendant in ipairs(root:GetDescendants()) do
         if _isTranslatableText(descendant) then
             table.insert(queue, descendant)
         end
     end
+    if #queue == 0 then return end
+
+    -- If target is English we don't hit the network at all - just restore
+    -- originals in one synchronous sweep.
+    if target == "en" then
+        task.spawn(function()
+            for i, obj in ipairs(queue) do
+                if obj and obj.Parent then pcall(_translateOne, obj, target) end
+                if i % 80 == 0 then task.wait() end
+            end
+        end)
+        return
+    end
+
+    -- Pre-warm the cache by translating each unique English string ONCE in
+    -- parallel. This avoids 5 different copies of "Settings" each issuing
+    -- their own HTTP request.
+    local unique = {}
+    for _, obj in ipairs(queue) do
+        local orig = obj:GetAttribute("LunaOriginalText") or obj.Text
+        if _shouldTranslateValue(orig) and not unique[orig] then
+            unique[orig] = true
+        end
+    end
+    local uniqueList = {}
+    for text in pairs(unique) do table.insert(uniqueList, text) end
+
+    local idx = 0
+    local function nextText()
+        idx = idx + 1
+        return uniqueList[idx]
+    end
+
+    local doneFlag = Instance.new("BindableEvent")
+    local active = math.min(LunaTranslateWorkers, math.max(1, #uniqueList))
+    if active == 0 then doneFlag:Fire(); doneFlag:Destroy(); doneFlag = nil end
+
+    for w = 1, active do
+        task.spawn(function()
+            while true do
+                local text = nextText()
+                if not text then break end
+                pcall(LunaTranslate, text, target)
+            end
+            active = active - 1
+            if active == 0 and doneFlag then doneFlag:Fire() end
+        end)
+    end
+
+    -- Once the cache is hot, applying translations to actual instances is
+    -- effectively free (no HTTP). Stream them out in a small loop so we
+    -- still yield occasionally and don't freeze the game thread.
     task.spawn(function()
+        if doneFlag then
+            doneFlag.Event:Wait()
+            doneFlag:Destroy()
+        end
         for i, obj in ipairs(queue) do
             if obj and obj.Parent then
-                _translateOne(obj, target)
+                pcall(_translateOne, obj, target)
             end
-            if i % 6 == 0 then task.wait() end
+            if i % 60 == 0 then task.wait() end
         end
     end)
 end
@@ -2824,10 +2883,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		-- Stolen From Sirius Stuff ends here
 
-		-- Holder for our extra dashboard cards. We parent it to HomeTabPage itself
-		-- (which already arranges its children vertically: icon, player, detailsholder,
-		-- ...) so our cards appear BELOW the original Discord/Server/Friends/Client
-		-- dashboard without touching them. High LayoutOrder pushes us to the end.
+		-- Holder for our extra dashboard cards. HomeTabPage doesn't use a
+		-- UIListLayout - its children (icon, player, detailsholder) are absolutely
+		-- positioned. So we anchor manually directly below detailsholder and keep
+		-- the position in sync whenever the dashboard resizes.
 		local ExtraCards
 		local function ensureExtraCards()
 			if ExtraCards and ExtraCards.Parent then return ExtraCards end
@@ -2835,26 +2894,49 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ExtraCards.Name = RandomName()
 			ExtraCards.BackgroundTransparency = 1
 			ExtraCards.BorderSizePixel = 0
-			ExtraCards.Size = UDim2.new(1, 0, 0, 0)
+			ExtraCards.Size = UDim2.new(1, -20, 0, 0)
+			ExtraCards.Position = UDim2.new(0, 10, 0, 240) -- updated below once detailsholder lays out
 			ExtraCards.AutomaticSize = Enum.AutomaticSize.Y
-			ExtraCards.LayoutOrder = 1000000
+			ExtraCards.ZIndex = 1
 			ExtraCards.Parent = HomeTabPage
 
 			-- UIGridLayout lets us put 2 cards per row, wrapping cleanly.
 			local grid = Instance.new("UIGridLayout")
 			grid.SortOrder = Enum.SortOrder.LayoutOrder
 			grid.CellPadding = UDim2.fromOffset(10, 10)
-			grid.CellSize = UDim2.new(0.5, -10, 0, 76)
+			grid.CellSize = UDim2.new(0.5, -8, 0, 76)
 			grid.FillDirectionMaxCells = 2
 			grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			grid.StartCorner = Enum.StartCorner.TopLeft
 			grid.Parent = ExtraCards
 
 			local padding = Instance.new("UIPadding")
-			padding.PaddingTop = UDim.new(0, 12)
-			padding.PaddingLeft = UDim.new(0, 6)
-			padding.PaddingRight = UDim.new(0, 6)
+			padding.PaddingTop = UDim.new(0, 14)
+			padding.PaddingBottom = UDim.new(0, 14)
 			padding.Parent = ExtraCards
+
+			-- Snap our holder right under the existing dashboard. detailsholder
+			-- usually sits at a fixed offset and contains the dashboard rows we
+			-- want to be below. We track its bottom so resizes/zoom don't break it.
+			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
+			if detailsholder then
+				local function reposition()
+					if not detailsholder or not detailsholder.Parent then return end
+					-- Convert detailsholder's bottom into HomeTabPage local coords
+					-- via AbsolutePosition (works for ScrollingFrame canvas too).
+					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
+					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + detailsholder.AbsoluteSize.Y
+					if relY > 0 then
+						ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(relY) + 16)
+					end
+				end
+				reposition()
+				detailsholder:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+				detailsholder:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
+				HomeTabPage:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+				-- Wait a frame for the asset to settle, then nudge again.
+				task.defer(function() task.wait(0.05); reposition() end)
+			end
 
 			return ExtraCards
 		end
@@ -6992,18 +7074,39 @@ function Window:CreateTab(TabSettings)
 			Name = "AI Chat",
 			Icon = "smart_toy",
 			ImageSource = "Material",
-			SystemPrompt = "You are a helpful AI assistant inside a Roblox script. Be concise but friendly. You can format text with **bold**, *italics*, `code`, and ~~strikethrough~~.",
+			SystemPrompt = nil,         -- if set, replaces the default Solara-aware prompt
+			Knowledge = nil,            -- extra context block injected into the system prompt
 			Model = "openai",
 			ShowTitle = true,
 			Endpoint = "https://text.pollinations.ai/openai",
+			Webhook = nil,              -- Discord webhook URL for "Send script request" flow
+			SaveFile = "LunaAI_chat.json", -- where to persist chat history
+			AutoSave = true,
 		}, opts or {})
+
+		-- Remember which tab is active before we add the AI tab. UIPageLayout has
+		-- a habit of focusing the freshly parented page when its LayoutOrder is
+		-- the highest, which makes the script feel like it boots on the chat tab.
+		local previousActiveTab = Window.CurrentTab
 
 		local hostTab = self:CreateTab({
 			Name = opts.Name,
 			Icon = opts.Icon,
 			ImageSource = opts.ImageSource,
-			ShowTitle = opts.ShowTitle,
+			ShowTitle = false, -- our own header looks cleaner
 		})
+
+		-- Re-activate the tab the user was looking at so the AI tab doesn't
+		-- steal focus on startup. Two-frame defer to let UIPageLayout settle.
+		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
+			local restore = Window._Tabs[previousActiveTab]
+			if restore and type(restore.Activate) == "function" then
+				task.defer(function()
+					task.wait()
+					pcall(restore.Activate)
+				end)
+			end
+		end
 
 		local Page = hostTab.Page
 
@@ -7012,15 +7115,100 @@ function Window:CreateTab(TabSettings)
 		local existingList = Page:FindFirstChildOfClass("UIListLayout")
 		if existingList then existingList:Destroy() end
 		local existingPadding = Page:FindFirstChildOfClass("UIPadding")
-		if existingPadding then existingPadding.PaddingTop = UDim.new(0, opts.ShowTitle and 34 or 4) end
+		if existingPadding then existingPadding:Destroy() end
+		-- Also kill any auto canvas so our absolute layout decides the size.
+		if Page:IsA("ScrollingFrame") then
+			Page.CanvasSize = UDim2.new(0, 0, 0, 0)
+			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
+			Page.ScrollingEnabled = false
+		end
 
+		-- Default system prompt - rich enough that the model picks up tone/format
+		-- expectations and the Solara Hub context without callers having to repeat it.
+		local function buildSystemPrompt()
+			-- NOTE: level-2 long string `[==[ ... ]==]` so the `[[SCRIPT_REQUEST: ...]]`
+			-- marker inside this prompt doesn't close the literal early.
+			local base = opts.SystemPrompt or [==[You are "Solara AI", the assistant living inside the Solara Hub Roblox script. Always answer in the language the user wrote in.
+
+Formatting rules:
+- Use **bold**, *italics*, `inline code` and ~~strike~~ where helpful.
+- Use Markdown headers (#, ##, ###) for section titles.
+- Use bullet lists with "- " and numbered lists with "1. ".
+- For executable Roblox/Luau code put it inside fenced ```lua ... ``` blocks. NEVER paste big code without fences.
+- Keep answers concise (under 250 words) unless asked for more.
+- Be friendly and a bit playful, but stay on topic.
+
+About Solara Hub:
+- It is a free Roblox script hub by Samuraa1 that supports tons of games and executors.
+- Top tabs include: Home (dashboard, Discord, supported executors), Universal Scripts (ESP, Aimbot, Animations, Automization, Tools, Trolling, Performance, DEV Tools, Admin, Visual, Backdoor Scanners), and per-game tabs that auto-load.
+- Built-in features: SearchBar (Ctrl+F), Language switching (full UI translation), UI zoom (Ctrl+/-/0), resizing, AI Chat (you).
+- It works with executors like Solara, Xeno, Wave, Volt, Volcano, Velocity, Madium, Potassium, Seliware, Bunni, SirHurt, Drift, Swift, Synapse Z, Cosmic, Isaeva, Hydrogen, MacSploit, Opiumware, Delta, Codex, Cryptic, Arceus X, VegaX, Ronix, Fluxus.
+
+Script requests:
+- If a user asks for a script that you don't think exists in Solara Hub, FIRST ask them politely if they want you to forward the request to the developers.
+- If they say "yes"/"forward it"/etc. on the NEXT message, append a single line to your response in EXACTLY this format (the UI parses it):
+  [[SCRIPT_REQUEST: <one-sentence summary of what they want>]]
+- Never invent webhook URLs or pretend to send anything yourself. The host UI handles delivery.
+]==]
+			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
+				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
+			end
+			return base
+		end
+
+		-- ---------- header ----------
+		local Header = Instance.new("Frame")
+		Header.Name = RandomName()
+		Header.BackgroundTransparency = 1
+		Header.BorderSizePixel = 0
+		Header.Position = UDim2.new(0, 12, 0, 6)
+		Header.Size = UDim2.new(1, -24, 0, 28)
+		Header.Parent = Page
+
+		local headerTitle = Instance.new("TextLabel")
+		headerTitle.BackgroundTransparency = 1
+		headerTitle.Size = UDim2.new(1, -120, 1, 0)
+		headerTitle.Position = UDim2.new(0, 0, 0, 0)
+		headerTitle.Text = "Solara AI"
+		headerTitle.TextColor3 = Color3.fromRGB(245, 240, 255)
+		headerTitle.Font = Enum.Font.GothamBold
+		headerTitle.TextSize = 16
+		headerTitle.TextXAlignment = Enum.TextXAlignment.Left
+		headerTitle.TextYAlignment = Enum.TextYAlignment.Center
+		headerTitle:SetAttribute("LunaNoTranslate", true)
+		headerTitle.Parent = Header
+
+		local function makeHeaderBtn(parent, iconName, tooltip, xOffset)
+			local btn = Instance.new("ImageButton")
+			btn.Name = RandomName()
+			btn.AnchorPoint = Vector2.new(1, 0.5)
+			btn.Position = UDim2.new(1, xOffset, 0.5, 0)
+			btn.Size = UDim2.fromOffset(26, 22)
+			btn.BackgroundColor3 = Color3.fromRGB(45, 40, 60)
+			btn.BackgroundTransparency = 0.2
+			btn.ImageColor3 = Color3.fromRGB(225, 220, 240)
+			btn.AutoButtonColor = false
+			btn.Parent = parent
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = btn
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 110, 170); s.Transparency = 0.55; s.Parent = btn
+			ApplyIcon(btn, GetIcon(iconName, "Material"))
+			btn.MouseEnter:Connect(function() tween(btn, {BackgroundTransparency = 0.05}) end)
+			btn.MouseLeave:Connect(function() tween(btn, {BackgroundTransparency = 0.2}) end)
+			return btn
+		end
+
+		local SaveBtn  = makeHeaderBtn(Header, "save",          "Save chat",  -0)
+		local LoadBtn  = makeHeaderBtn(Header, "folder_open",   "Load chat",  -32)
+		local ClearBtn = makeHeaderBtn(Header, "delete",        "Clear chat", -64)
+
+		-- ---------- chat container ----------
 		local Container = Instance.new("Frame")
 		Container.Name = RandomName()
 		Container.BackgroundTransparency = 1
 		Container.BorderSizePixel = 0
 		Container.AnchorPoint = Vector2.new(0, 0)
-		Container.Position = UDim2.new(0, 0, 0, opts.ShowTitle and 36 or 4)
-		Container.Size = UDim2.new(1, 0, 1, opts.ShowTitle and -40 or -8)
+		Container.Position = UDim2.new(0, 8, 0, 40)
+		Container.Size = UDim2.new(1, -16, 1, -48)
 		Container.Parent = Page
 
 		-- Messages history (scrollable). Marked non-translatable so user/AI
@@ -7029,8 +7217,8 @@ function Window:CreateTab(TabSettings)
 		Messages.Name = RandomName()
 		Messages.BackgroundTransparency = 1
 		Messages.BorderSizePixel = 0
-		Messages.Position = UDim2.new(0, 6, 0, 6)
-		Messages.Size = UDim2.new(1, -12, 1, -64)
+		Messages.Position = UDim2.new(0, 0, 0, 0)
+		Messages.Size = UDim2.new(1, 0, 1, -56)
 		Messages.ScrollBarThickness = 3
 		Messages.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
 		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -7041,33 +7229,29 @@ function Window:CreateTab(TabSettings)
 
 		local msgList = Instance.new("UIListLayout")
 		msgList.SortOrder = Enum.SortOrder.LayoutOrder
-		msgList.Padding = UDim.new(0, 8)
+		msgList.Padding = UDim.new(0, 10)
 		msgList.Parent = Messages
 
-		-- Input area
+		local msgPad = Instance.new("UIPadding")
+		msgPad.PaddingLeft = UDim.new(0, 4)
+		msgPad.PaddingRight = UDim.new(0, 4)
+		msgPad.PaddingBottom = UDim.new(0, 4)
+		msgPad.Parent = Messages
+
+		-- ---------- input area ----------
 		local InputBar = Instance.new("Frame")
 		InputBar.Name = RandomName()
 		InputBar.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
-		InputBar.BackgroundTransparency = 0.25
+		InputBar.BackgroundTransparency = 0.2
 		InputBar.BorderSizePixel = 0
 		InputBar.AnchorPoint = Vector2.new(0, 1)
-		InputBar.Position = UDim2.new(0, 6, 1, -8)
-		InputBar.Size = UDim2.new(1, -12, 0, 44)
+		InputBar.Position = UDim2.new(0, 0, 1, 0)
+		InputBar.Size = UDim2.new(1, 0, 0, 46)
 		InputBar.Parent = Container
 
-		local inputCorner = Instance.new("UICorner")
-		inputCorner.CornerRadius = UDim.new(0, 12)
-		inputCorner.Parent = InputBar
-
-		local inputStroke = Instance.new("UIStroke")
-		inputStroke.Color = Color3.fromRGB(130, 120, 170)
-		inputStroke.Transparency = 0.55
-		inputStroke.Parent = InputBar
-
-		local inputGradient = Instance.new("UIGradient")
-		inputGradient.Rotation = 90
-		inputGradient.Transparency = NumberSequence.new(0.1, 0.35)
-		inputGradient.Parent = InputBar
+		local inputCorner = Instance.new("UICorner"); inputCorner.CornerRadius = UDim.new(0, 12); inputCorner.Parent = InputBar
+		local inputStroke = Instance.new("UIStroke"); inputStroke.Color = Color3.fromRGB(130, 120, 170); inputStroke.Transparency = 0.55; inputStroke.Parent = InputBar
+		local inputGradient = Instance.new("UIGradient"); inputGradient.Rotation = 90; inputGradient.Transparency = NumberSequence.new(0.1, 0.35); inputGradient.Parent = InputBar
 
 		local InputBox = Instance.new("TextBox")
 		InputBox.Name = RandomName()
@@ -7090,86 +7274,247 @@ function Window:CreateTab(TabSettings)
 		SendButton.Name = RandomName()
 		SendButton.AnchorPoint = Vector2.new(1, 0.5)
 		SendButton.Position = UDim2.new(1, -8, 0.5, 0)
-		SendButton.Size = UDim2.fromOffset(36, 28)
+		SendButton.Size = UDim2.fromOffset(40, 30)
 		SendButton.BackgroundColor3 = Color3.fromRGB(110, 90, 220)
 		SendButton.BackgroundTransparency = 0.05
 		SendButton.AutoButtonColor = false
 		SendButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
 		SendButton.Parent = InputBar
 		ApplyIcon(SendButton, GetIcon("send", "Material"))
-
-		local sendCorner = Instance.new("UICorner")
-		sendCorner.CornerRadius = UDim.new(0, 8)
-		sendCorner.Parent = SendButton
+		local sendCorner = Instance.new("UICorner"); sendCorner.CornerRadius = UDim.new(0, 8); sendCorner.Parent = SendButton
 
 		-- Conversation state. Includes the system prompt to keep replies on-topic.
 		local conversation = {}
-		if opts.SystemPrompt and opts.SystemPrompt ~= "" then
-			table.insert(conversation, { role = "system", content = opts.SystemPrompt })
+		table.insert(conversation, { role = "system", content = buildSystemPrompt() })
+
+		-- ---------- markdown / rich text ----------
+		-- Returns a list of segments: {kind="text"|"code", lang?, content}
+		local function splitCodeBlocks(text)
+			local segments = {}
+			local cursor = 1
+			while cursor <= #text do
+				local s, e, lang, code = string.find(text, "```([%w_+%-]*)%s*\n?(.-)```", cursor)
+				if not s then
+					table.insert(segments, { kind = "text", content = text:sub(cursor) })
+					break
+				end
+				if s > cursor then
+					table.insert(segments, { kind = "text", content = text:sub(cursor, s - 1) })
+				end
+				table.insert(segments, { kind = "code", lang = (lang ~= "" and lang) or nil, content = code or "" })
+				cursor = e + 1
+			end
+			if #segments == 0 then segments[1] = { kind = "text", content = text } end
+			return segments
 		end
 
-		-- Lightweight markdown to RichText: bold/italic/strike/code.
+		-- Light markdown -> RichText. Handles headers (#/##/###), bullets (- *),
+		-- numbered lists (intact), inline bold/italic/strike/code, quotes (>).
+		-- Inline code spans are extracted first so their contents survive the
+		-- header / bullet / italic passes.
 		local function richText(t)
 			if type(t) ~= "string" then return tostring(t) end
-			-- Escape ampersands & angle brackets first so user text doesn't break RichText
+			local placeholders = {}
+			local function stash(s)
+				table.insert(placeholders, s)
+				return "\0CODE" .. #placeholders .. "\0"
+			end
+			-- Pull inline code FIRST so its content isn't mangled.
+			t = t:gsub("`([^`\n]+)`", function(c) return stash("<font color=\"rgb(255,180,140)\">" .. c .. "</font>") end)
+			-- HTML-escape what's left.
 			t = t:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
-			t = t:gsub("%*%*([^\n%*]+)%*%*", "<b>%1</b>")
-			t = t:gsub("%*([^\n%*]+)%*", "<i>%1</i>")
-			t = t:gsub("~~([^\n~]+)~~", "<s>%1</s>")
-			t = t:gsub("`([^\n`]+)`", "<font color=\"rgb(255,180,140)\">%1</font>")
+			-- Per-line transforms (headers, bullets, quotes).
+			local lines = {}
+			for raw in (t .. "\n"):gmatch("([^\n]*)\n") do
+				local line = raw
+				local h3 = line:match("^###%s+(.+)$")
+				local h2 = not h3 and line:match("^##%s+(.+)$")
+				local h1 = not h3 and not h2 and line:match("^#%s+(.+)$")
+				local bullet = not (h1 or h2 or h3) and line:match("^[%-%*]%s+(.+)$")
+				local quote = not (h1 or h2 or h3 or bullet) and line:match("^&gt;%s+(.+)$")
+				if h1 then
+					line = "<b><font size=\"22\">" .. h1 .. "</font></b>"
+				elseif h2 then
+					line = "<b><font size=\"19\">" .. h2 .. "</font></b>"
+				elseif h3 then
+					line = "<b><font size=\"16\">" .. h3 .. "</font></b>"
+				elseif bullet then
+					line = "  • " .. bullet
+				elseif quote then
+					line = "<i><font color=\"rgb(180,180,200)\">  " .. quote .. "</font></i>"
+				end
+				table.insert(lines, line)
+			end
+			t = table.concat(lines, "\n")
+			-- Inline emphasis (after headers so we don't conflict with bullets).
+			t = t:gsub("%*%*([^%*\n]+)%*%*", "<b>%1</b>")
+			t = t:gsub("__([^_\n]+)__", "<b>%1</b>")
+			t = t:gsub("%*([^%*\n]+)%*", "<i>%1</i>")
+			t = t:gsub("~~([^~\n]+)~~", "<s>%1</s>")
+			-- Restore code spans.
+			t = t:gsub("\0CODE(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
 			return t
 		end
 
-		local function bubbleFor(role)
+		-- ---------- HTTP helpers ----------
+		local function getHttpFn()
+			return (syn and syn.request) or (http and http.request) or http_request or request
+		end
+
+		-- ---------- copying & clipboard ----------
+		local function copyToClipboard(text)
+			local ok = pcall(function()
+				if setclipboard then setclipboard(text) end
+				if toclipboard then toclipboard(text) end
+			end)
+			return ok
+		end
+
+		-- ---------- bubble / code-block builders ----------
+		local function bubbleFor(role, parent)
 			local Bubble = Instance.new("Frame")
 			Bubble.Name = RandomName()
 			Bubble.BorderSizePixel = 0
+			Bubble.Size = UDim2.new(1, 0, 0, 0)
 			Bubble.AutomaticSize = Enum.AutomaticSize.Y
 			Bubble.BackgroundTransparency = 0.15
-
 			if role == "user" then
-				Bubble.AnchorPoint = Vector2.new(1, 0)
-				Bubble.Size = UDim2.new(0, 0, 0, 0)
-				Bubble.AutomaticSize = Enum.AutomaticSize.XY
 				Bubble.BackgroundColor3 = Color3.fromRGB(95, 75, 200)
 			else
-				Bubble.AnchorPoint = Vector2.new(0, 0)
-				Bubble.Size = UDim2.new(0, 0, 0, 0)
-				Bubble.AutomaticSize = Enum.AutomaticSize.XY
 				Bubble.BackgroundColor3 = Color3.fromRGB(38, 34, 52)
 			end
-
-			-- Cap maximum width so long replies wrap nicely.
-			local maxWidth = Instance.new("UISizeConstraint")
-			maxWidth.MaxSize = Vector2.new(Container.AbsoluteSize.X - 100, math.huge)
-			maxWidth.Parent = Bubble
-			-- Re-evaluate on resize so wrapping follows window changes.
-			Container:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-				maxWidth.MaxSize = Vector2.new(math.max(120, Container.AbsoluteSize.X - 100), math.huge)
-			end)
-
-			local c = Instance.new("UICorner")
-			c.CornerRadius = UDim.new(0, 12)
-			c.Parent = Bubble
-
-			local s = Instance.new("UIStroke")
-			s.Color = Color3.fromRGB(255, 255, 255)
-			s.Transparency = 0.88
-			s.Parent = Bubble
-
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = Bubble
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255, 255, 255); s.Transparency = 0.88; s.Parent = Bubble
 			local pad = Instance.new("UIPadding")
-			pad.PaddingTop = UDim.new(0, 8)
-			pad.PaddingBottom = UDim.new(0, 8)
-			pad.PaddingLeft = UDim.new(0, 12)
-			pad.PaddingRight = UDim.new(0, 12)
+			pad.PaddingTop = UDim.new(0, 10); pad.PaddingBottom = UDim.new(0, 10)
+			pad.PaddingLeft = UDim.new(0, 14); pad.PaddingRight = UDim.new(0, 14)
 			pad.Parent = Bubble
-
-			Bubble.Parent = Messages
+			Bubble.Parent = parent
 			return Bubble
 		end
 
-		local function appendMessage(role, text, options)
-			-- Wrap each bubble in an alignment frame so user msgs go right, AI msgs go left.
+		local function bubbleTextLabel(parent, text)
+			local Label = Instance.new("TextLabel")
+			Label.Name = "Text"
+			Label.BackgroundTransparency = 1
+			Label.Size = UDim2.new(1, 0, 0, 0)
+			Label.AutomaticSize = Enum.AutomaticSize.Y
+			Label.RichText = true
+			Label.Text = richText(text)
+			Label.TextColor3 = Color3.fromRGB(245, 245, 250)
+			Label.TextSize = 14
+			Label.Font = Enum.Font.GothamMedium
+			Label.TextXAlignment = Enum.TextXAlignment.Left
+			Label.TextYAlignment = Enum.TextYAlignment.Top
+			Label.TextWrapped = true
+			Label:SetAttribute("LunaNoTranslate", true)
+			Label.Parent = parent
+			return Label
+		end
+
+		-- Renders a fenced ```lua ... ``` block as its own card with copy + execute buttons.
+		local function makeCodeBlock(parent, code, lang)
+			local Block = Instance.new("Frame")
+			Block.Name = RandomName()
+			Block.BackgroundColor3 = Color3.fromRGB(18, 16, 26)
+			Block.BackgroundTransparency = 0
+			Block.BorderSizePixel = 0
+			Block.Size = UDim2.new(1, 0, 0, 0)
+			Block.AutomaticSize = Enum.AutomaticSize.Y
+			Block.Parent = parent
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = Block
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(110, 95, 180); s.Transparency = 0.6; s.Parent = Block
+
+			local TitleBar = Instance.new("Frame")
+			TitleBar.BackgroundTransparency = 1
+			TitleBar.Size = UDim2.new(1, 0, 0, 26)
+			TitleBar.Parent = Block
+
+			local langLabel = Instance.new("TextLabel")
+			langLabel.BackgroundTransparency = 1
+			langLabel.Position = UDim2.new(0, 12, 0, 0)
+			langLabel.Size = UDim2.new(1, -120, 1, 0)
+			langLabel.Text = (lang or "code"):lower()
+			langLabel.Font = Enum.Font.GothamMedium
+			langLabel.TextSize = 12
+			langLabel.TextColor3 = Color3.fromRGB(180, 170, 220)
+			langLabel.TextXAlignment = Enum.TextXAlignment.Left
+			langLabel.TextYAlignment = Enum.TextYAlignment.Center
+			langLabel:SetAttribute("LunaNoTranslate", true)
+			langLabel.Parent = TitleBar
+
+			local function smallBtn(text, xOffset)
+				local b = Instance.new("TextButton")
+				b.AnchorPoint = Vector2.new(1, 0.5)
+				b.Position = UDim2.new(1, xOffset, 0.5, 0)
+				b.Size = UDim2.fromOffset(54, 20)
+				b.BackgroundColor3 = Color3.fromRGB(70, 60, 130)
+				b.BackgroundTransparency = 0.1
+				b.Text = text
+				b.Font = Enum.Font.GothamSemibold
+				b.TextSize = 11
+				b.TextColor3 = Color3.fromRGB(240, 235, 255)
+				b.AutoButtonColor = false
+				b:SetAttribute("LunaNoTranslate", true)
+				b.Parent = TitleBar
+				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 5); bc.Parent = b
+				local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(160, 145, 230); bs.Transparency = 0.5; bs.Parent = b
+				b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0}) end)
+				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.1}) end)
+				return b
+			end
+
+			local copyBtn = smallBtn("Copy", -8)
+			local execBtn = smallBtn("Execute", -68)
+
+			local code_pad = Instance.new("UIPadding")
+			code_pad.PaddingLeft = UDim.new(0, 12)
+			code_pad.PaddingRight = UDim.new(0, 12)
+			code_pad.PaddingBottom = UDim.new(0, 10)
+			code_pad.PaddingTop = UDim.new(0, 30) -- below TitleBar
+			code_pad.Parent = Block
+
+			local codeLabel = Instance.new("TextLabel")
+			codeLabel.BackgroundTransparency = 1
+			codeLabel.Size = UDim2.new(1, 0, 0, 0)
+			codeLabel.AutomaticSize = Enum.AutomaticSize.Y
+			codeLabel.Text = code
+			codeLabel.Font = Enum.Font.Code
+			codeLabel.TextSize = 13
+			codeLabel.TextColor3 = Color3.fromRGB(220, 215, 240)
+			codeLabel.TextXAlignment = Enum.TextXAlignment.Left
+			codeLabel.TextYAlignment = Enum.TextYAlignment.Top
+			codeLabel.TextWrapped = true
+			codeLabel:SetAttribute("LunaNoTranslate", true)
+			codeLabel.Parent = Block
+
+			copyBtn.MouseButton1Click:Connect(function()
+				if copyToClipboard(code) then
+					copyBtn.Text = "Copied!"
+					task.delay(1.2, function() if copyBtn and copyBtn.Parent then copyBtn.Text = "Copy" end end)
+				end
+			end)
+			execBtn.MouseButton1Click:Connect(function()
+				local ok, err = pcall(function()
+					local fn, perr = loadstring(code)
+					if not fn then error(perr or "loadstring failed", 0) end
+					task.spawn(fn)
+				end)
+				if ok then
+					execBtn.Text = "Running"
+					task.delay(1.6, function() if execBtn and execBtn.Parent then execBtn.Text = "Execute" end end)
+				else
+					Luna:Notification({ Title = "Execute failed", Content = tostring(err), Icon = "error", ImageSource = "Material", Duration = 6 })
+				end
+			end)
+			return Block
+		end
+
+		-- ---------- assemble a single chat row ----------
+		-- We build BOTH the row layout (left/right alignment) AND populate the
+		-- bubble with text/code segments. Returns helpers for in-place editing
+		-- (used by the streaming "thinking" indicator).
+		local function appendMessage(role, text)
 			local Row = Instance.new("Frame")
 			Row.Name = RandomName()
 			Row.BackgroundTransparency = 1
@@ -7179,50 +7524,267 @@ function Window:CreateTab(TabSettings)
 			Row.LayoutOrder = #Messages:GetChildren()
 			Row.Parent = Messages
 
-			local Bubble = bubbleFor(role)
-			Bubble.Parent = Row
-			Bubble.Position = UDim2.new(role == "user" and 1 or 0, 0, 0, 0)
+			-- Per-row layout. UIListLayout keeps the bubble + meta-row stacked.
+			local rowList = Instance.new("UIListLayout")
+			rowList.SortOrder = Enum.SortOrder.LayoutOrder
+			rowList.Padding = UDim.new(0, 4)
+			rowList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
+			rowList.Parent = Row
 
-			local Label = Instance.new("TextLabel")
-			Label.Name = "Text"
-			Label.BackgroundTransparency = 1
-			Label.Size = UDim2.new(0, 0, 0, 0)
-			Label.AutomaticSize = Enum.AutomaticSize.XY
-			Label.RichText = true
-			Label.Text = richText(text)
-			Label.TextColor3 = Color3.fromRGB(245, 245, 250)
-			Label.TextSize = 14
-			Label.Font = Enum.Font.GothamMedium
-			Label.TextXAlignment = Enum.TextXAlignment.Left
-			Label.TextYAlignment = Enum.TextYAlignment.Top
-			Label.TextWrapped = true
-			Label.Parent = Bubble
+			-- Width-limited holder so user / AI bubbles get a hard maximum that
+			-- TextWrapped can use. UISizeConstraint MaxSize.X = ~75% of container.
+			local Holder = Instance.new("Frame")
+			Holder.Name = "Holder"
+			Holder.BackgroundTransparency = 1
+			Holder.BorderSizePixel = 0
+			Holder.Size = UDim2.new(0, 0, 0, 0)
+			Holder.AutomaticSize = Enum.AutomaticSize.XY
+			Holder.LayoutOrder = 1
+			Holder.Parent = Row
 
-			-- Fade-in
+			local function refreshMax()
+				local maxX = math.max(160, math.floor(Messages.AbsoluteSize.X * 0.85) - 12)
+				Holder:FindFirstChildOfClass("UISizeConstraint").MaxSize = Vector2.new(maxX, math.huge)
+			end
+			local sc = Instance.new("UISizeConstraint")
+			sc.MaxSize = Vector2.new(360, math.huge)
+			sc.Parent = Holder
+			task.defer(refreshMax)
+			Messages:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshMax)
+
+			-- Inner list so the bubble + any code blocks stack vertically inside Holder.
+			local innerList = Instance.new("UIListLayout")
+			innerList.SortOrder = Enum.SortOrder.LayoutOrder
+			innerList.Padding = UDim.new(0, 6)
+			innerList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
+			innerList.Parent = Holder
+
+			-- Main bubble holds the prose. Code blocks render OUTSIDE the bubble
+			-- below it (full Holder width) so monospaced text never wraps weird.
+			local Bubble = bubbleFor(role, Holder)
+
+			local Label = bubbleTextLabel(Bubble, "")
+
+			-- Tiny meta row with Copy button (AI bubbles only - copying our own
+			-- messages back to ourselves is silly).
+			local metaRow
+			if role == "assistant" then
+				metaRow = Instance.new("Frame")
+				metaRow.BackgroundTransparency = 1
+				metaRow.Size = UDim2.new(0, 60, 0, 16)
+				metaRow.LayoutOrder = 999
+				metaRow.Parent = Holder
+
+				local cpy = Instance.new("TextButton")
+				cpy.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
+				cpy.BackgroundTransparency = 0.25
+				cpy.Size = UDim2.new(1, 0, 1, 0)
+				cpy.Text = "Copy"
+				cpy.Font = Enum.Font.GothamMedium
+				cpy.TextSize = 11
+				cpy.TextColor3 = Color3.fromRGB(220, 215, 240)
+				cpy.AutoButtonColor = false
+				cpy:SetAttribute("LunaNoTranslate", true)
+				cpy.Parent = metaRow
+				local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 5); cc.Parent = cpy
+				cpy.MouseEnter:Connect(function() tween(cpy, {BackgroundTransparency = 0.05}) end)
+				cpy.MouseLeave:Connect(function() tween(cpy, {BackgroundTransparency = 0.25}) end)
+				cpy.MouseButton1Click:Connect(function()
+					-- Copy the raw, unrendered text so it pastes nicely elsewhere.
+					if copyToClipboard(Label:GetAttribute("LunaRawText") or text or "") then
+						cpy.Text = "Copied!"
+						task.delay(1.2, function() if cpy and cpy.Parent then cpy.Text = "Copy" end end)
+					end
+				end)
+			end
+
+			-- Replace the bubble + code blocks with the given raw text. Used both
+			-- by streaming (think bubble update) and the initial draw.
+			local function setContent(raw)
+				Label:SetAttribute("LunaRawText", raw)
+				-- Tear down any prior code blocks (keep Bubble + metaRow).
+				for _, child in ipairs(Holder:GetChildren()) do
+					if child:IsA("Frame") and child ~= Bubble and child ~= metaRow then
+						child:Destroy()
+					end
+				end
+				local segments = splitCodeBlocks(raw)
+				-- Text segments are merged into the bubble; code segments become cards.
+				local proseChunks = {}
+				local order = 2
+				for _, seg in ipairs(segments) do
+					if seg.kind == "text" then
+						table.insert(proseChunks, seg.content)
+					else
+						-- Flush any accumulated prose first so order is correct.
+						Label.Text = richText(table.concat(proseChunks, ""))
+						proseChunks = {}
+						local codeBlock = makeCodeBlock(Holder, seg.content, seg.lang)
+						codeBlock.LayoutOrder = order
+						order = order + 1
+						-- Add a fresh empty bubble for any text AFTER this code block.
+						local follow = bubbleFor(role, Holder)
+						follow.LayoutOrder = order
+						order = order + 1
+						local newLabel = bubbleTextLabel(follow, "")
+						Label = newLabel
+					end
+				end
+				if #proseChunks > 0 then
+					Label.Text = richText(table.concat(proseChunks, ""))
+				end
+				-- Hide empty trailing bubbles (happens when the message ENDS with a code block).
+				if Label.Text == "" then
+					Label.Parent.Visible = false
+				end
+				-- Auto-scroll to the latest message.
+				task.defer(function()
+					task.wait()
+					Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+				end)
+			end
+
+			setContent(text or "")
+
+			-- Soft fade-in.
 			Bubble.BackgroundTransparency = 1
 			Label.TextTransparency = 1
 			TweenService:Create(Bubble, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
 			TweenService:Create(Label, TweenInfo.new(0.25), {TextTransparency = 0}):Play()
 
-			task.defer(function()
-				task.wait()
-				Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+			return Row, Bubble, Label, setContent
+		end
+
+		-- ---------- script request flow ----------
+		-- Adds a "Send request to developers" card below the AI's bubble. Pressing
+		-- it fires the webhook with userinfo + a short description; the card then
+		-- collapses into a small confirmation pill.
+		local function addScriptRequestCard(holder, description)
+			local Card = Instance.new("Frame")
+			Card.Name = RandomName()
+			Card.BackgroundColor3 = Color3.fromRGB(30, 90, 50)
+			Card.BackgroundTransparency = 0.1
+			Card.Size = UDim2.new(1, 0, 0, 64)
+			Card.LayoutOrder = 998
+			Card.Parent = holder
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = Card
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 220, 150); s.Transparency = 0.5; s.Parent = Card
+
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 14, 0, 6)
+			title.Size = UDim2.new(1, -28, 0, 18)
+			title.Text = "Send script request to developers?"
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 13
+			title.TextColor3 = Color3.fromRGB(245, 250, 240)
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title:SetAttribute("LunaNoTranslate", true)
+			title.Parent = Card
+
+			local desc = Instance.new("TextLabel")
+			desc.BackgroundTransparency = 1
+			desc.Position = UDim2.new(0, 14, 0, 24)
+			desc.Size = UDim2.new(1, -110, 0, 18)
+			desc.Text = description
+			desc.Font = Enum.Font.GothamMedium
+			desc.TextSize = 12
+			desc.TextColor3 = Color3.fromRGB(220, 235, 220)
+			desc.TextXAlignment = Enum.TextXAlignment.Left
+			desc.TextWrapped = true
+			desc:SetAttribute("LunaNoTranslate", true)
+			desc.Parent = Card
+
+			local sendBtn = Instance.new("TextButton")
+			sendBtn.AnchorPoint = Vector2.new(1, 0.5)
+			sendBtn.Position = UDim2.new(1, -8, 0.5, 0)
+			sendBtn.Size = UDim2.fromOffset(86, 30)
+			sendBtn.BackgroundColor3 = Color3.fromRGB(60, 170, 90)
+			sendBtn.BackgroundTransparency = 0.1
+			sendBtn.Text = "Send"
+			sendBtn.Font = Enum.Font.GothamBold
+			sendBtn.TextSize = 13
+			sendBtn.TextColor3 = Color3.fromRGB(245, 255, 240)
+			sendBtn.AutoButtonColor = false
+			sendBtn:SetAttribute("LunaNoTranslate", true)
+			sendBtn.Parent = Card
+			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = sendBtn
+
+			sendBtn.MouseButton1Click:Connect(function()
+				if not opts.Webhook or opts.Webhook == "" then
+					Luna:Notification({ Title = "No webhook", Content = "Host script didn't configure AiSettings.Webhook.", Icon = "warning", ImageSource = "Material", Duration = 5 })
+					return
+				end
+				sendBtn.Text = "Sending..."
+				sendBtn.AutoButtonColor = false
+				task.spawn(function()
+					local user = Players.LocalPlayer
+					local gameName = "Unknown"
+					pcall(function()
+						local info = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
+						if info and info.Name then gameName = info.Name end
+					end)
+					local payload = HttpService:JSONEncode({
+						username = "Solara Hub AI",
+						embeds = { {
+							title = "Script Request",
+							description = description,
+							color = 6906105,
+							fields = {
+								{ name = "User",  value = string.format("%s (@%s, id=%d)", user.DisplayName, user.Name, user.UserId), inline = true },
+								{ name = "Game",  value = string.format("%s (placeId=%d)", gameName, game.PlaceId), inline = true },
+								{ name = "Time",  value = os.date("!%Y-%m-%d %H:%M:%S UTC"), inline = false },
+							},
+						} },
+					})
+					local fn = getHttpFn()
+					local ok = false
+					if fn then
+						local res
+						ok, res = pcall(fn, { Url = opts.Webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = payload })
+						if ok and res and type(res) == "table" and res.StatusCode and res.StatusCode >= 400 then ok = false end
+					end
+					if ok then
+						sendBtn.Text = "Sent ✓"
+						sendBtn.BackgroundColor3 = Color3.fromRGB(45, 130, 70)
+						Luna:Notification({ Title = "Request sent", Content = "Devs will see your request soon.", Icon = "check_circle", ImageSource = "Material", Duration = 4 })
+					else
+						sendBtn.Text = "Failed"
+						sendBtn.BackgroundColor3 = Color3.fromRGB(140, 60, 60)
+						Luna:Notification({ Title = "Send failed", Content = "Webhook didn't accept the request.", Icon = "error", ImageSource = "Material", Duration = 5 })
+					end
+				end)
 			end)
-
-			return Row, Bubble, Label
 		end
 
-		-- Determines which HTTP function is available in this executor.
-		local function getHttpFn()
-			return (syn and syn.request) or (http and http.request) or http_request or request
+		-- Strips the [[SCRIPT_REQUEST: ...]] marker (case-insensitive) and returns
+		-- (cleaned_text, description_or_nil). The marker survives across newlines.
+		local function extractScriptRequest(text)
+			local desc = text:match("%[%[SCRIPT_REQUEST:%s*(.-)%]%]")
+			if not desc then desc = text:match("%[%[script_request:%s*(.-)%]%]") end
+			if not desc then return text, nil end
+			local cleaned = text:gsub("%[%[SCRIPT_REQUEST:.-%]%]", ""):gsub("%[%[script_request:.-%]%]", "")
+			cleaned = (cleaned:gsub("%s+$", ""))
+			return cleaned, desc:gsub("^%s+", ""):gsub("%s+$", "")
 		end
 
+		-- ---------- main API ----------
 		local AiTab = { Messages = Messages, Conversation = conversation }
 		local isGenerating = false
 
 		local function setSendEnabled(enabled)
 			SendButton.AutoButtonColor = enabled
 			SendButton.BackgroundColor3 = enabled and Color3.fromRGB(110, 90, 220) or Color3.fromRGB(60, 55, 80)
+		end
+
+		local function saveChat()
+			if not opts.AutoSave or not writefile then return end
+			pcall(function()
+				writefile(opts.SaveFile, HttpService:JSONEncode({
+					system = conversation[1] and conversation[1].content or "",
+					conv   = conversation,
+				}))
+			end)
 		end
 
 		function AiTab:Send(prompt)
@@ -7235,8 +7797,7 @@ function Window:CreateTab(TabSettings)
 			appendMessage("user", prompt)
 
 			-- Thinking bubble with an animated ellipsis until the response arrives.
-			local _, thinkBubble, thinkLabel = appendMessage("assistant", "Thinking")
-			local thinkStart = tick()
+			local _, thinkBubble, thinkLabel, thinkSet = appendMessage("assistant", "Thinking")
 			task.spawn(function()
 				local dots = 0
 				while isGenerating and thinkBubble.Parent do
@@ -7247,7 +7808,7 @@ function Window:CreateTab(TabSettings)
 			end)
 
 			task.spawn(function()
-				local payload = HttpService:JSONEncode({ messages = conversation })
+				local payload = HttpService:JSONEncode({ messages = conversation, model = opts.Model })
 				local fn = getHttpFn()
 				local replyText
 
@@ -7274,12 +7835,22 @@ function Window:CreateTab(TabSettings)
 				setSendEnabled(true)
 
 				table.insert(conversation, { role = "assistant", content = replyText })
+				saveChat()
 
-				-- Replace the thinking bubble's text with the actual reply (smoothly).
-				if thinkLabel and thinkLabel.Parent then
-					thinkLabel.Text = richText(replyText)
+				-- Pull out the [[SCRIPT_REQUEST: ...]] marker if present.
+				local visibleText, reqDescription = extractScriptRequest(replyText)
+
+				-- Replace the thinking bubble with the actual reply (with markdown / code blocks).
+				if thinkSet and thinkLabel and thinkLabel.Parent then
+					thinkSet(visibleText)
 				else
-					appendMessage("assistant", replyText)
+					appendMessage("assistant", visibleText)
+				end
+
+				if reqDescription then
+					-- The Holder for the assistant bubble is the parent of thinkBubble.
+					local holder = thinkBubble and thinkBubble.Parent
+					if holder then addScriptRequestCard(holder, reqDescription) end
 				end
 
 				task.defer(function()
@@ -7294,10 +7865,37 @@ function Window:CreateTab(TabSettings)
 				if child:IsA("Frame") then child:Destroy() end
 			end
 			conversation = {}
-			if opts.SystemPrompt and opts.SystemPrompt ~= "" then
-				table.insert(conversation, { role = "system", content = opts.SystemPrompt })
+			table.insert(conversation, { role = "system", content = buildSystemPrompt() })
+			AiTab.Conversation = conversation
+			saveChat()
+		end
+
+		function AiTab:Save()
+			saveChat()
+			Luna:Notification({ Title = "Chat saved", Content = opts.SaveFile, Icon = "check_circle", ImageSource = "Material", Duration = 3 })
+		end
+
+		function AiTab:Load()
+			if not isfile or not readfile then return end
+			if not isfile(opts.SaveFile) then
+				Luna:Notification({ Title = "No saved chat", Content = "Nothing to load yet.", Icon = "info", ImageSource = "Material", Duration = 3 })
+				return
+			end
+			local ok, data = pcall(function() return HttpService:JSONDecode(readfile(opts.SaveFile)) end)
+			if not ok or not data or not data.conv then
+				Luna:Notification({ Title = "Load failed", Content = "Could not read saved chat.", Icon = "error", ImageSource = "Material", Duration = 4 })
+				return
+			end
+			AiTab:Clear()
+			conversation = {}
+			for _, m in ipairs(data.conv) do
+				table.insert(conversation, m)
+				if m.role == "user" or m.role == "assistant" then
+					appendMessage(m.role, m.content)
+				end
 			end
 			AiTab.Conversation = conversation
+			Luna:Notification({ Title = "Chat loaded", Content = "Restored " .. (#conversation - 1) .. " messages.", Icon = "check_circle", ImageSource = "Material", Duration = 3 })
 		end
 
 		InputBox.FocusLost:Connect(function(enterPressed)
@@ -7312,18 +7910,17 @@ function Window:CreateTab(TabSettings)
 			InputBox.Text = ""
 			AiTab:Send(t)
 		end)
+		SaveBtn.MouseButton1Click:Connect(function() AiTab:Save() end)
+		LoadBtn.MouseButton1Click:Connect(function() AiTab:Load() end)
+		ClearBtn.MouseButton1Click:Connect(function() AiTab:Clear() end)
 
 		-- Subtle hover for the send button
-		SendButton.MouseEnter:Connect(function()
-			tween(SendButton, {BackgroundTransparency = -0.05})
-		end)
-		SendButton.MouseLeave:Connect(function()
-			tween(SendButton, {BackgroundTransparency = 0.05})
-		end)
+		SendButton.MouseEnter:Connect(function() tween(SendButton, {BackgroundTransparency = -0.05}) end)
+		SendButton.MouseLeave:Connect(function() tween(SendButton, {BackgroundTransparency = 0.05}) end)
 
 		-- Friendly opening line so the tab doesn't feel empty.
 		task.defer(function()
-			appendMessage("assistant", "Hi! Ask me anything. I run on Pollinations.AI - free, no API key.")
+			appendMessage("assistant", "Hey! I'm **Solara AI**. Ask me anything about scripts, Solara Hub features, or just chat. I can output **fenced code blocks** with a *Copy* / *Execute* button.")
 		end)
 
 		Window._AiTab = AiTab
@@ -8084,7 +8681,20 @@ function Window:CreateTab(TabSettings)
 			mainScale.Scale = 1
 			mainScale.Parent = Main
 		end
+		-- ShadowHolder is a sibling of Main (not a descendant), so it doesn't
+		-- inherit Main's UIScale. Mirror it manually so the drop-shadow grows
+		-- and shrinks together with the window when the user zooms.
+		local shadowScale
+		if Main.Parent and Main.Parent:FindFirstChild("ShadowHolder") then
+			shadowScale = Main.Parent.ShadowHolder:FindFirstChildOfClass("UIScale")
+			if not shadowScale then
+				shadowScale = Instance.new("UIScale")
+				shadowScale.Scale = mainScale.Scale
+				shadowScale.Parent = Main.Parent.ShadowHolder
+			end
+		end
 		Window._UIScale = mainScale
+		Window._ShadowScale = shadowScale
 		Window._ZoomEnabled = WindowSettings.ZoomEnabled ~= false
 		Window._ZoomMin = 0.6
 		Window._ZoomMax = 1.6
@@ -8092,7 +8702,11 @@ function Window:CreateTab(TabSettings)
 
 		Window.SetZoom = function(scale)
 			scale = math.clamp(tonumber(scale) or 1, Window._ZoomMin, Window._ZoomMax)
-			TweenService:Create(mainScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = scale}):Play()
+			local info = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(mainScale, info, {Scale = scale}):Play()
+			if shadowScale then
+				TweenService:Create(shadowScale, info, {Scale = scale}):Play()
+			end
 		end
 		Window.SetZoomEnabled = function(enabled)
 			Window._ZoomEnabled = enabled and true or false
@@ -8138,6 +8752,64 @@ function Window:CreateTab(TabSettings)
 			-- the AI tab at the end of the nav list instead of the very top.
 			pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
 		end)
+	end
+
+	-- ============================================================
+	-- Theme API (recolour the whole UI from the host script)
+	-- ============================================================
+	-- We expose a couple of small helpers that re-skin the UI at runtime. They
+	-- walk LunaUI once per call and only touch strokes / specific frames, so
+	-- they're cheap enough to wire to a colour-picker callback.
+	do
+		Window._Theme = {
+			Accent = Color3.fromRGB(120, 100, 220),
+			Background = nil, -- nil = keep the original frame colour
+		}
+
+		-- Returns true if a UIStroke / Frame is part of the "chrome" we want to
+		-- recolour. We deliberately skip the AI chat code-blocks, the search
+		-- modal accent (it has its own picker) and anything explicitly opted out
+		-- via the LunaNoTheme attribute.
+		local function shouldRecolour(obj)
+			local cur = obj
+			while cur and cur ~= game do
+				if cur:GetAttribute("LunaNoTheme") then return false end
+				cur = cur.Parent
+			end
+			return true
+		end
+
+		Window.SetThemeAccent = function(color)
+			if typeof(color) ~= "Color3" then return end
+			Window._Theme.Accent = color
+			task.spawn(function()
+				for _, d in ipairs(LunaUI:GetDescendants()) do
+					if d:IsA("UIStroke") and shouldRecolour(d) then
+						-- Only push the accent to strokes whose alpha is "lit"
+						-- enough to matter, so we don't recolour borderline-
+						-- invisible decorative strokes into eyesores.
+						if d.Transparency < 0.9 then
+							d.Color = color
+						end
+					end
+				end
+			end)
+		end
+
+		Window.SetThemeBackground = function(color)
+			if typeof(color) ~= "Color3" then return end
+			Window._Theme.Background = color
+			-- Apply to the few "big" backgrounds users would expect to recolour.
+			pcall(function() Main.BackgroundColor3 = color end)
+			pcall(function() Elements.Parent.BackgroundColor3 = color end)
+			pcall(function() Navigation.BackgroundColor3 = color end)
+		end
+
+		Window.GetTheme = function() return Window._Theme end
+
+		Window.ResetTheme = function()
+			Window.SetThemeAccent(Color3.fromRGB(120, 100, 220))
+		end
 	end
 
 	return Window
