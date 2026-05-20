@@ -1744,6 +1744,163 @@ local function RegisterElement(window, frame, displayName, elementType, tabName)
     end
 end
 
+-- ============================================================
+-- Translator (whole-UI translation)
+-- ============================================================
+-- Uses Google Translate's free unofficial endpoint via game:HttpGet (or the
+-- executor's request() if available). We snapshot every text element's
+-- original English content into an attribute on first translation, then
+-- replace it with the localised version. Switching back to "en" restores
+-- the originals from the cached attribute.
+local LunaTranslator = {
+    Target = "en",
+    Cache = {},      -- [targetCode][originalText] = translated
+    External = nil,  -- optional user-supplied translator fn(text, target) -> string
+    Watching = false,
+}
+
+-- Returns true if `obj` exposes a text property we should translate. Excludes
+-- TextBoxes (typing fields) so the user's input isn't replaced mid-keystroke,
+-- and any descendant explicitly marked LunaNoTranslate (e.g. AI chat bubbles).
+local function _isTranslatableText(obj)
+    if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+        -- Walk parents looking for the opt-out flag so a single attribute on
+        -- a container excludes the whole subtree.
+        local cur = obj
+        while cur and cur ~= game do
+            if cur:GetAttribute("LunaNoTranslate") then return false end
+            cur = cur.Parent
+        end
+        return true
+    end
+    return false
+end
+
+-- Should we skip translating a specific value? Numbers, single chars, URLs,
+-- whitespace and asset IDs are pointless to send through the API.
+local function _shouldTranslateValue(text)
+    if type(text) ~= "string" then return false end
+    local trimmed = text:gsub("%s+", "")
+    if #trimmed < 2 then return false end
+    if tonumber(trimmed) then return false end
+    if trimmed:match("^rbxassetid://") then return false end
+    if trimmed:match("^https?://") then return false end
+    if trimmed:match("^%a+://") then return false end
+    return true
+end
+
+local _LunaHttpRequest = (syn and syn.request) or (http and http.request) or http_request or request
+
+-- Synchronous translation through Google Translate. Cached per-target.
+local function _googleTranslate(text, target)
+    if target == "en" then return text end
+    if not _shouldTranslateValue(text) then return text end
+    LunaTranslator.Cache[target] = LunaTranslator.Cache[target] or {}
+    local cached = LunaTranslator.Cache[target][text]
+    if cached then return cached end
+
+    local url = string.format(
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=%s&dt=t&q=%s",
+        target, HttpService:UrlEncode(text)
+    )
+
+    local body
+    if _LunaHttpRequest then
+        local ok, res = pcall(function()
+            return _LunaHttpRequest({ Url = url, Method = "GET" })
+        end)
+        if ok and res and (res.StatusCode == 200 or res.Success) then
+            body = res.Body
+        end
+    end
+    if not body then
+        local ok, res = pcall(function() return game:HttpGet(url, true) end)
+        if ok then body = res end
+    end
+    if not body then return text end
+
+    local okDec, decoded = pcall(function() return HttpService:JSONDecode(body) end)
+    if not okDec or type(decoded) ~= "table" or type(decoded[1]) ~= "table" then return text end
+
+    local parts = {}
+    for _, chunk in ipairs(decoded[1]) do
+        if type(chunk) == "table" and type(chunk[1]) == "string" then
+            table.insert(parts, chunk[1])
+        end
+    end
+    local result = table.concat(parts)
+    if result == "" then return text end
+    LunaTranslator.Cache[target][text] = result
+    return result
+end
+
+-- Public translate. Uses External fn if set (lets the host script pick a
+-- different provider) and falls back to Google Translate.
+local function LunaTranslate(text, target)
+    target = target or LunaTranslator.Target or "en"
+    if target == "en" then return text end
+    if LunaTranslator.External then
+        local ok, result = pcall(LunaTranslator.External, text, target)
+        if ok and type(result) == "string" and result ~= "" then return result end
+    end
+    return _googleTranslate(text, target)
+end
+
+-- Translate a single GUI text instance in place. Stores the original in an
+-- attribute so we can restore it without re-querying.
+local function _translateOne(obj, target)
+    if not _isTranslatableText(obj) then return end
+    local orig = obj:GetAttribute("LunaOriginalText")
+    if orig == nil then
+        orig = obj.Text
+        if not _shouldTranslateValue(orig) then return end
+        obj:SetAttribute("LunaOriginalText", orig)
+    end
+    if target == "en" then
+        if obj.Text ~= orig then obj.Text = orig end
+        return
+    end
+    local translated = LunaTranslate(orig, target)
+    if translated and obj.Text ~= translated then
+        obj.Text = translated
+    end
+end
+
+-- Walks a root Instance and translates every descendant text element.
+-- Async: yields between batches so we don't stall the game thread on the
+-- HTTP round-trips.
+local function _translateTree(root, target)
+    if not root then return end
+    local queue = {}
+    for _, descendant in ipairs(root:GetDescendants()) do
+        if _isTranslatableText(descendant) then
+            table.insert(queue, descendant)
+        end
+    end
+    task.spawn(function()
+        for i, obj in ipairs(queue) do
+            if obj and obj.Parent then
+                _translateOne(obj, target)
+            end
+            if i % 6 == 0 then task.wait() end
+        end
+    end)
+end
+
+-- Catch newly added UI elements so they get translated too. Connected once
+-- the first time SetLanguage activates a non-English target.
+local function _watchNewText(rootGui)
+    if LunaTranslator.Watching then return end
+    LunaTranslator.Watching = true
+    rootGui.DescendantAdded:Connect(function(obj)
+        if LunaTranslator.Target == "en" then return end
+        if not _isTranslatableText(obj) then return end
+        task.defer(function()
+            if obj and obj.Parent then _translateOne(obj, LunaTranslator.Target) end
+        end)
+    end)
+end
+
 local function RemoveTable(tablre, value)
     for i = #tablre, 1, -1 do
         if tostring(tablre[i]) == tostring(value) then
@@ -2227,6 +2384,15 @@ function Luna:CreateWindow(WindowSettings)
 		-- New: optional resize handle in the bottom-right (PC only). Forced
 		-- off on mobile because the existing fullscreen layout already fits.
 		Resizable = true,
+
+		-- New: if true, an AI Chat tab is auto-added (uses pollinations.ai - no
+		-- API key required). Set false to skip; the host can still create it
+		-- manually with Window:CreateAiTab().
+		AiTab = false,
+
+		-- New: enables Ctrl + / Ctrl - in-window zoom. Disable if the host
+		-- already remaps those shortcuts.
+		ZoomEnabled = true,
 	}, WindowSettings or {})
 
 	WindowSettings.ConfigSettings = Kwargify({
@@ -2658,62 +2824,151 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		-- Stolen From Sirius Stuff ends here
 
-		-- Adds a dashboard card by cloning the Discord card so it inherits the same
-		-- gradient/stroke styling. Returns the cloned frame for further customization.
+		-- Holder for our extra dashboard cards. We parent it to HomeTabPage itself
+		-- (which already arranges its children vertically: icon, player, detailsholder,
+		-- ...) so our cards appear BELOW the original Discord/Server/Friends/Client
+		-- dashboard without touching them. High LayoutOrder pushes us to the end.
+		local ExtraCards
+		local function ensureExtraCards()
+			if ExtraCards and ExtraCards.Parent then return ExtraCards end
+			ExtraCards = Instance.new("Frame")
+			ExtraCards.Name = RandomName()
+			ExtraCards.BackgroundTransparency = 1
+			ExtraCards.BorderSizePixel = 0
+			ExtraCards.Size = UDim2.new(1, 0, 0, 0)
+			ExtraCards.AutomaticSize = Enum.AutomaticSize.Y
+			ExtraCards.LayoutOrder = 1000000
+			ExtraCards.Parent = HomeTabPage
+
+			-- UIGridLayout lets us put 2 cards per row, wrapping cleanly.
+			local grid = Instance.new("UIGridLayout")
+			grid.SortOrder = Enum.SortOrder.LayoutOrder
+			grid.CellPadding = UDim2.fromOffset(10, 10)
+			grid.CellSize = UDim2.new(0.5, -10, 0, 76)
+			grid.FillDirectionMaxCells = 2
+			grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			grid.StartCorner = Enum.StartCorner.TopLeft
+			grid.Parent = ExtraCards
+
+			local padding = Instance.new("UIPadding")
+			padding.PaddingTop = UDim.new(0, 12)
+			padding.PaddingLeft = UDim.new(0, 6)
+			padding.PaddingRight = UDim.new(0, 6)
+			padding.Parent = ExtraCards
+
+			return ExtraCards
+		end
+
+		-- Adds a self-contained styled card below the original dashboard cards.
+		-- We intentionally do NOT touch the existing Discord/Server/Client/Friends
+		-- cards so the home tab keeps its original behaviour.
 		function HomeTab:CreateButton(opts)
 			opts = Kwargify({
 				Name = "Button",
 				Description = "",
+				Icon = nil,
+				ImageSource = "Material",
+				Color = Color3.fromRGB(70, 60, 160),
+				Color2 = Color3.fromRGB(40, 30, 100),
 				Callback = function() end,
 			}, opts or {})
 
-			local dashboard = HomeTabPage.detailsholder.dashboard
-			local template = dashboard:FindFirstChild("Discord")
-			if not template then return nil end
+			local holder = ensureExtraCards()
 
-			local card = template:Clone()
+			local card = Instance.new("Frame")
 			card.Name = RandomName()
-			card.LayoutOrder = (template.LayoutOrder or 0) + 1 + (#dashboard:GetChildren())
-			card.Parent = dashboard
+			card.BackgroundColor3 = opts.Color
+			card.BackgroundTransparency = 0
+			card.BorderSizePixel = 0
+			card.Size = UDim2.new(0.5, -8, 0, 76)
+			card.Parent = holder
 
-			-- Try to update title + description regardless of their exact child names.
-			-- The Discord card visually shows two text labels: title (top) and description.
-			local labels = {}
-			for _, descendant in ipairs(card:GetDescendants()) do
-				if descendant:IsA("TextLabel") then
-					table.insert(labels, descendant)
-				end
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 10)
+			corner.Parent = card
+
+			-- Gradient gives the Discord-card vibrant look without relying on the
+			-- original asset's internal structure.
+			local gradient = Instance.new("UIGradient")
+			gradient.Rotation = 135
+			gradient.Color = ColorSequence.new(opts.Color, opts.Color2)
+			gradient.Parent = card
+
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = Color3.fromRGB(255, 255, 255)
+			stroke.Transparency = 0.85
+			stroke.Parent = card
+
+			-- Icon (optional)
+			local iconLabel
+			if opts.Icon then
+				iconLabel = Instance.new("ImageLabel")
+				iconLabel.Name = "Icon"
+				iconLabel.AnchorPoint = Vector2.new(0, 0.5)
+				iconLabel.Position = UDim2.new(0, 14, 0.5, 0)
+				iconLabel.Size = UDim2.fromOffset(28, 28)
+				iconLabel.BackgroundTransparency = 1
+				iconLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
+				iconLabel.ImageTransparency = 0.05
+				iconLabel.Parent = card
+				ApplyIcon(iconLabel, GetIcon(opts.Icon, opts.ImageSource))
 			end
-			table.sort(labels, function(a, b)
-				return (a.TextSize or 0) > (b.TextSize or 0)
+
+			local titleOffset = iconLabel and 52 or 16
+
+			local title = Instance.new("TextLabel")
+			title.Name = "Title"
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, titleOffset, 0, 12)
+			title.Size = UDim2.new(1, -titleOffset - 12, 0, 22)
+			title.Text = tostring(opts.Name)
+			title.TextColor3 = Color3.fromRGB(255, 255, 255)
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 18
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.Parent = card
+
+			local subtitle = Instance.new("TextLabel")
+			subtitle.Name = "Subtitle"
+			subtitle.BackgroundTransparency = 1
+			subtitle.Position = UDim2.new(0, titleOffset, 0, 36)
+			subtitle.Size = UDim2.new(1, -titleOffset - 12, 0, 28)
+			subtitle.Text = tostring(opts.Description)
+			subtitle.TextColor3 = Color3.fromRGB(230, 230, 240)
+			subtitle.TextTransparency = 0.15
+			subtitle.Font = Enum.Font.Gotham
+			subtitle.TextSize = 13
+			subtitle.TextXAlignment = Enum.TextXAlignment.Left
+			subtitle.TextYAlignment = Enum.TextYAlignment.Top
+			subtitle.TextWrapped = true
+			subtitle.Parent = card
+
+			local interact = Instance.new("TextButton")
+			interact.Name = "Interact"
+			interact.AutoButtonColor = false
+			interact.BackgroundTransparency = 1
+			interact.Size = UDim2.fromScale(1, 1)
+			interact.Text = ""
+			interact.Parent = card
+
+			interact.MouseEnter:Connect(function()
+				tween(stroke, {Transparency = 0.4})
+				tween(card, {BackgroundTransparency = 0.05})
 			end)
-			if labels[1] then labels[1].Text = tostring(opts.Name) end
-			if labels[2] then labels[2].Text = tostring(opts.Description) end
-
-			-- Rewire interact: clear inherited Discord click + bind ours.
-			local interact = card:FindFirstChild("Interact")
-			if interact then
-				pcall(function()
-					-- Clone-disconnect trick: re-clone the interact so prior connections are gone.
-					local fresh = interact:Clone()
-					fresh.Parent = card
-					interact:Destroy()
-					interact = fresh
-					interact.Name = "Interact"
-				end)
-				if interact:IsA("GuiButton") then
-					interact.MouseButton1Click:Connect(function()
-						local ok, err = pcall(opts.Callback)
-						if not ok then
-							Luna:Notification({
-								Title = "Callback Error",
-								Content = "Luna Interface Suite | " .. tostring(opts.Name) .. " | " .. tostring(err),
-								Icon = "error",
-							})
-						end
-					end)
+			interact.MouseLeave:Connect(function()
+				tween(stroke, {Transparency = 0.85})
+				tween(card, {BackgroundTransparency = 0})
+			end)
+			interact.MouseButton1Click:Connect(function()
+				local ok, err = pcall(opts.Callback)
+				if not ok then
+					Luna:Notification({
+						Title = "Callback Error",
+						Content = "Luna Interface Suite | " .. tostring(opts.Name) .. " | " .. tostring(err),
+						Icon = "error",
+					})
 				end
-			end
+			end)
 
 			return card
 		end
@@ -6726,6 +6981,355 @@ function Window:CreateTab(TabSettings)
 		return Tab
 	end
 
+	-- ============================================================
+	-- AI Chat tab (powered by pollinations.ai, no API key required)
+	-- ============================================================
+	-- Creates a new tab with a chat UI: a scrollable message history, an input
+	-- bar, and an animated "thinking..." indicator while the request is in
+	-- flight. Returns a table with helper methods (:Send, :Clear, etc).
+	function Window:CreateAiTab(opts)
+		opts = Kwargify({
+			Name = "AI Chat",
+			Icon = "smart_toy",
+			ImageSource = "Material",
+			SystemPrompt = "You are a helpful AI assistant inside a Roblox script. Be concise but friendly. You can format text with **bold**, *italics*, `code`, and ~~strikethrough~~.",
+			Model = "openai",
+			ShowTitle = true,
+			Endpoint = "https://text.pollinations.ai/openai",
+		}, opts or {})
+
+		local hostTab = self:CreateTab({
+			Name = opts.Name,
+			Icon = opts.Icon,
+			ImageSource = opts.ImageSource,
+			ShowTitle = opts.ShowTitle,
+		})
+
+		local Page = hostTab.Page
+
+		-- The chat fills the whole page; remove the standard UIListLayout for this
+		-- tab so absolute positioning works as expected, and clear residual padding.
+		local existingList = Page:FindFirstChildOfClass("UIListLayout")
+		if existingList then existingList:Destroy() end
+		local existingPadding = Page:FindFirstChildOfClass("UIPadding")
+		if existingPadding then existingPadding.PaddingTop = UDim.new(0, opts.ShowTitle and 34 or 4) end
+
+		local Container = Instance.new("Frame")
+		Container.Name = RandomName()
+		Container.BackgroundTransparency = 1
+		Container.BorderSizePixel = 0
+		Container.AnchorPoint = Vector2.new(0, 0)
+		Container.Position = UDim2.new(0, 0, 0, opts.ShowTitle and 36 or 4)
+		Container.Size = UDim2.new(1, 0, 1, opts.ShowTitle and -40 or -8)
+		Container.Parent = Page
+
+		-- Messages history (scrollable). Marked non-translatable so user/AI
+		-- conversation text isn't sent through Google Translate.
+		local Messages = Instance.new("ScrollingFrame")
+		Messages.Name = RandomName()
+		Messages.BackgroundTransparency = 1
+		Messages.BorderSizePixel = 0
+		Messages.Position = UDim2.new(0, 6, 0, 6)
+		Messages.Size = UDim2.new(1, -12, 1, -64)
+		Messages.ScrollBarThickness = 3
+		Messages.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
+		Messages.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		Messages.ScrollingDirection = Enum.ScrollingDirection.Y
+		Messages:SetAttribute("LunaNoTranslate", true)
+		Messages.Parent = Container
+
+		local msgList = Instance.new("UIListLayout")
+		msgList.SortOrder = Enum.SortOrder.LayoutOrder
+		msgList.Padding = UDim.new(0, 8)
+		msgList.Parent = Messages
+
+		-- Input area
+		local InputBar = Instance.new("Frame")
+		InputBar.Name = RandomName()
+		InputBar.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
+		InputBar.BackgroundTransparency = 0.25
+		InputBar.BorderSizePixel = 0
+		InputBar.AnchorPoint = Vector2.new(0, 1)
+		InputBar.Position = UDim2.new(0, 6, 1, -8)
+		InputBar.Size = UDim2.new(1, -12, 0, 44)
+		InputBar.Parent = Container
+
+		local inputCorner = Instance.new("UICorner")
+		inputCorner.CornerRadius = UDim.new(0, 12)
+		inputCorner.Parent = InputBar
+
+		local inputStroke = Instance.new("UIStroke")
+		inputStroke.Color = Color3.fromRGB(130, 120, 170)
+		inputStroke.Transparency = 0.55
+		inputStroke.Parent = InputBar
+
+		local inputGradient = Instance.new("UIGradient")
+		inputGradient.Rotation = 90
+		inputGradient.Transparency = NumberSequence.new(0.1, 0.35)
+		inputGradient.Parent = InputBar
+
+		local InputBox = Instance.new("TextBox")
+		InputBox.Name = RandomName()
+		InputBox.BackgroundTransparency = 1
+		InputBox.Position = UDim2.new(0, 14, 0, 0)
+		InputBox.Size = UDim2.new(1, -64, 1, 0)
+		InputBox.PlaceholderText = "Ask anything..."
+		InputBox.PlaceholderColor3 = Color3.fromRGB(170, 165, 195)
+		InputBox.Text = ""
+		InputBox.TextColor3 = Color3.fromRGB(245, 245, 250)
+		InputBox.Font = Enum.Font.GothamMedium
+		InputBox.TextSize = 15
+		InputBox.TextXAlignment = Enum.TextXAlignment.Left
+		InputBox.TextYAlignment = Enum.TextYAlignment.Center
+		InputBox.ClearTextOnFocus = false
+		InputBox.MultiLine = false
+		InputBox.Parent = InputBar
+
+		local SendButton = Instance.new("ImageButton")
+		SendButton.Name = RandomName()
+		SendButton.AnchorPoint = Vector2.new(1, 0.5)
+		SendButton.Position = UDim2.new(1, -8, 0.5, 0)
+		SendButton.Size = UDim2.fromOffset(36, 28)
+		SendButton.BackgroundColor3 = Color3.fromRGB(110, 90, 220)
+		SendButton.BackgroundTransparency = 0.05
+		SendButton.AutoButtonColor = false
+		SendButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		SendButton.Parent = InputBar
+		ApplyIcon(SendButton, GetIcon("send", "Material"))
+
+		local sendCorner = Instance.new("UICorner")
+		sendCorner.CornerRadius = UDim.new(0, 8)
+		sendCorner.Parent = SendButton
+
+		-- Conversation state. Includes the system prompt to keep replies on-topic.
+		local conversation = {}
+		if opts.SystemPrompt and opts.SystemPrompt ~= "" then
+			table.insert(conversation, { role = "system", content = opts.SystemPrompt })
+		end
+
+		-- Lightweight markdown to RichText: bold/italic/strike/code.
+		local function richText(t)
+			if type(t) ~= "string" then return tostring(t) end
+			-- Escape ampersands & angle brackets first so user text doesn't break RichText
+			t = t:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+			t = t:gsub("%*%*([^\n%*]+)%*%*", "<b>%1</b>")
+			t = t:gsub("%*([^\n%*]+)%*", "<i>%1</i>")
+			t = t:gsub("~~([^\n~]+)~~", "<s>%1</s>")
+			t = t:gsub("`([^\n`]+)`", "<font color=\"rgb(255,180,140)\">%1</font>")
+			return t
+		end
+
+		local function bubbleFor(role)
+			local Bubble = Instance.new("Frame")
+			Bubble.Name = RandomName()
+			Bubble.BorderSizePixel = 0
+			Bubble.AutomaticSize = Enum.AutomaticSize.Y
+			Bubble.BackgroundTransparency = 0.15
+
+			if role == "user" then
+				Bubble.AnchorPoint = Vector2.new(1, 0)
+				Bubble.Size = UDim2.new(0, 0, 0, 0)
+				Bubble.AutomaticSize = Enum.AutomaticSize.XY
+				Bubble.BackgroundColor3 = Color3.fromRGB(95, 75, 200)
+			else
+				Bubble.AnchorPoint = Vector2.new(0, 0)
+				Bubble.Size = UDim2.new(0, 0, 0, 0)
+				Bubble.AutomaticSize = Enum.AutomaticSize.XY
+				Bubble.BackgroundColor3 = Color3.fromRGB(38, 34, 52)
+			end
+
+			-- Cap maximum width so long replies wrap nicely.
+			local maxWidth = Instance.new("UISizeConstraint")
+			maxWidth.MaxSize = Vector2.new(Container.AbsoluteSize.X - 100, math.huge)
+			maxWidth.Parent = Bubble
+			-- Re-evaluate on resize so wrapping follows window changes.
+			Container:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+				maxWidth.MaxSize = Vector2.new(math.max(120, Container.AbsoluteSize.X - 100), math.huge)
+			end)
+
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, 12)
+			c.Parent = Bubble
+
+			local s = Instance.new("UIStroke")
+			s.Color = Color3.fromRGB(255, 255, 255)
+			s.Transparency = 0.88
+			s.Parent = Bubble
+
+			local pad = Instance.new("UIPadding")
+			pad.PaddingTop = UDim.new(0, 8)
+			pad.PaddingBottom = UDim.new(0, 8)
+			pad.PaddingLeft = UDim.new(0, 12)
+			pad.PaddingRight = UDim.new(0, 12)
+			pad.Parent = Bubble
+
+			Bubble.Parent = Messages
+			return Bubble
+		end
+
+		local function appendMessage(role, text, options)
+			-- Wrap each bubble in an alignment frame so user msgs go right, AI msgs go left.
+			local Row = Instance.new("Frame")
+			Row.Name = RandomName()
+			Row.BackgroundTransparency = 1
+			Row.BorderSizePixel = 0
+			Row.Size = UDim2.new(1, 0, 0, 0)
+			Row.AutomaticSize = Enum.AutomaticSize.Y
+			Row.LayoutOrder = #Messages:GetChildren()
+			Row.Parent = Messages
+
+			local Bubble = bubbleFor(role)
+			Bubble.Parent = Row
+			Bubble.Position = UDim2.new(role == "user" and 1 or 0, 0, 0, 0)
+
+			local Label = Instance.new("TextLabel")
+			Label.Name = "Text"
+			Label.BackgroundTransparency = 1
+			Label.Size = UDim2.new(0, 0, 0, 0)
+			Label.AutomaticSize = Enum.AutomaticSize.XY
+			Label.RichText = true
+			Label.Text = richText(text)
+			Label.TextColor3 = Color3.fromRGB(245, 245, 250)
+			Label.TextSize = 14
+			Label.Font = Enum.Font.GothamMedium
+			Label.TextXAlignment = Enum.TextXAlignment.Left
+			Label.TextYAlignment = Enum.TextYAlignment.Top
+			Label.TextWrapped = true
+			Label.Parent = Bubble
+
+			-- Fade-in
+			Bubble.BackgroundTransparency = 1
+			Label.TextTransparency = 1
+			TweenService:Create(Bubble, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
+			TweenService:Create(Label, TweenInfo.new(0.25), {TextTransparency = 0}):Play()
+
+			task.defer(function()
+				task.wait()
+				Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+			end)
+
+			return Row, Bubble, Label
+		end
+
+		-- Determines which HTTP function is available in this executor.
+		local function getHttpFn()
+			return (syn and syn.request) or (http and http.request) or http_request or request
+		end
+
+		local AiTab = { Messages = Messages, Conversation = conversation }
+		local isGenerating = false
+
+		local function setSendEnabled(enabled)
+			SendButton.AutoButtonColor = enabled
+			SendButton.BackgroundColor3 = enabled and Color3.fromRGB(110, 90, 220) or Color3.fromRGB(60, 55, 80)
+		end
+
+		function AiTab:Send(prompt)
+			prompt = tostring(prompt or "")
+			if prompt == "" or isGenerating then return end
+			isGenerating = true
+			setSendEnabled(false)
+
+			table.insert(conversation, { role = "user", content = prompt })
+			appendMessage("user", prompt)
+
+			-- Thinking bubble with an animated ellipsis until the response arrives.
+			local _, thinkBubble, thinkLabel = appendMessage("assistant", "Thinking")
+			local thinkStart = tick()
+			task.spawn(function()
+				local dots = 0
+				while isGenerating and thinkBubble.Parent do
+					dots = (dots % 3) + 1
+					thinkLabel.Text = richText("*Thinking" .. string.rep(".", dots) .. "*")
+					task.wait(0.35)
+				end
+			end)
+
+			task.spawn(function()
+				local payload = HttpService:JSONEncode({ messages = conversation })
+				local fn = getHttpFn()
+				local replyText
+
+				if fn then
+					local ok, res = pcall(fn, {
+						Url = opts.Endpoint,
+						Method = "POST",
+						Headers = { ["Content-Type"] = "application/json" },
+						Body = payload,
+					})
+					if ok and res and res.Body then
+						local okDec, decoded = pcall(function() return HttpService:JSONDecode(res.Body) end)
+						if okDec and decoded and decoded.choices and decoded.choices[1] then
+							replyText = decoded.choices[1].message and decoded.choices[1].message.content
+						end
+					end
+				end
+
+				if not replyText then
+					replyText = "_(Unable to reach the AI service. Make sure your executor supports HTTP POST.)_"
+				end
+
+				isGenerating = false
+				setSendEnabled(true)
+
+				table.insert(conversation, { role = "assistant", content = replyText })
+
+				-- Replace the thinking bubble's text with the actual reply (smoothly).
+				if thinkLabel and thinkLabel.Parent then
+					thinkLabel.Text = richText(replyText)
+				else
+					appendMessage("assistant", replyText)
+				end
+
+				task.defer(function()
+					task.wait()
+					Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+				end)
+			end)
+		end
+
+		function AiTab:Clear()
+			for _, child in ipairs(Messages:GetChildren()) do
+				if child:IsA("Frame") then child:Destroy() end
+			end
+			conversation = {}
+			if opts.SystemPrompt and opts.SystemPrompt ~= "" then
+				table.insert(conversation, { role = "system", content = opts.SystemPrompt })
+			end
+			AiTab.Conversation = conversation
+		end
+
+		InputBox.FocusLost:Connect(function(enterPressed)
+			if enterPressed then
+				local t = InputBox.Text
+				InputBox.Text = ""
+				AiTab:Send(t)
+			end
+		end)
+		SendButton.MouseButton1Click:Connect(function()
+			local t = InputBox.Text
+			InputBox.Text = ""
+			AiTab:Send(t)
+		end)
+
+		-- Subtle hover for the send button
+		SendButton.MouseEnter:Connect(function()
+			tween(SendButton, {BackgroundTransparency = -0.05})
+		end)
+		SendButton.MouseLeave:Connect(function()
+			tween(SendButton, {BackgroundTransparency = 0.05})
+		end)
+
+		-- Friendly opening line so the tab doesn't feel empty.
+		task.defer(function()
+			appendMessage("assistant", "Hi! Ask me anything. I run on Pollinations.AI - free, no API key.")
+		end)
+
+		Window._AiTab = AiTab
+		return AiTab
+	end
+
 
 	Elements.Parent.Visible = true
 	tween(Elements.Parent, {BackgroundTransparency = 0.1})
@@ -6868,24 +7472,51 @@ function Window:CreateTab(TabSettings)
 		SearchLayer.ZIndex = 5000
 		SearchLayer.Parent = LunaUI
 
+		-- Dim backdrop: dark with a faint vignette gradient instead of solid white.
 		local Backdrop = Instance.new("TextButton")
 		Backdrop.Name = RandomName()
 		Backdrop.AutoButtonColor = false
 		Backdrop.Text = ""
 		Backdrop.Size = UDim2.fromScale(1, 1)
+		Backdrop.BackgroundColor3 = Color3.fromRGB(8, 8, 14)
 		Backdrop.BackgroundTransparency = 1
 		Backdrop.BorderSizePixel = 0
 		Backdrop.ZIndex = 5000
 		Backdrop.Parent = SearchLayer
 
+		-- Subtle radial-ish vignette so the modal pops without making the bg solid.
+		local backdropGradient = Instance.new("UIGradient")
+		backdropGradient.Rotation = 90
+		backdropGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.15),
+			NumberSequenceKeypoint.new(0.5, 0.05),
+			NumberSequenceKeypoint.new(1, 0.15),
+		})
+		backdropGradient.Parent = Backdrop
+
 		local SearchModal = Instance.new("Frame")
 		SearchModal.Name = RandomName()
 		SearchModal.AnchorPoint = Vector2.new(0.5, 0.5)
-		SearchModal.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-		SearchModal.BackgroundTransparency = 0.05
+		-- Slight cool tint behind the glass.
+		SearchModal.BackgroundColor3 = Color3.fromRGB(28, 26, 38)
+		SearchModal.BackgroundTransparency = 0.08
 		SearchModal.BorderSizePixel = 0
 		SearchModal.ZIndex = 5010
 		SearchModal.Parent = SearchLayer
+
+		-- Liquid-glass: layered diagonal gradient gives the milky highlight.
+		local modalGradient = Instance.new("UIGradient")
+		modalGradient.Rotation = 135
+		modalGradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 56, 82)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(28, 26, 38)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 18, 28)),
+		})
+		modalGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.15),
+			NumberSequenceKeypoint.new(1, 0.05),
+		})
+		modalGradient.Parent = SearchModal
 
 		-- Re-anchor the modal to Main so it tracks the window (position + size).
 		local function repositionModal()
@@ -6899,62 +7530,98 @@ function Window:CreateTab(TabSettings)
 		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionModal)
 
 		local modalCorner = Instance.new("UICorner")
-		modalCorner.CornerRadius = UDim.new(0, 10)
+		modalCorner.CornerRadius = UDim.new(0, 14)
 		modalCorner.Parent = SearchModal
 
 		local modalStroke = Instance.new("UIStroke")
 		modalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		modalStroke.Color = Color3.fromRGB(64, 61, 76)
-		modalStroke.Thickness = 1
-		modalStroke.Transparency = 0.5
+		modalStroke.Color = Color3.fromRGB(120, 110, 160)
+		modalStroke.Thickness = 1.2
+		modalStroke.Transparency = 0.4
 		modalStroke.Parent = SearchModal
 
+		-- A second, faint inner highlight stroke - completes the glass look.
+		local highlightStroke = Instance.new("UIStroke")
+		highlightStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		highlightStroke.Color = Color3.fromRGB(255, 255, 255)
+		highlightStroke.Thickness = 1
+		highlightStroke.Transparency = 0.9
+		highlightStroke.Parent = SearchModal
+
 		local modalPadding = Instance.new("UIPadding")
-		modalPadding.PaddingTop = UDim.new(0, 10)
-		modalPadding.PaddingBottom = UDim.new(0, 10)
-		modalPadding.PaddingLeft = UDim.new(0, 12)
-		modalPadding.PaddingRight = UDim.new(0, 12)
+		modalPadding.PaddingTop = UDim.new(0, 14)
+		modalPadding.PaddingBottom = UDim.new(0, 14)
+		modalPadding.PaddingLeft = UDim.new(0, 16)
+		modalPadding.PaddingRight = UDim.new(0, 16)
 		modalPadding.Parent = SearchModal
+
+		-- ============================================================
+		-- Header row: search icon + input
+		-- ============================================================
+		local InputRow = Instance.new("Frame")
+		InputRow.Name = RandomName()
+		InputRow.Size = UDim2.new(1, 0, 0, 42)
+		InputRow.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
+		InputRow.BackgroundTransparency = 0.25
+		InputRow.BorderSizePixel = 0
+		InputRow.ZIndex = 5011
+		InputRow.Parent = SearchModal
+
+		local rowCornerHdr = Instance.new("UICorner")
+		rowCornerHdr.CornerRadius = UDim.new(0, 10)
+		rowCornerHdr.Parent = InputRow
+
+		local inputRowGradient = Instance.new("UIGradient")
+		inputRowGradient.Rotation = 90
+		inputRowGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.1),
+			NumberSequenceKeypoint.new(1, 0.3),
+		})
+		inputRowGradient.Parent = InputRow
+
+		local SearchIconLeft = Instance.new("ImageLabel")
+		SearchIconLeft.Name = RandomName()
+		SearchIconLeft.AnchorPoint = Vector2.new(0, 0.5)
+		SearchIconLeft.Position = UDim2.new(0, 12, 0.5, 0)
+		SearchIconLeft.Size = UDim2.fromOffset(18, 18)
+		SearchIconLeft.BackgroundTransparency = 1
+		SearchIconLeft.ImageColor3 = Color3.fromRGB(190, 185, 210)
+		SearchIconLeft.ImageTransparency = 0.2
+		SearchIconLeft.ZIndex = 5012
+		SearchIconLeft.Parent = InputRow
+		ApplyIcon(SearchIconLeft, GetIcon("search", "Material"))
 
 		local SearchInput = Instance.new("TextBox")
 		SearchInput.Name = RandomName()
-		SearchInput.Size = UDim2.new(1, 0, 0, 36)
-		SearchInput.BackgroundColor3 = Color3.fromRGB(32, 30, 38)
-		SearchInput.BackgroundTransparency = 0.25
+		SearchInput.AnchorPoint = Vector2.new(0, 0.5)
+		SearchInput.Position = UDim2.new(0, 38, 0.5, 0)
+		SearchInput.Size = UDim2.new(1, -50, 1, -8)
+		SearchInput.BackgroundTransparency = 1
 		SearchInput.BorderSizePixel = 0
 		SearchInput.PlaceholderText = "Search here..."
-		SearchInput.PlaceholderColor3 = Color3.fromRGB(160, 160, 170)
+		SearchInput.PlaceholderColor3 = Color3.fromRGB(170, 165, 195)
 		SearchInput.Text = ""
-		SearchInput.TextColor3 = Color3.fromRGB(235, 235, 240)
+		SearchInput.TextColor3 = Color3.fromRGB(245, 245, 250)
 		SearchInput.Font = Enum.Font.GothamMedium
-		SearchInput.TextSize = 15
+		SearchInput.TextSize = 16
 		SearchInput.TextXAlignment = Enum.TextXAlignment.Left
 		SearchInput.ClearTextOnFocus = false
-		SearchInput.ZIndex = 5011
-		SearchInput.Parent = SearchModal
-
-		local inputPadding = Instance.new("UIPadding")
-		inputPadding.PaddingLeft = UDim.new(0, 10)
-		inputPadding.PaddingRight = UDim.new(0, 10)
-		inputPadding.Parent = SearchInput
-
-		local inputCorner = Instance.new("UICorner")
-		inputCorner.CornerRadius = UDim.new(0, 6)
-		inputCorner.Parent = SearchInput
+		SearchInput.ZIndex = 5012
+		SearchInput.Parent = InputRow
 
 		local inputStroke = Instance.new("UIStroke")
-		inputStroke.Color = Color3.fromRGB(64, 61, 76)
-		inputStroke.Transparency = 0.5
-		inputStroke.Parent = SearchInput
+		inputStroke.Color = Color3.fromRGB(130, 120, 170)
+		inputStroke.Transparency = 0.6
+		inputStroke.Parent = InputRow
 
 		local Results = Instance.new("ScrollingFrame")
 		Results.Name = RandomName()
-		Results.Position = UDim2.new(0, 0, 0, 46)
-		Results.Size = UDim2.new(1, 0, 1, -46)
+		Results.Position = UDim2.new(0, 0, 0, 54)
+		Results.Size = UDim2.new(1, 0, 1, -54)
 		Results.BackgroundTransparency = 1
 		Results.BorderSizePixel = 0
 		Results.ScrollBarThickness = 3
-		Results.ScrollBarImageColor3 = Color3.fromRGB(120, 120, 130)
+		Results.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
 		Results.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Results.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Results.ZIndex = 5011
@@ -6962,7 +7629,7 @@ function Window:CreateTab(TabSettings)
 
 		local resultsList = Instance.new("UIListLayout")
 		resultsList.SortOrder = Enum.SortOrder.LayoutOrder
-		resultsList.Padding = UDim.new(0, 4)
+		resultsList.Padding = UDim.new(0, 6)
 		resultsList.Parent = Results
 
 		local EmptyLabel = Instance.new("TextLabel")
@@ -6970,9 +7637,10 @@ function Window:CreateTab(TabSettings)
 		EmptyLabel.Size = UDim2.new(1, 0, 0, 36)
 		EmptyLabel.BackgroundTransparency = 1
 		EmptyLabel.Text = "Start typing to search elements..."
-		EmptyLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
+		EmptyLabel.TextColor3 = Color3.fromRGB(170, 165, 195)
 		EmptyLabel.Font = Enum.Font.Gotham
 		EmptyLabel.TextSize = 13
+		EmptyLabel.TextTransparency = 0.2
 		EmptyLabel.ZIndex = 5011
 		EmptyLabel.Parent = Results
 
@@ -6991,9 +7659,9 @@ function Window:CreateTab(TabSettings)
 			local Row = Instance.new("TextButton")
 			Row.Name = RandomName()
 			Row.AutoButtonColor = false
-			Row.Size = UDim2.new(1, 0, 0, 38)
-			Row.BackgroundColor3 = Color3.fromRGB(32, 30, 38)
-			Row.BackgroundTransparency = 0.4
+			Row.Size = UDim2.new(1, -4, 0, 42)
+			Row.BackgroundColor3 = Color3.fromRGB(48, 42, 64)
+			Row.BackgroundTransparency = 0.35
 			Row.BorderSizePixel = 0
 			Row.Text = ""
 			Row.LayoutOrder = layoutOrder
@@ -7001,21 +7669,29 @@ function Window:CreateTab(TabSettings)
 			Row.Parent = Results
 
 			local rowCorner = Instance.new("UICorner")
-			rowCorner.CornerRadius = UDim.new(0, 6)
+			rowCorner.CornerRadius = UDim.new(0, 8)
 			rowCorner.Parent = Row
 
+			local rowGradient = Instance.new("UIGradient")
+			rowGradient.Rotation = 90
+			rowGradient.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.15),
+				NumberSequenceKeypoint.new(1, 0.4),
+			})
+			rowGradient.Parent = Row
+
 			local rowStroke = Instance.new("UIStroke")
-			rowStroke.Color = Color3.fromRGB(64, 61, 76)
-			rowStroke.Transparency = 0.6
+			rowStroke.Color = Color3.fromRGB(150, 140, 200)
+			rowStroke.Transparency = 0.7
 			rowStroke.Parent = Row
 
 			local title = Instance.new("TextLabel")
 			title.Name = "Title"
 			title.BackgroundTransparency = 1
-			title.Position = UDim2.new(0, 10, 0, 4)
-			title.Size = UDim2.new(1, -20, 0, 18)
+			title.Position = UDim2.new(0, 12, 0, 5)
+			title.Size = UDim2.new(1, -24, 0, 18)
 			title.Text = entry.Name
-			title.TextColor3 = Color3.fromRGB(235, 235, 240)
+			title.TextColor3 = Color3.fromRGB(245, 245, 250)
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Font = Enum.Font.GothamMedium
 			title.TextSize = 14
@@ -7025,10 +7701,10 @@ function Window:CreateTab(TabSettings)
 			local sub = Instance.new("TextLabel")
 			sub.Name = "Sub"
 			sub.BackgroundTransparency = 1
-			sub.Position = UDim2.new(0, 10, 0, 20)
-			sub.Size = UDim2.new(1, -20, 0, 14)
+			sub.Position = UDim2.new(0, 12, 0, 23)
+			sub.Size = UDim2.new(1, -24, 0, 14)
 			sub.Text = entry.Type .. (entry.Tab ~= "" and (" • " .. entry.Tab) or "")
-			sub.TextColor3 = Color3.fromRGB(160, 160, 170)
+			sub.TextColor3 = Color3.fromRGB(180, 175, 205)
 			sub.TextXAlignment = Enum.TextXAlignment.Left
 			sub.Font = Enum.Font.Gotham
 			sub.TextSize = 11
@@ -7036,10 +7712,12 @@ function Window:CreateTab(TabSettings)
 			sub.Parent = Row
 
 			Row.MouseEnter:Connect(function()
-				tween(rowStroke, {Transparency = 0.2})
+				tween(rowStroke, {Transparency = 0.25})
+				tween(Row, {BackgroundTransparency = 0.15})
 			end)
 			Row.MouseLeave:Connect(function()
-				tween(rowStroke, {Transparency = 0.6})
+				tween(rowStroke, {Transparency = 0.7})
+				tween(Row, {BackgroundTransparency = 0.35})
 			end)
 
 			Row.MouseButton1Click:Connect(function()
@@ -7114,34 +7792,52 @@ function Window:CreateTab(TabSettings)
 
 		SearchInput:GetPropertyChangedSignal("Text"):Connect(refreshResults)
 
-		-- Smooth fade in / out
-		local OPEN_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		local CLOSE_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		-- Smooth, slightly springy open / quick fade close.
+		local OPEN_INFO = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		local OPEN_FADE = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+		-- Scale-from-0 pop in. Done via a child UIScale we add on first open.
+		local modalScale = Instance.new("UIScale")
+		modalScale.Scale = 0.85
+		modalScale.Parent = SearchModal
 
 		local function applyVisible(open)
 			if open then
 				SearchLayer.Visible = true
+				Backdrop.BackgroundTransparency = 1
 				SearchModal.BackgroundTransparency = 1
-				SearchInput.BackgroundTransparency = 1
+				InputRow.BackgroundTransparency = 1
 				SearchInput.TextTransparency = 1
 				modalStroke.Transparency = 1
+				highlightStroke.Transparency = 1
 				inputStroke.Transparency = 1
 				EmptyLabel.TextTransparency = 1
+				SearchIconLeft.ImageTransparency = 1
+				modalScale.Scale = 0.92
 
-				TweenService:Create(Backdrop, OPEN_INFO, {BackgroundTransparency = 0.55}):Play()
-				TweenService:Create(SearchModal, OPEN_INFO, {BackgroundTransparency = 0.05}):Play()
-				TweenService:Create(SearchInput, OPEN_INFO, {BackgroundTransparency = 0.25, TextTransparency = 0}):Play()
-				TweenService:Create(modalStroke, OPEN_INFO, {Transparency = 0.5}):Play()
-				TweenService:Create(inputStroke, OPEN_INFO, {Transparency = 0.5}):Play()
-				TweenService:Create(EmptyLabel, OPEN_INFO, {TextTransparency = 0.2}):Play()
+				TweenService:Create(Backdrop, OPEN_FADE, {BackgroundTransparency = 0.5}):Play()
+				TweenService:Create(SearchModal, OPEN_FADE, {BackgroundTransparency = 0.08}):Play()
+				TweenService:Create(InputRow, OPEN_FADE, {BackgroundTransparency = 0.25}):Play()
+				TweenService:Create(SearchInput, OPEN_FADE, {TextTransparency = 0}):Play()
+				TweenService:Create(modalStroke, OPEN_FADE, {Transparency = 0.4}):Play()
+				TweenService:Create(highlightStroke, OPEN_FADE, {Transparency = 0.85}):Play()
+				TweenService:Create(inputStroke, OPEN_FADE, {Transparency = 0.6}):Play()
+				TweenService:Create(EmptyLabel, OPEN_FADE, {TextTransparency = 0.2}):Play()
+				TweenService:Create(SearchIconLeft, OPEN_FADE, {ImageTransparency = 0.2}):Play()
+				TweenService:Create(modalScale, OPEN_INFO, {Scale = 1}):Play()
 			else
 				TweenService:Create(Backdrop, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
 				TweenService:Create(SearchModal, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
-				TweenService:Create(SearchInput, CLOSE_INFO, {BackgroundTransparency = 1, TextTransparency = 1}):Play()
+				TweenService:Create(InputRow, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
+				TweenService:Create(SearchInput, CLOSE_INFO, {TextTransparency = 1}):Play()
 				TweenService:Create(modalStroke, CLOSE_INFO, {Transparency = 1}):Play()
+				TweenService:Create(highlightStroke, CLOSE_INFO, {Transparency = 1}):Play()
 				TweenService:Create(inputStroke, CLOSE_INFO, {Transparency = 1}):Play()
 				TweenService:Create(EmptyLabel, CLOSE_INFO, {TextTransparency = 1}):Play()
-				task.delay(0.16, function()
+				TweenService:Create(SearchIconLeft, CLOSE_INFO, {ImageTransparency = 1}):Play()
+				TweenService:Create(modalScale, CLOSE_INFO, {Scale = 0.94}):Play()
+				task.delay(0.2, function()
 					-- Don't hide if user reopened in the meantime
 					if not Window._SearchOpen then
 						SearchLayer.Visible = false
@@ -7203,13 +7899,16 @@ function Window:CreateTab(TabSettings)
 		Window._SearchKeybind = WindowSettings.SearchKeybind or Enum.KeyCode.F
 		Window._SearchKeybindRequiresCtrl = WindowSettings.SearchKeybindRequiresCtrl ~= false
 
+		-- IMPORTANT: We must accept Esc even when `gpe` is true, because while typing
+		-- in the SearchInput TextBox, all key events get marked as game-processed.
+		-- Without this branch the modal cannot be closed with Escape while focused.
 		UserInputService.InputBegan:Connect(function(input, gpe)
-			if gpe then return end
-			if not Window._SearchEnabled then return end
 			if input.KeyCode == Enum.KeyCode.Escape and Window._SearchOpen then
 				setOpen(false)
 				return
 			end
+			if gpe then return end
+			if not Window._SearchEnabled then return end
 			if input.KeyCode == Window._SearchKeybind then
 				if Window._SearchKeybindRequiresCtrl then
 					if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
@@ -7219,6 +7918,7 @@ function Window:CreateTab(TabSettings)
 				setOpen(not Window._SearchOpen)
 			end
 		end)
+
 
 		Window._SearchControl = SearchControl
 		Window._SearchLayer = SearchLayer
@@ -7371,6 +8071,75 @@ function Window:CreateTab(TabSettings)
 		end)
 	end
 
+	-- ============================================================
+	-- UI Zoom (Ctrl + / Ctrl - / Ctrl 0)
+	-- ============================================================
+	-- A UIScale on the main SmartWindow lets us scale the whole UI without
+	-- breaking the asset's internal layout. Bound to standard browser-style
+	-- shortcuts; opt-out via WindowSettings.ZoomEnabled = false.
+	do
+		local mainScale = Main:FindFirstChildOfClass("UIScale")
+		if not mainScale then
+			mainScale = Instance.new("UIScale")
+			mainScale.Scale = 1
+			mainScale.Parent = Main
+		end
+		Window._UIScale = mainScale
+		Window._ZoomEnabled = WindowSettings.ZoomEnabled ~= false
+		Window._ZoomMin = 0.6
+		Window._ZoomMax = 1.6
+		Window._ZoomStep = 0.1
+
+		Window.SetZoom = function(scale)
+			scale = math.clamp(tonumber(scale) or 1, Window._ZoomMin, Window._ZoomMax)
+			TweenService:Create(mainScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = scale}):Play()
+		end
+		Window.SetZoomEnabled = function(enabled)
+			Window._ZoomEnabled = enabled and true or false
+		end
+		Window.ZoomIn = function()
+			if not Window._ZoomEnabled then return end
+			Window.SetZoom(mainScale.Scale + Window._ZoomStep)
+		end
+		Window.ZoomOut = function()
+			if not Window._ZoomEnabled then return end
+			Window.SetZoom(mainScale.Scale - Window._ZoomStep)
+		end
+		Window.ZoomReset = function()
+			if not Window._ZoomEnabled then return end
+			Window.SetZoom(1)
+		end
+
+		UserInputService.InputBegan:Connect(function(input, gpe)
+			-- gpe matters less here because the keys aren't typing-related, but we
+			-- still honour it to play nice with focused TextBoxes.
+			if gpe then return end
+			if not Window._ZoomEnabled then return end
+			if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+				return
+			end
+			-- "=" share key with "+" on most keyboards; KeypadPlus is the numpad variant.
+			if input.KeyCode == Enum.KeyCode.Equals or input.KeyCode == Enum.KeyCode.Plus or input.KeyCode == Enum.KeyCode.KeypadPlus then
+				Window.ZoomIn()
+			elseif input.KeyCode == Enum.KeyCode.Minus or input.KeyCode == Enum.KeyCode.KeypadMinus then
+				Window.ZoomOut()
+			elseif input.KeyCode == Enum.KeyCode.Zero or input.KeyCode == Enum.KeyCode.KeypadZero then
+				Window.ZoomReset()
+			end
+		end)
+	end
+
+	-- ============================================================
+	-- Auto-create AI tab if requested
+	-- ============================================================
+	if WindowSettings.AiTab then
+		task.defer(function()
+			-- Deferred so it's added AFTER the user's CreateTab calls; this puts
+			-- the AI tab at the end of the nav list instead of the very top.
+			pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
+		end)
+	end
+
 	return Window
 end
 
@@ -7385,6 +8154,36 @@ function Luna:Destroy()
 	LunaUI:Destroy()
 end
 
+-- ============================================================
+-- Translator public API
+-- ============================================================
+-- Sets the UI language. `targetCode` is an ISO code such as "ru", "fr",
+-- "pt", "es", "en". Pass "en" to restore originals. Optionally pass a
+-- custom translator function `(text, target) -> string`; if provided it
+-- replaces the built-in Google Translate fetcher. Translation is async
+-- and won't block; expect a brief delay while strings stream in.
+function Luna:SetLanguage(targetCode, customTranslator)
+	targetCode = tostring(targetCode or "en"):lower()
+	LunaTranslator.Target = targetCode
+	if customTranslator ~= nil then
+		LunaTranslator.External = customTranslator
+	end
+	if targetCode ~= "en" then
+		_watchNewText(LunaUI)
+	end
+	_translateTree(LunaUI, targetCode)
+end
+
+-- Direct translate-a-string helper (sync; will yield while waiting for HTTP).
+function Luna:Translate(text, target)
+	return LunaTranslate(text, target or LunaTranslator.Target)
+end
+
+-- Returns the active language code, default "en".
+function Luna:GetLanguage()
+	return LunaTranslator.Target or "en"
+end
+
 if isStudio then
 	local Window = Luna:CreateWindow({
 		Name = "Nebula Client - Luna Hub | Blade Ball",
@@ -7395,6 +8194,8 @@ if isStudio then
 		LoadingSubtitle = "Loading script for Blade Ball",
 		SearchBar = true,
 		Resizable = true,
+		AiTab = true,
+		ZoomEnabled = true,
 		KeySystem = true,
 		KeySettings = {
 			Title = "Nebula Client | Key System",
