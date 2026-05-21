@@ -17,7 +17,7 @@ by    d8b   db d88888b d8888b. db    db db       .d8b.       .d8888.  .d88b.  d8
 
 Main Credits
 
-Claude Sonnet 4.7 | fixed some bugs + added ai chat and etc.
+Claude Opus 4.7 | fixed some bugs + added ai chat and etc.
 Hunter (Nebula Softworks) | Designing And Programming | Main Developer
 JustHey (Nebula Softworks) | Configurations, Bug Fixing And More! | Co Developer
 Throit | Color Picker
