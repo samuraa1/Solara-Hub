@@ -1713,6 +1713,17 @@ local function _LunaErrName(...)
     return "Unknown"
 end
 
+-- Shown on every callback failure so users know where to report bugs.
+local LUNA_CALLBACK_ERR_FOOTER = " Report this in Discord: discord.gg/DPCKQRJmdF"
+
+local function LunaCallbackErrorNotification(response, ...)
+    Luna:Notification({
+        Title = "Callback Error",
+        Content = "Luna Interface Suite | " .. _LunaErrName(...) .. " | " .. tostring(response) .. LUNA_CALLBACK_ERR_FOOTER,
+        Icon = "error",
+    })
+end
+
 -- Detect "PC-like" environment: has a keyboard AND mouse. Phones/tablets typically
 -- lack both. Laptops with a touchscreen still pass because they have keyboard+mouse.
 local function IsDesktop()
@@ -1776,6 +1787,23 @@ local function _isTranslatableText(obj)
     return false
 end
 
+-- Template placeholder strings that must never be snapshotted as "originals".
+local LUNA_TEMPLATE_PLACEHOLDERS = {
+    ["button"] = true,
+    ["slider"] = true,
+    ["toggle"] = true,
+    ["bind"] = true,
+    ["input"] = true,
+    ["dropdown"] = true,
+    ["color picker"] = true,
+    ["label"] = true,
+    ["paragraph"] = true,
+    ["but with description"] = true,
+    ["but with a description"] = true,
+    ["section"] = true,
+    ["tab"] = true,
+}
+
 -- Should we skip translating a specific value? Numbers, single chars, URLs,
 -- whitespace and asset IDs are pointless to send through the API.
 local function _shouldTranslateValue(text)
@@ -1786,6 +1814,7 @@ local function _shouldTranslateValue(text)
     if trimmed:match("^rbxassetid://") then return false end
     if trimmed:match("^https?://") then return false end
     if trimmed:match("^%a+://") then return false end
+    if LUNA_TEMPLATE_PLACEHOLDERS[trimmed:lower()] then return false end
     return true
 end
 
@@ -1974,7 +2003,7 @@ local function _watchNewText(rootGui)
     rootGui.DescendantAdded:Connect(function(obj)
         if LunaTranslator.Target == "en" then return end
         if not _isTranslatableText(obj) then return end
-        task.delay(0.08, function()
+        task.delay(0.15, function()
             if obj and obj.Parent then _translateOne(obj, LunaTranslator.Target) end
         end)
     end)
@@ -2107,6 +2136,18 @@ local Dragger = Main.Drag
 local dragBar = LunaUI.Drag
 local dragInteract = dragBar and dragBar.Interact or nil
 local dragBarCosmetic = dragBar and dragBar.Drag or nil
+
+-- Rescue handle: sits just below Main (ScreenGui root, not a child of Main).
+local function syncDragBarPosition(mainFrame)
+	if not dragBar or not mainFrame then return end
+	local p = mainFrame.AbsolutePosition
+	local s = mainFrame.AbsoluteSize
+	dragBar.AnchorPoint = Vector2.new(0.5, 0)
+	dragBar.Position = UDim2.fromOffset(p.X + s.X * 0.5, p.Y + s.Y + 14)
+	if dragBar.ZIndex < 50 then
+		dragBar.ZIndex = 50
+	end
+end
 local Elements = Main.Elements.Interactions
 local LoadingFrame = Main.LoadingFrame
 local Navigation = Main.Navigation
@@ -2261,12 +2302,7 @@ local function Draggable(Bar, Window, enableTaptic, tapticOffset)
 				TweenService:Create(Window, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Position = newMainPosition}):Play()
 
 				if dragBar then
-					-- The legacy code hard-coded +240 here, which only matched the old
-					-- default window height. Scale with the actual size so dragBar
-					-- stays anchored to the visual bottom-center regardless of resize.
-					local yOffset = (Window.AbsoluteSize.Y * 0.5) + 12
-					local newDragBarPosition = UDim2.new(FramePos.X.Scale, FramePos.X.Offset + Delta.X, FramePos.Y.Scale, FramePos.Y.Offset + Delta.Y + yOffset)
-					dragBar.Position = newDragBarPosition
+					syncDragBarPosition(Window)
 				end
 			end
 		end)
@@ -2540,9 +2576,17 @@ function Luna:CreateWindow(WindowSettings)
 
 	Main:GetPropertyChangedSignal("Position"):Connect(function()
 		Main.Parent.ShadowHolder.Position = Main.Position
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
 	end)
 	Main:GetPropertyChangedSignal("Size"):Connect(function()
 		Main.Parent.ShadowHolder.Size = Main.Size
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
+	end)
+	Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
+	end)
+	Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
 	end)
 
 	LoadingFrame.Visible = true
@@ -2742,14 +2786,10 @@ function Luna:CreateWindow(WindowSettings)
 	Navigation.Tabs["InActive Template"].LayoutOrder = 1000000000
 	Navigation.Tabs["InActive Template"].Visible = false
 
-	-- Mark the template trees as "do not translate" so the translator never
-	-- snapshots placeholder strings like "Button" / "Slider" / "But with
-	-- description". Without this, the very first time a real element was
-	-- cloned from a template the watcher could capture the template's text
-	-- as the "original" and then permanently replace real names with the
-	-- translated placeholder (the "Кнопка / Но с описанием" bug).
-	Elements.Template:SetAttribute("LunaNoTranslate", true)
-	Navigation.Tabs["InActive Template"]:SetAttribute("LunaNoTranslate", true)
+	-- Do NOT mark the whole Elements.Template as LunaNoTranslate: Clone() copies
+	-- attributes onto every TabPage, which would block translation for ALL tab
+	-- content. Placeholder strings are filtered via LUNA_TEMPLATE_PLACEHOLDERS
+	-- and the deferred DescendantAdded watcher instead.
 
 	-- UIPageLayout listens to mouse-wheel input by default and swaps tabs when
 	-- the user scrolls. That's terrible for our AI tab (and any scroll-heavy
@@ -3126,6 +3166,7 @@ function Window:CreateTab(TabSettings)
 		-- Anti-cheat: use a random Instance.Name. The display name lives in TextLabel
 		-- and in the "LunaTabName" attribute used by internal lookups.
 		TabButton.Name = RandomName()
+		TabButton:SetAttribute("LunaNoTranslate", nil)
 		TabButton:SetAttribute("LunaTabName", TabSettings.Name)
 		TabButton.TextLabel.Text = TabSettings.Name
 		TabButton.Parent = Navigation.Tabs
@@ -3135,6 +3176,7 @@ function Window:CreateTab(TabSettings)
 
 		local TabPage = Elements.Template:Clone()
 		TabPage.Name = RandomName()
+		TabPage:SetAttribute("LunaNoTranslate", nil)
 		TabPage:SetAttribute("LunaTabName", TabSettings.Name)
 		TabPage.Title.Visible = TabSettings.ShowTitle
 		TabPage.Title.Text = TabSettings.Name
@@ -3324,7 +3366,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Button.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						task.wait(0.5)
 						Button.Title.Text = ButtonSettings.Name
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3588,7 +3630,7 @@ function Window:CreateTab(TabSettings)
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 									TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 									Slider.Title.Text = "Callback Error"
-									Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+									LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 									wait(0.5)
 									Slider.Title.Text = SliderSettings.Name
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3620,7 +3662,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Slider.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Slider.Title.Text = SliderSettings.Name
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3763,7 +3805,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3790,7 +3832,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3834,7 +3876,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3954,7 +3996,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Bind.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3983,7 +4025,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Bind.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4003,7 +4045,7 @@ function Window:CreateTab(TabSettings)
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 											Bind.Title.Text = "Callback Error"
-											Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+											LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4020,7 +4062,7 @@ function Window:CreateTab(TabSettings)
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 											Bind.Title.Text = "Callback Error"
-											Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+											LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4148,7 +4190,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Input.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Input.Title.Text = InputSettings.Name
 								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4189,7 +4231,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Input.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4306,7 +4348,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Dropdown.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Dropdown.Title.Text = DropdownSettings.Name
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4641,7 +4683,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						ColorPicker.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						ColorPicker.Title.Text = ColorPickerSettings.Name
 						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4940,7 +4982,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Button.Title.Text = "Callback Error"
-					Luna:Notification({Title="Callback Error", Content="Luna Interface Suite | ".._LunaErrName(ButtonSettings, BindSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon="error"})
+					LunaCallbackErrorNotification(Response, ButtonSettings, BindSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Button.Title.Text = ButtonSettings.Name
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5201,7 +5243,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Slider.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Slider.Title.Text = SliderSettings.Name
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5233,7 +5275,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Slider.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Slider.Title.Text = SliderSettings.Name
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5375,7 +5417,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5402,7 +5444,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5446,7 +5488,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5565,7 +5607,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5594,7 +5636,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5614,7 +5656,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5631,7 +5673,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5788,7 +5830,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5808,7 +5850,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5825,7 +5867,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5946,7 +5988,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Input.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5987,7 +6029,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Input.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Input.Title.Text = InputSettings.Name
 						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -6103,7 +6145,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Dropdown.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Dropdown.Title.Text = DropdownSettings.Name
 					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -6438,7 +6480,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					ColorPicker.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | ".._LunaErrName(BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings).." | "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					ColorPicker.Title.Text = ColorPickerSettings.Name
 					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -7187,40 +7229,62 @@ function Window:CreateTab(TabSettings)
 		local function buildSystemPrompt()
 			-- NOTE: level-2 long string `[==[ ... ]==]` so the `[[SCRIPT_REQUEST: ...]]`
 			-- marker inside this prompt doesn't close the literal early.
-			local base = opts.SystemPrompt or [==[You are "Solara Hub AI", the assistant living inside the Solara Hub Roblox script. Always answer in the language the user wrote in. If the user writes Russian, answer in Russian. If they write English, answer in English.
+			local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — a general-purpose Luau/Roblox scripting assistant built into Solara Hub. You help with Solara Hub itself AND with writing/fixing/explaining exploit scripts. Always reply in the same language the user writes in (Russian → Russian, English → English, etc.).
 
-CRITICAL ANTI-HALLUCINATION RULES (these override everything else):
-- NEVER invent UI elements, buttons, menus, keybinds, settings or features that aren't explicitly listed in the "Solara Hub features" section below. There is no "Share" button, no "Morgan's Park" place, no in-game store integration unless this prompt says so.
-- If you are not sure whether Solara Hub supports a specific game / feature / executor, SAY SO PLAINLY ("I'm not sure if Solara Hub has a dedicated module for that") and offer the script-request flow described below. Do not guess.
-- Never invent file paths, function names, asset IDs, or webhook URLs.
-- Never pretend you executed code, opened a window, or sent a message. The host UI handles all real actions and tells you about them.
+## What you can do
+1. **Solara Hub help** — games supported, which tab to open, settings (SearchBar, Language, Zoom, theme), executors, how to load scripts from the hub.
+2. **Write Luau scripts** — ESP, aimbot, autofarm, GUIs, remotes, hooks, file IO, etc. Put runnable code in ```lua ... ``` fences (the UI adds Copy / Execute under blocks).
+3. **Debug & improve code** — explain errors, suggest fixes, optimize, add feature checks.
+4. **Executor APIs** — use functions from the "Executor API" section below when relevant. Always guard: `if typeof(fn) == "function" then` or `pcall` — never assume every executor has Potassium-only APIs.
 
-Formatting rules:
-- Use **bold**, *italics*, `inline code` and ~~strike~~ where helpful.
-- Use Markdown headers (#, ##, ###) for section titles. Don't over-use them - max one ### per short reply.
-- Use bullet lists with "- " and numbered lists with "1. ".
-- For executable Roblox/Luau code put it inside fenced ```lua ... ``` blocks. The host UI shows real Copy / Execute buttons under such blocks - mention them when relevant.
-- Keep answers concise (under 220 words) unless asked for more.
-- Be friendly and a bit playful, but stay on topic.
+## Anti-hallucination (strict)
+- Do NOT invent Solara Hub buttons, tabs, or features not listed under "Solara Hub UI facts".
+- Do NOT invent game support: use only the "Supported games" list from host context when present.
+- Do NOT invent executor functions: only suggest APIs from the reference below or standard Roblox (`game`, `Players`, `RunService`, etc.).
+- Do NOT claim you ran code, opened UI, or sent Discord messages — the host UI does that.
+- If unsure, say you are unsure and offer the script-request flow.
 
-Solara Hub features (the ONLY things you may claim exist):
-- Maintainer: Samuraa1. Discord invite: discord.gg/DPCKQRJmdF.
-- Top-level tabs: Home (dashboard with player info, server stats, friends, Discord card, Changelogs card, Supported Games card), Universal Scripts, sometimes a per-game tab when the user is in a supported place, "Hub Settings And More" (full settings tab).
-- Inside Universal Scripts, sections are: Main Scripts, Aimbots + Silent Aim, ESP, Animations, Automization Scripts, Tools and Utilities, Trolling Scripts, Performance, DEV Tools, Admin Scripts, Visual Scripts, Backdoor Scanners.
-- Inside the settings tab there are sections for PC Executors, Mobile Executors, Settings, Search Bar (Ctrl+F by default, rebindable), Language (full UI translation through Google Translate), Zoom (Ctrl + / Ctrl - / Ctrl 0), Interface Theme (accent colour picker), Feedback, Performance, Credits.
-- Built-in window features: resizable from the bottom-right handle, draggable, minimise/close in the top right, mobile drag handle, key system support, notifications, AI Chat (this tab).
-- Supported executors: Solara, Xeno, Wave, Volt, Volcano, Velocity, Madium, Potassium, Seliware, Bunni, SirHurt, Drift, Swift, Synapse Z, Cosmic, Isaeva, Hydrogen, MacSploit, Opiumware, Delta, Codex, Cryptic, Arceus X, VegaX, Ronix, FluxusZ, Fluxus.
+## Solara Hub UI facts (only these exist)
+- Maintainer: **Samuraa1**. Discord: **discord.gg/DPCKQRJmdF**
+- Tabs: **Home** (dashboard), **Universal Scripts** (sections below), **FE Scripts**, **Executors UI**, per-game tab when supported, **Hub Settings And More**
+- Universal sections: Main Scripts, Aimbots + Silent Aim, ESP, Animations, Automization, Tools and Utilities, Trolling, Performance, DEV Tools, Admin, Visual, Backdoor Scanners
+- Settings: Auto Execute, Destroy Hub, interface bind, SearchBar (Ctrl+F), Language, Zoom (Ctrl+/−/0), Interface Accent, Feedback, FPS slider, Credits
+- Window: draggable, resizable (PC), search icon, minimize/close, white rescue drag bar below window when off-screen, notifications, this AI tab
 
-Game support policy:
-- Solara Hub auto-loads a per-game module ONLY for the games the host script explicitly hooked up. You DO NOT have a list of every supported game inside this prompt - additional context may be provided below.
-- If a user asks "do you support <game>?" and the game is NOT in the supplemental context, answer: "I don't have a confirmed entry for that game in my knowledge base. Open the game and the hub will tell you - if a tab with the game's name appears in the sidebar, it's supported; otherwise you can use the Universal Scripts tab. Want me to forward a request to the developers?"
-- Never describe non-existent per-game tab contents. If you don't know the game's specific module, say so.
+## Script-request flow (missing hub scripts only)
+- If the user wants a script the hub likely lacks, ask once if they want to forward to developers.
+- If they confirm on the **next** message, append exactly one line:
+  [[SCRIPT_REQUEST: short summary]]
+- Never fake delivery; the UI shows a Send button.
 
-Script-request flow:
-- If the user asks for a script that Solara Hub probably doesn't have, ask once: "Want me to forward this request to the developers?"
-- If on the NEXT message they confirm (yes/forward/send/да/отправь/etc.), append a single line to your reply in EXACTLY this format (the host UI parses it):
-  [[SCRIPT_REQUEST: <one-sentence summary of what they want>]]
-- Only emit ONE [[SCRIPT_REQUEST: ...]] line per conversation turn. Don't pretend you delivered it - the UI shows the user a "Send" button afterwards.
+## Coding standards for Luau you output
+- Prefer `task.wait` over `wait`; use `game:GetService("ServiceName")`.
+- LocalPlayer: `game.Players.LocalPlayer` — check it exists.
+- For exploit-only calls, wrap in `pcall` or existence checks; mention if a feature needs a specific executor (e.g. Potassium).
+- Keep scripts focused; comment only non-obvious logic.
+- Never use `loadstring` on untrusted URLs unless the user explicitly asked.
+
+## Executor API reference (guard every call)
+**Closures:** checkcaller, clonefunction, hookfunction, restorefunction, newcclosure, loadstring, isexecutorclosure, islclosure, iscclosure
+**Debug:** debug.getupvalue(s), debug.setupvalue, debug.getconstant(s), debug.setconstant, debug.getproto(s), debug.getstack, debug.getinfo
+**Environment:** getgenv, getrenv, getsenv(script), getgc, filtergc, getreg
+**Filesystem:** readfile, writefile, appendfile, isfile, isfolder, makefolder, listfiles, delfile, loadfile, getcustomasset
+**Instances:** gethui, cloneref, getinstances, getnilinstances, fireclickdetector, fireproximityprompt, firetouchinterest, getcallbackvalue
+**Metatable:** getrawmetatable, setrawmetatable, hookmetamethod, getnamecallmethod, setnamecallmethod (Potassium), setreadonly
+**Reflection:** gethiddenproperty, sethiddenproperty, setscriptable, isscriptable, getthreadidentity, setthreadidentity
+**Scripts:** getscripts, getloadedmodules, getscriptclosure, getscriptbytecode, decompile (Potassium)
+**Signals:** getconnections, firesignal, replicatesignal
+**HTTP / misc:** request({Url, Method, Headers, Body}), identifyexecutor, HttpService (game service), setclipboard, getfpscap, setfpscap, queueonteleport
+**Drawing (Potassium):** Drawing.new("Line"|"Text"|...), cleardrawcache, isrenderobj
+**WebSocket:** WebSocket.connect(url)
+**Crypt (Potassium):** crypt.hash, crypt.encrypt, crypt.decrypt, base64encode/decode via crypt or global aliases
+
+Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may be missing on Solara/Xeno/Wave — always note that and offer a fallback using Roblox services.
+
+## Formatting
+- **bold**, *italic*, `inline code`, bullet lists, short ### headers when needed.
+- Default length: under 280 words unless the user wants a full script or deep explanation.
+- Be friendly and practical, not overly formal.
 ]==]
 			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
 				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
@@ -7992,7 +8056,7 @@ Script-request flow:
 
 		-- Friendly opening line so the tab doesn't feel empty.
 		task.defer(function()
-			appendMessage("assistant", "Hey! I'm **Solara Hub AI**. Ask me anything about scripts, Solara Hub features, or just chat. I can output **fenced code blocks** with a *Copy* / *Execute* button below them.")
+			appendMessage("assistant", "Hey! I'm **Solara Hub AI**. I can help with **Solara Hub**, write/fix **Luau scripts**, explain **executor APIs**, and answer Roblox questions. Paste code or describe what you need — I'll use ```lua blocks with *Copy* / *Execute* buttons.")
 		end)
 
 		Window._AiTab = AiTab
@@ -8037,6 +8101,7 @@ Script-request flow:
 			Unhide(Main, Window.CurrentTab)
 			LunaUI.MobileSupport.Visible = false
 			dragBar.Visible = true
+			task.defer(function() syncDragBarPosition(Main) end)
 			Window.State = true
 			if Window._ResizeHandle and Window.Size == false then
 				Window._ResizeHandle.Visible = true
@@ -8063,6 +8128,7 @@ Script-request flow:
 		else
 			Maximise(Main)
 			dragBar.Visible = true
+			task.defer(function() syncDragBarPosition(Main) end)
 			if Window._ResizeHandle then Window._ResizeHandle.Visible = true end
 		end
 	end)
@@ -8090,12 +8156,20 @@ Script-request flow:
 	LunaUI.MobileSupport.Interact.MouseButton1Click:Connect(function()
 		Unhide(Main, Window.CurrentTab)
 		dragBar.Visible = true
+		task.defer(function() syncDragBarPosition(Main) end)
 		Window.State = true
 		if Window._ResizeHandle and Window.Size == false then
 			Window._ResizeHandle.Visible = true
 		end
 		LunaUI.MobileSupport.Visible = false
 	end)
+
+	if dragBar then
+		task.defer(function()
+			task.wait(0.1)
+			if dragBar.Visible then syncDragBarPosition(Main) end
+		end)
+	end
 
 	-- ============================================================
 	-- SearchBar feature (opt-in via WindowSettings.SearchBar)
@@ -8674,18 +8748,6 @@ Script-request flow:
 		local resizing = false
 		local startMouse, startSize
 
-		-- Keep dragBar visually anchored to the bottom-center of Main regardless of
-		-- how the user resized the window. We snap to absolute screen coordinates
-		-- because dragBar lives at the ScreenGui root, not under Main.
-		local function syncDragBar()
-			if not dragBar then return end
-			local p = Main.AbsolutePosition
-			local s = Main.AbsoluteSize
-			-- 12px below the bottom edge keeps the rescue handle visible without
-			-- overlapping the bottom border or stroke.
-			dragBar.Position = UDim2.fromOffset(p.X + s.X * 0.5, p.Y + s.Y + 12)
-		end
-
 		Handle.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 			resizing = true
@@ -8702,7 +8764,7 @@ Script-request flow:
 			local ny = math.clamp(startSize.Y + delta.Y, ResizeMin.Y, ResizeMax.Y)
 			Main.Size = UDim2.fromOffset(nx, ny)
 			MainSize = Main.Size
-			syncDragBar()
+			syncDragBarPosition(Main)
 		end)
 
 		UserInputService.InputEnded:Connect(function(input)
@@ -8713,13 +8775,6 @@ Script-request flow:
 
 		-- Re-sync on every Main size/position change too so toggling minimize,
 		-- maximise, or restoring from a hide always keeps the dragBar in line.
-		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-			if dragBar and dragBar.Visible then syncDragBar() end
-		end)
-		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
-			if dragBar and dragBar.Visible then syncDragBar() end
-		end)
-
 		Window._ResizeHandle = HandleBack
 
 		-- Hide the resize handle when the window is minimized or hidden, restore otherwise.
