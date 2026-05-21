@@ -1847,22 +1847,39 @@ local function LunaTranslate(text, target)
 end
 
 -- Translate a single GUI text instance in place. Stores the original in an
--- attribute so we can restore it without re-querying.
+-- attribute so we can restore it without re-querying. We also track the LAST
+-- translation we wrote ("LunaTranslated"): if obj.Text differs from it AND
+-- from the original, external code has rewritten the label since we last
+-- touched it, so re-snapshot the new original. This is what makes labels
+-- created from cloned templates (where the clone briefly carries "Button"
+-- before the host script writes the real name) translate correctly.
 local function _translateOne(obj, target)
     if not _isTranslatableText(obj) then return end
     local orig = obj:GetAttribute("LunaOriginalText")
+    local lastTranslated = obj:GetAttribute("LunaTranslated")
     if orig == nil then
         orig = obj.Text
         if not _shouldTranslateValue(orig) then return end
         obj:SetAttribute("LunaOriginalText", orig)
+    elseif lastTranslated and obj.Text ~= lastTranslated and obj.Text ~= orig then
+        -- External rewrite detected. Trust the new text as the real original.
+        orig = obj.Text
+        if not _shouldTranslateValue(orig) then
+            obj:SetAttribute("LunaOriginalText", nil)
+            obj:SetAttribute("LunaTranslated", nil)
+            return
+        end
+        obj:SetAttribute("LunaOriginalText", orig)
     end
     if target == "en" then
         if obj.Text ~= orig then obj.Text = orig end
+        obj:SetAttribute("LunaTranslated", nil)
         return
     end
     local translated = LunaTranslate(orig, target)
     if translated and obj.Text ~= translated then
         obj.Text = translated
+        obj:SetAttribute("LunaTranslated", translated)
     end
 end
 
@@ -1947,14 +1964,17 @@ local function _translateTree(root, target)
 end
 
 -- Catch newly added UI elements so they get translated too. Connected once
--- the first time SetLanguage activates a non-English target.
+-- the first time SetLanguage activates a non-English target. We wait a few
+-- frames before snapshotting so the host script's clone+Text-assignment can
+-- finish - otherwise we'd cache the template's placeholder ("Button") as the
+-- "original" and forever replace real labels with the translated placeholder.
 local function _watchNewText(rootGui)
     if LunaTranslator.Watching then return end
     LunaTranslator.Watching = true
     rootGui.DescendantAdded:Connect(function(obj)
         if LunaTranslator.Target == "en" then return end
         if not _isTranslatableText(obj) then return end
-        task.defer(function()
+        task.delay(0.08, function()
             if obj and obj.Parent then _translateOne(obj, LunaTranslator.Target) end
         end)
     end)
@@ -2722,6 +2742,24 @@ function Luna:CreateWindow(WindowSettings)
 	Navigation.Tabs["InActive Template"].LayoutOrder = 1000000000
 	Navigation.Tabs["InActive Template"].Visible = false
 
+	-- Mark the template trees as "do not translate" so the translator never
+	-- snapshots placeholder strings like "Button" / "Slider" / "But with
+	-- description". Without this, the very first time a real element was
+	-- cloned from a template the watcher could capture the template's text
+	-- as the "original" and then permanently replace real names with the
+	-- translated placeholder (the "Кнопка / Но с описанием" bug).
+	Elements.Template:SetAttribute("LunaNoTranslate", true)
+	Navigation.Tabs["InActive Template"]:SetAttribute("LunaNoTranslate", true)
+
+	-- UIPageLayout listens to mouse-wheel input by default and swaps tabs when
+	-- the user scrolls. That's terrible for our AI tab (and any scroll-heavy
+	-- tab). Disable wheel/touch input completely; tab navigation is button-only.
+	if Elements:FindFirstChild("UIPageLayout") then
+		Elements.UIPageLayout.ScrollWheelInputEnabled = false
+		Elements.UIPageLayout.TouchInputEnabled = false
+		Elements.UIPageLayout.GamepadInputEnabled = false
+	end
+
 	local FirstTab = true
 
 function Window:CreateHomeTab(HomeTabSettings)
@@ -2915,27 +2953,41 @@ function Window:CreateHomeTab(HomeTabSettings)
 			padding.PaddingBottom = UDim.new(0, 14)
 			padding.Parent = ExtraCards
 
-			-- Snap our holder right under the existing dashboard. detailsholder
-			-- usually sits at a fixed offset and contains the dashboard rows we
-			-- want to be below. We track its bottom so resizes/zoom don't break it.
+			-- Snap our holder right under the dashboard rows (Discord / Server /
+			-- Friends / Client). HomeTabPage uses absolute positioning - its
+			-- `detailsholder` is sized to the whole page, so we can't use its
+			-- bottom or the cards land at the canvas floor. Instead we track
+			-- `detailsholder.dashboard`, the inner frame whose AbsoluteSize is
+			-- the actual content height of the dashboard cards.
 			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
-			if detailsholder then
+			local dashboard = detailsholder and detailsholder:FindFirstChild("dashboard")
+			if dashboard then
 				local function reposition()
-					if not detailsholder or not detailsholder.Parent then return end
-					-- Convert detailsholder's bottom into HomeTabPage local coords
-					-- via AbsolutePosition (works for ScrollingFrame canvas too).
+					if not dashboard or not dashboard.Parent then return end
+					-- Convert dashboard's bottom into HomeTabPage-local coords.
 					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
-					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + detailsholder.AbsoluteSize.Y
+					local relY = dashboard.AbsolutePosition.Y - pageAbsY + dashboard.AbsoluteSize.Y
 					if relY > 0 then
-						ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(relY) + 16)
+						ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(relY) + 12)
 					end
 				end
 				reposition()
-				detailsholder:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-				detailsholder:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
+				dashboard:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+				dashboard:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
 				HomeTabPage:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-				-- Wait a frame for the asset to settle, then nudge again.
+				-- Wait a couple of frames for the asset's layouts to settle.
 				task.defer(function() task.wait(0.05); reposition() end)
+				task.delay(0.4, reposition)
+			elseif detailsholder then
+				-- Fallback to detailsholder's TOP edge (better than its bottom).
+				local function reposition()
+					if not detailsholder or not detailsholder.Parent then return end
+					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
+					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + 200
+					ExtraCards.Position = UDim2.new(0, 10, 0, math.max(120, math.floor(relY)))
+				end
+				reposition()
+				detailsholder:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
 			end
 
 			return ExtraCards
@@ -7071,8 +7123,8 @@ function Window:CreateTab(TabSettings)
 	-- flight. Returns a table with helper methods (:Send, :Clear, etc).
 	function Window:CreateAiTab(opts)
 		opts = Kwargify({
-			Name = "AI Chat",
-			Icon = "smart_toy",
+			Name = "Solara Hub AI",
+			Icon = "bot",
 			ImageSource = "Material",
 			SystemPrompt = nil,         -- if set, replaces the default Solara-aware prompt
 			Knowledge = nil,            -- extra context block injected into the system prompt
@@ -7097,16 +7149,23 @@ function Window:CreateTab(TabSettings)
 		})
 
 		-- Re-activate the tab the user was looking at so the AI tab doesn't
-		-- steal focus on startup. Two-frame defer to let UIPageLayout settle.
-		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
-			local restore = Window._Tabs[previousActiveTab]
+		-- steal focus on startup. We schedule THREE restores at increasing
+		-- delays because UIPageLayout sometimes re-jumps to the freshly-
+		-- parented page asynchronously, and the host's "Hi! I'm Solara Hub
+		-- AI" greeting can also visually shift focus.
+		local function restorePreviousTab()
+			if not previousActiveTab then return end
+			local restore = Window._Tabs and Window._Tabs[previousActiveTab]
 			if restore and type(restore.Activate) == "function" then
-				task.defer(function()
-					task.wait()
-					pcall(restore.Activate)
-				end)
+				pcall(restore.Activate)
 			end
 		end
+		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
+			task.defer(restorePreviousTab)
+			task.delay(0.15, restorePreviousTab)
+			task.delay(0.6, restorePreviousTab)
+		end
+		Window._RestoreInitialTab = restorePreviousTab
 
 		local Page = hostTab.Page
 
@@ -7128,27 +7187,40 @@ function Window:CreateTab(TabSettings)
 		local function buildSystemPrompt()
 			-- NOTE: level-2 long string `[==[ ... ]==]` so the `[[SCRIPT_REQUEST: ...]]`
 			-- marker inside this prompt doesn't close the literal early.
-			local base = opts.SystemPrompt or [==[You are "Solara AI", the assistant living inside the Solara Hub Roblox script. Always answer in the language the user wrote in.
+			local base = opts.SystemPrompt or [==[You are "Solara Hub AI", the assistant living inside the Solara Hub Roblox script. Always answer in the language the user wrote in. If the user writes Russian, answer in Russian. If they write English, answer in English.
+
+CRITICAL ANTI-HALLUCINATION RULES (these override everything else):
+- NEVER invent UI elements, buttons, menus, keybinds, settings or features that aren't explicitly listed in the "Solara Hub features" section below. There is no "Share" button, no "Morgan's Park" place, no in-game store integration unless this prompt says so.
+- If you are not sure whether Solara Hub supports a specific game / feature / executor, SAY SO PLAINLY ("I'm not sure if Solara Hub has a dedicated module for that") and offer the script-request flow described below. Do not guess.
+- Never invent file paths, function names, asset IDs, or webhook URLs.
+- Never pretend you executed code, opened a window, or sent a message. The host UI handles all real actions and tells you about them.
 
 Formatting rules:
 - Use **bold**, *italics*, `inline code` and ~~strike~~ where helpful.
-- Use Markdown headers (#, ##, ###) for section titles.
+- Use Markdown headers (#, ##, ###) for section titles. Don't over-use them - max one ### per short reply.
 - Use bullet lists with "- " and numbered lists with "1. ".
-- For executable Roblox/Luau code put it inside fenced ```lua ... ``` blocks. NEVER paste big code without fences.
-- Keep answers concise (under 250 words) unless asked for more.
+- For executable Roblox/Luau code put it inside fenced ```lua ... ``` blocks. The host UI shows real Copy / Execute buttons under such blocks - mention them when relevant.
+- Keep answers concise (under 220 words) unless asked for more.
 - Be friendly and a bit playful, but stay on topic.
 
-About Solara Hub:
-- It is a free Roblox script hub by Samuraa1 that supports tons of games and executors.
-- Top tabs include: Home (dashboard, Discord, supported executors), Universal Scripts (ESP, Aimbot, Animations, Automization, Tools, Trolling, Performance, DEV Tools, Admin, Visual, Backdoor Scanners), and per-game tabs that auto-load.
-- Built-in features: SearchBar (Ctrl+F), Language switching (full UI translation), UI zoom (Ctrl+/-/0), resizing, AI Chat (you).
-- It works with executors like Solara, Xeno, Wave, Volt, Volcano, Velocity, Madium, Potassium, Seliware, Bunni, SirHurt, Drift, Swift, Synapse Z, Cosmic, Isaeva, Hydrogen, MacSploit, Opiumware, Delta, Codex, Cryptic, Arceus X, VegaX, Ronix, Fluxus.
+Solara Hub features (the ONLY things you may claim exist):
+- Maintainer: Samuraa1. Discord invite: discord.gg/DPCKQRJmdF.
+- Top-level tabs: Home (dashboard with player info, server stats, friends, Discord card, Changelogs card, Supported Games card), Universal Scripts, sometimes a per-game tab when the user is in a supported place, "Hub Settings And More" (full settings tab).
+- Inside Universal Scripts, sections are: Main Scripts, Aimbots + Silent Aim, ESP, Animations, Automization Scripts, Tools and Utilities, Trolling Scripts, Performance, DEV Tools, Admin Scripts, Visual Scripts, Backdoor Scanners.
+- Inside the settings tab there are sections for PC Executors, Mobile Executors, Settings, Search Bar (Ctrl+F by default, rebindable), Language (full UI translation through Google Translate), Zoom (Ctrl + / Ctrl - / Ctrl 0), Interface Theme (accent colour picker), Feedback, Performance, Credits.
+- Built-in window features: resizable from the bottom-right handle, draggable, minimise/close in the top right, mobile drag handle, key system support, notifications, AI Chat (this tab).
+- Supported executors: Solara, Xeno, Wave, Volt, Volcano, Velocity, Madium, Potassium, Seliware, Bunni, SirHurt, Drift, Swift, Synapse Z, Cosmic, Isaeva, Hydrogen, MacSploit, Opiumware, Delta, Codex, Cryptic, Arceus X, VegaX, Ronix, FluxusZ, Fluxus.
 
-Script requests:
-- If a user asks for a script that you don't think exists in Solara Hub, FIRST ask them politely if they want you to forward the request to the developers.
-- If they say "yes"/"forward it"/etc. on the NEXT message, append a single line to your response in EXACTLY this format (the UI parses it):
+Game support policy:
+- Solara Hub auto-loads a per-game module ONLY for the games the host script explicitly hooked up. You DO NOT have a list of every supported game inside this prompt - additional context may be provided below.
+- If a user asks "do you support <game>?" and the game is NOT in the supplemental context, answer: "I don't have a confirmed entry for that game in my knowledge base. Open the game and the hub will tell you - if a tab with the game's name appears in the sidebar, it's supported; otherwise you can use the Universal Scripts tab. Want me to forward a request to the developers?"
+- Never describe non-existent per-game tab contents. If you don't know the game's specific module, say so.
+
+Script-request flow:
+- If the user asks for a script that Solara Hub probably doesn't have, ask once: "Want me to forward this request to the developers?"
+- If on the NEXT message they confirm (yes/forward/send/да/отправь/etc.), append a single line to your reply in EXACTLY this format (the host UI parses it):
   [[SCRIPT_REQUEST: <one-sentence summary of what they want>]]
-- Never invent webhook URLs or pretend to send anything yourself. The host UI handles delivery.
+- Only emit ONE [[SCRIPT_REQUEST: ...]] line per conversation turn. Don't pretend you delivered it - the UI shows the user a "Send" button afterwards.
 ]==]
 			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
 				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
@@ -7169,7 +7241,7 @@ Script requests:
 		headerTitle.BackgroundTransparency = 1
 		headerTitle.Size = UDim2.new(1, -120, 1, 0)
 		headerTitle.Position = UDim2.new(0, 0, 0, 0)
-		headerTitle.Text = "Solara AI"
+		headerTitle.Text = "Solara Hub AI"
 		headerTitle.TextColor3 = Color3.fromRGB(245, 240, 255)
 		headerTitle.Font = Enum.Font.GothamBold
 		headerTitle.TextSize = 16
@@ -7920,7 +7992,7 @@ Script requests:
 
 		-- Friendly opening line so the tab doesn't feel empty.
 		task.defer(function()
-			appendMessage("assistant", "Hey! I'm **Solara AI**. Ask me anything about scripts, Solara Hub features, or just chat. I can output **fenced code blocks** with a *Copy* / *Execute* button.")
+			appendMessage("assistant", "Hey! I'm **Solara Hub AI**. Ask me anything about scripts, Solara Hub features, or just chat. I can output **fenced code blocks** with a *Copy* / *Execute* button below them.")
 		end)
 
 		Window._AiTab = AiTab
@@ -8750,7 +8822,19 @@ Script requests:
 		task.defer(function()
 			-- Deferred so it's added AFTER the user's CreateTab calls; this puts
 			-- the AI tab at the end of the nav list instead of the very top.
+			local savedTab = Window.CurrentTab
 			pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
+			-- Belt-and-braces: even if CreateAiTab's own restore loop failed
+			-- (e.g. user passed AiTab without a HomeTab), make sure we go back
+			-- to whatever was active before. We try a couple of times because
+			-- UIPageLayout settles asynchronously.
+			if savedTab and Window._Tabs and Window._Tabs[savedTab] then
+				local restore = Window._Tabs[savedTab].Activate
+				if type(restore) == "function" then
+					task.delay(0.25, function() pcall(restore) end)
+					task.delay(0.9, function() pcall(restore) end)
+				end
+			end
 		end)
 	end
 
@@ -8762,7 +8846,7 @@ Script requests:
 	-- they're cheap enough to wire to a colour-picker callback.
 	do
 		Window._Theme = {
-			Accent = Color3.fromRGB(120, 100, 220),
+			Accent = Color3.fromRGB(110, 102, 153),
 			Background = nil, -- nil = keep the original frame colour
 		}
 
@@ -8808,7 +8892,7 @@ Script requests:
 		Window.GetTheme = function() return Window._Theme end
 
 		Window.ResetTheme = function()
-			Window.SetThemeAccent(Color3.fromRGB(120, 100, 220))
+			Window.SetThemeAccent(Color3.fromRGB(110, 102, 153))
 		end
 	end
 
