@@ -2790,6 +2790,8 @@ function Luna:CreateWindow(WindowSettings)
 		_SearchIndex = {},
 		_Tabs = {}, -- name -> { Activate = function }
 		_TabRegistry = {}, -- name -> { Button, Page, Activate, Hidden }
+		_TabCreationOrder = {}, -- tab name -> creation sequence (for nav sorting)
+		_TabCreationCounter = 0,
 	}
 
 	Main.Title.Title.Text = WindowSettings.Name
@@ -3060,6 +3062,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		local HomeTabButton = Navigation.Tabs.Home
 		HomeTabButton.Visible = true
+		HomeTabButton.LayoutOrder = 1
 		if HomeTabSettings.Icon == 2 then
 			ApplyIcon(HomeTabButton.ImageLabel, GetIcon("dashboard", "Material"))
 		end
@@ -3397,26 +3400,68 @@ function Window:CreateHomeTab(HomeTabSettings)
 		return HomeTab
 	end
 	
-	function Window:PlaceTabAfter(tabName, afterTabName)
-		if not tabName or not afterTabName or not self._TabRegistry then return end
-		local target = self._TabRegistry[tabName]
-		local anchor = self._TabRegistry[afterTabName]
-		if not target or not anchor or not target.Button or not anchor.Button then return end
-		local newOrder = (anchor.Button.LayoutOrder or 0) + 1
-		for name, reg in pairs(self._TabRegistry) do
-			if name ~= tabName and reg.Button and reg.Button ~= target.Button then
-				local order = reg.Button.LayoutOrder or 0
-				if order >= newOrder then
-					reg.Button.LayoutOrder = order + 1
-					if reg.Page then
-						reg.Page.LayoutOrder = order + 1
-					end
+	-- Pin tabs at the top of the sidebar (Dashboard, AI, Script Searcher, then the rest).
+	function Window:ApplyNavTabOrder(priorityNames)
+		if type(priorityNames) ~= "table" then
+			priorityNames = {"Home", "Solara Hub AI", "Scripts"}
+		end
+
+		local pinned = {}
+		for _, name in ipairs(priorityNames) do
+			pinned[name] = true
+			if name == "Dashboard" or name == "Home" then
+				pinned.Dashboard = true
+				pinned.Home = true
+			end
+		end
+
+		local function setOrder(reg, order)
+			if reg and reg.Button then
+				reg.Button.LayoutOrder = order
+			end
+			if reg and reg.Page then
+				reg.Page.LayoutOrder = order
+			end
+		end
+
+		local order = 1
+		if self._HomeTabButton then
+			self._HomeTabButton.LayoutOrder = order
+			if Elements and Elements:FindFirstChild("Home") then
+				Elements.Home.LayoutOrder = order
+			end
+			order = order + 1
+		end
+
+		for _, name in ipairs(priorityNames) do
+			if name ~= "Home" and name ~= "Dashboard" then
+				setOrder(self._TabRegistry and self._TabRegistry[name], order)
+				if self._TabRegistry and self._TabRegistry[name] then
+					order = order + 1
 				end
 			end
 		end
-		target.Button.LayoutOrder = newOrder
-		if target.Page then
-			target.Page.LayoutOrder = newOrder
+
+		local rest = {}
+		for name, reg in pairs(self._TabRegistry or {}) do
+			if not pinned[name] and reg.Button then
+				table.insert(rest, {
+					name = name,
+					reg = reg,
+					created = (self._TabCreationOrder and self._TabCreationOrder[name]) or 9999,
+				})
+			end
+		end
+		table.sort(rest, function(a, b)
+			if a.created ~= b.created then
+				return a.created < b.created
+			end
+			return a.name < b.name
+		end)
+
+		for _, item in ipairs(rest) do
+			setOrder(item.reg, order)
+			order = order + 1
 		end
 	end
 
@@ -3494,6 +3539,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		-- Register in search index for SearchBar (used to jump back to a tab)
 		Window._Tabs[TabSettings.Name] = { Activate = function() Tab:Activate() end, Page = TabPage }
+		Window._TabCreationCounter = (Window._TabCreationCounter or 0) + 1
+		Window._TabCreationOrder[TabSettings.Name] = Window._TabCreationCounter
+
 		Window._TabRegistry[TabSettings.Name] = {
 			Button = TabButton,
 			Page = TabPage,
@@ -7476,7 +7524,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Name = "Solara Hub AI",
 			Icon = "bot",
 			ImageSource = "Material",
-			PlaceAfter = "Universal Scripts",
 			SystemPrompt = nil,         -- if set, replaces the default Solara-aware prompt
 			Knowledge = nil,            -- extra context block injected into the system prompt
 			Model = "openai",
@@ -8368,21 +8415,16 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			appendMessage("assistant", "Hey! I'm **Solara Hub AI**. I can help with **Solara Hub**, write/fix **Luau scripts**, explain **executor APIs**, and answer Roblox questions. Paste code or describe what you need — I'll use ```lua blocks with *Copy* / *Execute* buttons.")
 		end)
 
-		if opts.PlaceAfter then
-			self:PlaceTabAfter(opts.Name, opts.PlaceAfter)
-		end
-
 		Window._AiTab = AiTab
 		return AiTab
 	end
 
 	function Window:CreateScriptSearcherTab(opts)
 		opts = Kwargify({
-			Name = "Script Searcher",
+			Name = "Scripts",
 			Icon = "search",
 			ImageSource = "Lucide",
 			ShowTitle = false,
-			PlaceAfter = nil,
 		}, opts or {})
 
 		local hostTab = self:CreateTab({
@@ -8827,14 +8869,6 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 
 		setStatus("Ready — use Search or press Enter in Query.")
-
-		local placeAfter = opts.PlaceAfter
-		if not placeAfter and WindowSettings.AiTab and WindowSettings.AiSettings then
-			placeAfter = WindowSettings.AiSettings.Name or "Solara Hub AI"
-		end
-		if placeAfter then
-			self:PlaceTabAfter(opts.Name, placeAfter)
-		end
 
 		Window._ScriptSearcherTab = hostTab
 		return hostTab
@@ -9656,12 +9690,21 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 	if WindowSettings.AiTab or WindowSettings.ScriptSearcherTab then
 		task.defer(function()
 			local savedTab = Window.CurrentTab
+			local aiName = (WindowSettings.AiSettings and WindowSettings.AiSettings.Name) or "Solara Hub AI"
+			local ssName = (WindowSettings.ScriptSearcherSettings and WindowSettings.ScriptSearcherSettings.Name) or "Scripts"
 			if WindowSettings.AiTab then
 				pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
 			end
 			if WindowSettings.ScriptSearcherTab then
 				pcall(function() Window:CreateScriptSearcherTab(WindowSettings.ScriptSearcherSettings) end)
 			end
+			pcall(function()
+				local navOrder = WindowSettings.NavTabOrder
+				if type(navOrder) ~= "table" then
+					navOrder = {"Home", aiName, ssName}
+				end
+				Window:ApplyNavTabOrder(navOrder)
+			end)
 			if savedTab and Window._Tabs and Window._Tabs[savedTab] then
 				local restore = Window._Tabs[savedTab].Activate
 				if type(restore) == "function" then
