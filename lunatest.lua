@@ -9837,19 +9837,38 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 
 		Window.GetTabNames = function()
-			local names = {"Dashboard"}
-			local seen = {Dashboard = true}
-			for name in pairs(Window._TabRegistry or {}) do
-				if name ~= "Home" and not seen[name] then
-					seen[name] = true
-					table.insert(names, name)
+			local entries = {}
+			if Window._HomeTabButton then
+				table.insert(entries, {
+					name = "Dashboard",
+					order = Window._HomeTabButton.LayoutOrder or 1,
+				})
+			end
+			for name, reg in pairs(Window._TabRegistry or {}) do
+				if reg.Button then
+					table.insert(entries, {
+						name = name,
+						order = reg.Button.LayoutOrder or (Window._TabCreationOrder and Window._TabCreationOrder[name]) or 9999,
+					})
 				end
 			end
-			table.sort(names, function(a, b)
-				if a == "Dashboard" then return true end
-				if b == "Dashboard" then return false end
-				return a < b
+			table.sort(entries, function(a, b)
+				if a.order ~= b.order then
+					return a.order < b.order
+				end
+				return a.name < b.name
 			end)
+			local names = {}
+			local seen = {}
+			for _, entry in ipairs(entries) do
+				if not seen[entry.name] then
+					seen[entry.name] = true
+					table.insert(names, entry.name)
+				end
+			end
+			if #names == 0 then
+				names = {"Dashboard"}
+			end
 			return names
 		end
 
