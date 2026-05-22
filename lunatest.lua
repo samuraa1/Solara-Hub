@@ -9904,6 +9904,241 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 	end
 
+	-- Full-screen changelog modal (glass style, scrollable body).
+	function Window:ShowChangelogDialog(opts)
+		if Window._ChangelogLayer and Window._ChangelogLayer.Parent then return end
+		opts = Kwargify({
+			Title = "Solara Hub — Update",
+			Version = "V4.950",
+			Subtitle = "Major UI overhaul",
+			Content = "",
+			DiscordInvite = "DPCKQRJmdF",
+			OnClose = nil,
+		}, opts or {})
+
+		local layer = Instance.new("Frame")
+		layer.Name = "ChangelogLayer"
+		layer.Size = UDim2.fromScale(1, 1)
+		layer.BackgroundTransparency = 1
+		layer.BorderSizePixel = 0
+		layer.ZIndex = 6000
+		layer.Parent = LunaUI
+		Window._ChangelogLayer = layer
+
+		local backdrop = Instance.new("TextButton")
+		backdrop.AutoButtonColor = false
+		backdrop.Text = ""
+		backdrop.Size = UDim2.fromScale(1, 1)
+		backdrop.BackgroundColor3 = Color3.fromRGB(6, 5, 12)
+		backdrop.BackgroundTransparency = 1
+		backdrop.BorderSizePixel = 0
+		backdrop.ZIndex = 6000
+		backdrop.Parent = layer
+		local backdropGrad = Instance.new("UIGradient")
+		backdropGrad.Rotation = 90
+		backdropGrad.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.08),
+			NumberSequenceKeypoint.new(0.5, 0),
+			NumberSequenceKeypoint.new(1, 0.12),
+		})
+		backdropGrad.Parent = backdrop
+
+		local modal = Instance.new("Frame")
+		modal.AnchorPoint = Vector2.new(0.5, 0.5)
+		modal.BackgroundColor3 = Color3.fromRGB(24, 22, 34)
+		modal.BackgroundTransparency = 0.05
+		modal.BorderSizePixel = 0
+		modal.ZIndex = 6010
+		modal.Parent = layer
+
+		local function reposition()
+			local pos = Main.AbsolutePosition
+			local sz = Main.AbsoluteSize
+			modal.Position = UDim2.fromOffset(pos.X + sz.X * 0.5, pos.Y + sz.Y * 0.5)
+			modal.Size = UDim2.fromOffset(math.min(sz.X * 0.82, 620), math.min(sz.Y * 0.84, 520))
+		end
+		reposition()
+		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
+
+		local modalGrad = Instance.new("UIGradient")
+		modalGrad.Rotation = 135
+		modalGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(88, 72, 140)),
+			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(36, 32, 52)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(18, 16, 28)),
+		})
+		modalGrad.Parent = modal
+		local modalCorner = Instance.new("UICorner")
+		modalCorner.CornerRadius = UDim.new(0, 16)
+		modalCorner.Parent = modal
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromRGB(150, 130, 220)
+		stroke.Thickness = 1.4
+		stroke.Transparency = 0.35
+		stroke.Parent = modal
+
+		local pad = Instance.new("UIPadding")
+		pad.Parent = modal
+		pad.PaddingTop = UDim.new(0, 18)
+		pad.PaddingBottom = UDim.new(0, 16)
+		pad.PaddingLeft = UDim.new(0, 20)
+		pad.PaddingRight = UDim.new(0, 20)
+
+		local header = Instance.new("Frame")
+		header.BackgroundTransparency = 1
+		header.Size = UDim2.new(1, 0, 0, 72)
+		header.Parent = modal
+
+		local versionPill = Instance.new("TextLabel")
+		versionPill.Parent = header
+		versionPill.BackgroundColor3 = Color3.fromRGB(110, 90, 200)
+		versionPill.BackgroundTransparency = 0.15
+		versionPill.Size = UDim2.fromOffset(86, 26)
+		versionPill.Position = UDim2.new(0, 0, 0, 0)
+		versionPill.Font = Enum.Font.GothamBold
+		versionPill.TextSize = 13
+		versionPill.TextColor3 = Color3.fromRGB(245, 240, 255)
+		versionPill.Text = tostring(opts.Version)
+		local pillCorner = Instance.new("UICorner")
+		pillCorner.CornerRadius = UDim.new(1, 0)
+		pillCorner.Parent = versionPill
+
+		local titleLbl = Instance.new("TextLabel")
+		titleLbl.Parent = header
+		titleLbl.BackgroundTransparency = 1
+		titleLbl.Position = UDim2.new(0, 0, 0, 32)
+		titleLbl.Size = UDim2.new(1, -40, 0, 24)
+		titleLbl.Font = Enum.Font.GothamBold
+		titleLbl.TextSize = 20
+		titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+		titleLbl.TextColor3 = Color3.fromRGB(250, 248, 255)
+		titleLbl.Text = opts.Title
+
+		local subLbl = Instance.new("TextLabel")
+		subLbl.Parent = header
+		subLbl.BackgroundTransparency = 1
+		subLbl.Position = UDim2.new(0, 0, 0, 56)
+		subLbl.Size = UDim2.new(1, 0, 0, 16)
+		subLbl.Font = Enum.Font.Gotham
+		subLbl.TextSize = 13
+		subLbl.TextXAlignment = Enum.TextXAlignment.Left
+		subLbl.TextColor3 = Color3.fromRGB(180, 175, 200)
+		subLbl.TextTransparency = 0.1
+		subLbl.Text = opts.Subtitle
+
+		local closeBtn = Instance.new("TextButton")
+		closeBtn.Parent = header
+		closeBtn.AnchorPoint = Vector2.new(1, 0)
+		closeBtn.Position = UDim2.new(1, 0, 0, 0)
+		closeBtn.Size = UDim2.fromOffset(32, 32)
+		closeBtn.BackgroundColor3 = Color3.fromRGB(45, 40, 60)
+		closeBtn.BackgroundTransparency = 0.2
+		closeBtn.Text = "✕"
+		closeBtn.Font = Enum.Font.GothamBold
+		closeBtn.TextSize = 16
+		closeBtn.TextColor3 = Color3.fromRGB(230, 225, 245)
+		closeBtn.AutoButtonColor = false
+		local closeCorner = Instance.new("UICorner")
+		closeCorner.CornerRadius = UDim.new(1, 0)
+		closeCorner.Parent = closeBtn
+
+		local body = Instance.new("ScrollingFrame")
+		body.Parent = modal
+		body.Position = UDim2.new(0, 0, 0, 82)
+		body.Size = UDim2.new(1, 0, 1, -140)
+		body.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+		body.BackgroundTransparency = 0.35
+		body.BorderSizePixel = 0
+		body.ScrollBarThickness = 4
+		body.ScrollBarImageColor3 = Color3.fromRGB(130, 115, 190)
+		body.CanvasSize = UDim2.new(0, 0, 0, 0)
+		body.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		local bodyCorner = Instance.new("UICorner")
+		bodyCorner.CornerRadius = UDim.new(0, 10)
+		bodyCorner.Parent = body
+		local bodyPad = Instance.new("UIPadding")
+		bodyPad.Parent = body
+		bodyPad.PaddingTop = UDim.new(0, 12)
+		bodyPad.PaddingBottom = UDim.new(0, 12)
+		bodyPad.PaddingLeft = UDim.new(0, 14)
+		bodyPad.PaddingRight = UDim.new(0, 14)
+
+		local bodyText = Instance.new("TextLabel")
+		bodyText.Parent = body
+		bodyText.BackgroundTransparency = 1
+		bodyText.Size = UDim2.new(1, 0, 0, 0)
+		bodyText.AutomaticSize = Enum.AutomaticSize.Y
+		bodyText.Font = Enum.Font.GothamMedium
+		bodyText.TextSize = 14
+		bodyText.TextXAlignment = Enum.TextXAlignment.Left
+		bodyText.TextYAlignment = Enum.TextYAlignment.Top
+		bodyText.TextWrapped = true
+		bodyText.TextColor3 = Color3.fromRGB(225, 222, 238)
+		bodyText.TextTransparency = 0.05
+		bodyText.LineHeight = 1.15
+		bodyText.RichText = true
+		bodyText.Text = opts.Content
+
+		local footer = Instance.new("Frame")
+		footer.Parent = modal
+		footer.AnchorPoint = Vector2.new(0, 1)
+		footer.Position = UDim2.new(0, 0, 1, 0)
+		footer.Size = UDim2.new(1, 0, 0, 44)
+		footer.BackgroundTransparency = 1
+		local footLayout = Instance.new("UIListLayout")
+		footLayout.Parent = footer
+		footLayout.FillDirection = Enum.FillDirection.Horizontal
+		footLayout.Padding = UDim.new(0, 10)
+		footLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+		footLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+		local function makeFooterBtn(text, accent, callback)
+			local b = Instance.new("TextButton")
+			b.Size = UDim2.new(0, 0, 0, 38)
+			b.AutomaticSize = Enum.AutomaticSize.X
+			b.BackgroundColor3 = accent and Color3.fromRGB(110, 95, 185) or Color3.fromRGB(42, 38, 58)
+			b.BackgroundTransparency = accent and 0.1 or 0.25
+			b.Font = Enum.Font.GothamSemibold
+			b.TextSize = 13
+			b.TextColor3 = Color3.new(1, 1, 1)
+			b.Text = "  " .. text .. "  "
+			b.AutoButtonColor = false
+			b.Parent = footer
+			local bc = Instance.new("UICorner")
+			bc.CornerRadius = UDim.new(0, 10)
+			bc.Parent = b
+			b.MouseButton1Click:Connect(callback)
+			return b
+		end
+
+		local OPEN = TweenInfo.new(0.45, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+		local CLOSE = TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
+
+		local function closeDialog()
+			TweenService:Create(backdrop, CLOSE, {BackgroundTransparency = 1}):Play()
+			TweenService:Create(modal, CLOSE, {BackgroundTransparency = 1}):Play()
+			task.delay(0.38, function()
+				if layer.Parent then layer:Destroy() end
+				Window._ChangelogLayer = nil
+				if opts.OnClose then pcall(opts.OnClose) end
+			end)
+		end
+
+		makeFooterBtn("Join Discord", false, function()
+			if setclipboard then pcall(setclipboard, "https://discord.gg/" .. tostring(opts.DiscordInvite)) end
+			Luna:Notification({Title = "Discord", Content = "Invite copied to clipboard.", Icon = "link", ImageSource = "Material", Duration = 4})
+		end)
+		makeFooterBtn("Awesome!", true, closeDialog)
+		closeBtn.MouseButton1Click:Connect(closeDialog)
+		backdrop.MouseButton1Click:Connect(closeDialog)
+
+		backdrop.BackgroundTransparency = 1
+		modal.BackgroundTransparency = 1
+		TweenService:Create(backdrop, OPEN, {BackgroundTransparency = 0.25}):Play()
+		TweenService:Create(modal, OPEN, {BackgroundTransparency = 0.05}):Play()
+	end
+
 	return Window
 end
 
