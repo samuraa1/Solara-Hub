@@ -2750,6 +2750,9 @@ function Luna:CreateWindow(WindowSettings)
 		ScriptSearcherTab = false,
 		ScriptSearcherSettings = nil,
 
+		-- Sidebar tab to open when the hub loads ("Dashboard", "Home", or any tab name).
+		StartupTab = "Dashboard",
+
 		-- New: enables Ctrl + / Ctrl - in-window zoom. Disable if the host
 		-- already remaps those shortcuts.
 		ZoomEnabled = true,
@@ -3465,6 +3468,35 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end
 	end
 
+	function Window:SetStartupTab(tabName)
+		if tabName == nil or tabName == "" then
+			WindowSettings.StartupTab = "Dashboard"
+		else
+			WindowSettings.StartupTab = tostring(tabName)
+		end
+	end
+
+	function Window:GetStartupTab()
+		return WindowSettings.StartupTab or "Dashboard"
+	end
+
+	function Window:ActivateStartupTab(tabName)
+		tabName = tabName or WindowSettings.StartupTab or "Dashboard"
+		if tabName == "Dashboard" then
+			tabName = "Home"
+		end
+		local entry = self._Tabs and self._Tabs[tabName]
+		if entry and type(entry.Activate) == "function" then
+			pcall(entry.Activate)
+			return true
+		end
+		if self._Tabs and self._Tabs["Home"] and type(self._Tabs["Home"].Activate) == "function" then
+			pcall(self._Tabs["Home"].Activate)
+			return true
+		end
+		return false
+	end
+
 	function Window:CreateTab(TabSettings)
 
 		local Tab = {}
@@ -3507,7 +3539,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			TabPage.UIPadding.PaddingTop = UDim.new(0,10)
 		end
 
-		TabPage.LayoutOrder = TabSettings.NavLayoutOrder or (#Elements:GetChildren() - 3)
+		TabPage.LayoutOrder = TabSettings.NavLayoutOrder or Window._TabCreationCounter
 
 		for _, TemplateElement in ipairs(TabPage:GetChildren()) do
 			if TemplateElement.ClassName == "Frame" or TemplateElement.ClassName == "TextLabel" and TemplateElement.Name ~= "Title" then
@@ -7534,36 +7566,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 			AutoSave = true,
 		}, opts or {})
 
-		-- Remember which tab is active before we add the AI tab. UIPageLayout has
-		-- a habit of focusing the freshly parented page when its LayoutOrder is
-		-- the highest, which makes the script feel like it boots on the chat tab.
-		local previousActiveTab = Window.CurrentTab
-
 		local hostTab = self:CreateTab({
 			Name = opts.Name,
 			Icon = opts.Icon,
 			ImageSource = opts.ImageSource,
 			ShowTitle = false, -- our own header looks cleaner
 		})
-
-		-- Re-activate the tab the user was looking at so the AI tab doesn't
-		-- steal focus on startup. We schedule THREE restores at increasing
-		-- delays because UIPageLayout sometimes re-jumps to the freshly-
-		-- parented page asynchronously, and the host's "Hi! I'm Solara Hub
-		-- AI" greeting can also visually shift focus.
-		local function restorePreviousTab()
-			if not previousActiveTab then return end
-			local restore = Window._Tabs and Window._Tabs[previousActiveTab]
-			if restore and type(restore.Activate) == "function" then
-				pcall(restore.Activate)
-			end
-		end
-		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
-			task.defer(restorePreviousTab)
-			task.delay(0.15, restorePreviousTab)
-			task.delay(0.6, restorePreviousTab)
-		end
-		Window._RestoreInitialTab = restorePreviousTab
 
 		local Page = hostTab.Page
 
@@ -9685,19 +9693,18 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 	end
 
 	-- ============================================================
-	-- Auto-create optional tabs (AI, Script Searcher, Music Player)
+	-- Auto-create optional tabs + startup tab focus (after host script finishes)
 	-- ============================================================
-	if WindowSettings.AiTab or WindowSettings.ScriptSearcherTab then
-		task.defer(function()
-			local savedTab = Window.CurrentTab
-			local aiName = (WindowSettings.AiSettings and WindowSettings.AiSettings.Name) or "Solara Hub AI"
-			local ssName = (WindowSettings.ScriptSearcherSettings and WindowSettings.ScriptSearcherSettings.Name) or "Scripts"
-			if WindowSettings.AiTab then
-				pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
-			end
-			if WindowSettings.ScriptSearcherTab then
-				pcall(function() Window:CreateScriptSearcherTab(WindowSettings.ScriptSearcherSettings) end)
-			end
+	task.defer(function()
+		local aiName = (WindowSettings.AiSettings and WindowSettings.AiSettings.Name) or "Solara Hub AI"
+		local ssName = (WindowSettings.ScriptSearcherSettings and WindowSettings.ScriptSearcherSettings.Name) or "Scripts"
+		if WindowSettings.AiTab then
+			pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
+		end
+		if WindowSettings.ScriptSearcherTab then
+			pcall(function() Window:CreateScriptSearcherTab(WindowSettings.ScriptSearcherSettings) end)
+		end
+		if WindowSettings.AiTab or WindowSettings.ScriptSearcherTab then
 			pcall(function()
 				local navOrder = WindowSettings.NavTabOrder
 				if type(navOrder) ~= "table" then
@@ -9705,15 +9712,14 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				end
 				Window:ApplyNavTabOrder(navOrder)
 			end)
-			if savedTab and Window._Tabs and Window._Tabs[savedTab] then
-				local restore = Window._Tabs[savedTab].Activate
-				if type(restore) == "function" then
-					task.delay(0.25, function() pcall(restore) end)
-					task.delay(0.9, function() pcall(restore) end)
-				end
-			end
-		end)
-	end
+		end
+		local function focusStartup()
+			Window:ActivateStartupTab(WindowSettings.StartupTab)
+		end
+		pcall(focusStartup)
+		task.delay(0.2, function() pcall(focusStartup) end)
+		task.delay(0.65, function() pcall(focusStartup) end)
+	end)
 
 	-- ============================================================
 	-- Theme API (recolour the whole UI from the host script)
