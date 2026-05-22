@@ -2187,7 +2187,8 @@ local function getDragBarYOffset(mainFrame)
 	return math.floor(mainFrame.AbsoluteSize.Y * 0.5) + 14
 end
 
--- Rescue handle tracks Main.Position (not AbsolutePosition) so UIScale/Zoom stay aligned.
+-- Rescue handle tracks Main.Position. Only move the dragBar frame — never reposition
+-- dragInteract with parent's UDim2 (that breaks hit-testing and made the handle dead).
 local function syncDragBarPosition(mainFrame)
 	if not dragBar or not mainFrame then return end
 	local mp = mainFrame.Position
@@ -2196,10 +2197,6 @@ local function syncDragBarPosition(mainFrame)
 	dragBar.Position = UDim2.new(mp.X.Scale, mp.X.Offset, mp.Y.Scale, mp.Y.Offset + yOff)
 	if dragBar.ZIndex < 100 then
 		dragBar.ZIndex = 100
-	end
-	if dragInteract then
-		dragInteract.AnchorPoint = Vector2.new(0.5, 0.5)
-		dragInteract.Position = dragBar.Position
 	end
 end
 local Elements = Main.Elements.Interactions
@@ -2297,88 +2294,82 @@ local NotificationsPaddingOffset = (NotificationsListLayout and NotificationsLis
  	end
  end ]]
 
-local function Draggable(Bar, Window, enableTaptic, tapticOffset)
+-- Shared window drag (top bar + rescue handle). Rayfield-style: RenderStepped while
+-- LMB held, global InputEnded so release always stops the drag (no cursor stick).
+local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 	pcall(function()
-		-- Rayfield-style rescue handle: RenderStepped + mouse location keeps dragBar
-		-- outside the window and aligned when UIScale / resize changes.
-		if enableTaptic and dragBar then
-			local dragging = false
-			local relative = nil
-			local inset = Vector2.zero
-			local screenGui = Window:FindFirstAncestorWhichIsA("ScreenGui")
-			if screenGui and screenGui.IgnoreGuiInset then
-				inset = GuiService:GetGuiInset()
-			end
+		if not Bar or not Window then return end
 
-			local function connectFunctions()
-				dragBar.MouseEnter:Connect(function()
-					if not dragging then
-						TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.5, Size = UDim2.new(0, 120, 0, 4)}):Play()
-					end
-				end)
-				dragBar.MouseLeave:Connect(function()
-					if not dragging then
-						TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.7, Size = UDim2.new(0, 100, 0, 4)}):Play()
-					end
-				end)
-			end
-			connectFunctions()
-
-			Bar.InputBegan:Connect(function(input, processed)
-				if processed then return end
-				local t = input.UserInputType.Name
-				if t == "MouseButton1" or t == "Touch" then
-					dragging = true
-					relative = Window.AbsolutePosition + Window.AbsoluteSize * Window.AnchorPoint - UserInputService:GetMouseLocation()
-					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
-				end
-			end)
-
-			UserInputService.InputEnded:Connect(function(input)
-				if not dragging then return end
-				local t = input.UserInputType.Name
-				if t == "MouseButton1" or t == "Touch" then
-					dragging = false
-					connectFunctions()
-					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 100, 0, 4), BackgroundTransparency = 0.7}):Play()
-					syncDragBarPosition(Window)
-				end
-			end)
-
-			RunService.RenderStepped:Connect(function()
-				if not dragging then return end
-				local position = UserInputService:GetMouseLocation() + relative + inset
-				local yOff = getDragBarYOffset(Window)
-				Window.Position = UDim2.fromOffset(position.X, position.Y)
-				dragBar.Position = UDim2.fromOffset(position.X, position.Y + yOff)
-				if dragInteract then
-					dragInteract.Position = dragBar.Position
-				end
-			end)
-			return
+		local dragging = false
+		local relative = nil
+		local inset = Vector2.zero
+		local screenGui = Window:FindFirstAncestorWhichIsA("ScreenGui")
+		if screenGui and screenGui.IgnoreGuiInset then
+			inset = GuiService:GetGuiInset()
 		end
 
-		local Dragging, DragInput, MousePos, FramePos
+		local function isPointerDown(input)
+			local n = input.UserInputType.Name
+			return n == "MouseButton1" or n == "Touch"
+		end
 
-		Bar.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-				Dragging = true
-				MousePos = Input.Position
-				FramePos = Window.Position
+		local function beginDrag()
+			dragging = true
+			relative = Window.AbsolutePosition + Window.AbsoluteSize * Window.AnchorPoint - UserInputService:GetMouseLocation()
+			if enableTaptic and dragBarCosmetic then
+				TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
+			end
+		end
+
+		local function endDrag()
+			if not dragging then return end
+			dragging = false
+			if enableTaptic and dragBarCosmetic then
+				TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 100, 0, 4), BackgroundTransparency = 0.7}):Play()
+				syncDragBarPosition(Window)
+			end
+		end
+
+		if enableTaptic and dragBar then
+			dragBar.MouseEnter:Connect(function()
+				if not dragging and dragBarCosmetic then
+					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.5, Size = UDim2.new(0, 120, 0, 4)}):Play()
+				end
+			end)
+			dragBar.MouseLeave:Connect(function()
+				if not dragging and dragBarCosmetic then
+					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.7, Size = UDim2.new(0, 100, 0, 4)}):Play()
+				end
+			end)
+		end
+
+		local function hookDragTarget(gui)
+			if not gui then return end
+			gui.InputBegan:Connect(function(input)
+				if not isPointerDown(input) then return end
+				beginDrag()
+			end)
+		end
+
+		hookDragTarget(Bar)
+		if enableTaptic and dragBar and Bar ~= dragBar then
+			hookDragTarget(dragBar)
+		end
+
+		UserInputService.InputEnded:Connect(function(input)
+			if not dragging then return end
+			if isPointerDown(input) then
+				endDrag()
 			end
 		end)
 
-		Bar.InputChanged:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
-				DragInput = Input
-			end
-		end)
-
-		UserInputService.InputChanged:Connect(function(Input)
-			if Input == DragInput and Dragging then
-				local Delta = Input.Position - MousePos
-				local newMainPosition = UDim2.new(FramePos.X.Scale, FramePos.X.Offset + Delta.X, FramePos.Y.Scale, FramePos.Y.Offset + Delta.Y)
-				TweenService:Create(Window, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Position = newMainPosition}):Play()
+		RunService.RenderStepped:Connect(function()
+			if not dragging then return end
+			local position = UserInputService:GetMouseLocation() + relative + inset
+			Window.Position = UDim2.fromOffset(position.X, position.Y)
+			if enableTaptic and dragBar then
+				local yOff = getDragBarYOffset(Window)
+				dragBar.Position = UDim2.fromOffset(position.X, position.Y + yOff)
 			end
 		end)
 	end)
@@ -8239,6 +8230,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 	end)
 
 	if dragBar then
+		dragBar.Active = true
+		if dragInteract then
+			dragInteract.Active = true
+		end
 		task.defer(function()
 			task.wait(0.1)
 			if dragBar.Visible then syncDragBarPosition(Main) end
