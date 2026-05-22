@@ -1995,6 +1995,27 @@ local function _shouldTranslateValue(text)
 end
 
 -- Writes UI text and stamps the canonical English original for the translator.
+local function LunaFindTitle(widget)
+	if not widget then return nil end
+	return widget:FindFirstChild("Title") or widget:FindFirstChild("TextLabel")
+end
+
+local function LunaFindBodyText(widget)
+	if not widget then return nil end
+	return widget:FindFirstChild("Text") or widget:FindFirstChild("InputBox")
+		or widget:FindFirstChildWhichIsA("TextBox")
+end
+
+local function LunaFindStroke(widget)
+	if not widget then return nil end
+	return widget:FindFirstChildOfClass("UIStroke")
+end
+
+local function LunaTweenStroke(widget, props)
+	local stroke = LunaFindStroke(widget)
+	if stroke then tween(stroke, props) end
+end
+
 local function LunaSetText(obj, text)
     if not obj then return end
     text = tostring(text or "")
@@ -5191,17 +5212,27 @@ function Window:CreateTab(TabSettings)
 			Button.Visible = true
 			Button.Parent = TabPage
 
-			Button.UIStroke.Transparency = 1
-			Button.Title.TextTransparency = 1
+			local btnStroke = LunaFindStroke(Button)
+			local btnTitle = LunaFindTitle(Button)
+			if btnStroke then btnStroke.Transparency = 1 end
+			if btnTitle then btnTitle.TextTransparency = 1 end
 			if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-				Button.Desc.TextTransparency = 1
+				local btnDesc = Button:FindFirstChild("Desc")
+				if btnDesc then btnDesc.TextTransparency = 1 end
 			end
 
 			TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-			TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Button.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+			if btnStroke then
+				TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+			end
+			if btnTitle then
+				TweenService:Create(btnTitle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+			end
 			if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-				TweenService:Create(Button.Desc, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+				local btnDescTween = Button:FindFirstChild("Desc")
+				if btnDescTween then
+					TweenService:Create(btnDescTween, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+				end
 			end
 
 			Button.Interact["MouseButton1Click"]:Connect(function()
@@ -5210,33 +5241,37 @@ function Window:CreateTab(TabSettings)
 				if not Success then
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
-					TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
-					Button.Title.Text = "Callback Error"
+					if btnStroke then
+						TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
+					end
+					if btnTitle then btnTitle.Text = "Callback Error" end
 					LunaCallbackErrorNotification(Response, ButtonSettings, BindSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
-					Button.Title.Text = ButtonSettings.Name
+					if btnTitle then LunaSetText(btnTitle, ButtonSettings.Name) end
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
-					TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+					if btnStroke then
+						TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+					end
 				else
-					tween(Button.UIStroke, {Color = Color3.fromRGB(136, 131, 163)})
+					LunaTweenStroke(Button, {Color = Color3.fromRGB(136, 131, 163)})
 					wait(0.2)
 					if ButtonV.Hover then
-						tween(Button.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+						LunaTweenStroke(Button, {Color = Color3.fromRGB(87, 84, 104)})
 					else
-						tween(Button.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+						LunaTweenStroke(Button, {Color = Color3.fromRGB(64,61,76)})
 					end
 				end
 			end)
 
 			Button["MouseEnter"]:Connect(function()
 				ButtonV.Hover = true
-				tween(Button.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				LunaTweenStroke(Button, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
 
 			Button["MouseLeave"]:Connect(function()
 				ButtonV.Hover = false
-				tween(Button.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				LunaTweenStroke(Button, {Color = Color3.fromRGB(64,61,76)})
 			end)
 
 			function ButtonV:Set(ButtonSettings2)
@@ -5328,25 +5363,35 @@ function Window:CreateTab(TabSettings)
 			}
 
 			local Paragraph = Elements.Template.Paragraph:Clone()
-			Paragraph.Title.Text = ParagraphSettings.Title
-			Paragraph.Text.Text = ParagraphSettings.Text
+			local ParaTitle = LunaFindTitle(Paragraph)
+			local ParaText = LunaFindBodyText(Paragraph)
+			if ParaTitle then LunaSetText(ParaTitle, ParagraphSettings.Title) end
+			if ParaText then LunaSetText(ParaText, ParagraphSettings.Text) end
 			Paragraph.Visible = true
 			Paragraph.Parent = TabPage
 
 			Paragraph.BackgroundTransparency = 1
-			Paragraph.UIStroke.Transparency = 1
-			Paragraph.Title.TextTransparency = 1
-			Paragraph.Text.TextTransparency = 1
+			local paraStroke = LunaFindStroke(Paragraph)
+			if paraStroke then paraStroke.Transparency = 1 end
+			if ParaTitle then ParaTitle.TextTransparency = 1 end
+			if ParaText then ParaText.TextTransparency = 1 end
 
 			TweenService:Create(Paragraph, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
-			TweenService:Create(Paragraph.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Paragraph.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-			TweenService:Create(Paragraph.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+			if paraStroke then
+				TweenService:Create(paraStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+			end
+			if ParaTitle then
+				TweenService:Create(ParaTitle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+			end
+			if ParaText then
+				TweenService:Create(ParaText, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+			end
 
 			function ParagraphV:Update()
-				Paragraph.Text.Size = UDim2.new(Paragraph.Text.Size.X.Scale, Paragraph.Text.Size.X.Offset, 0, math.huge)
-				Paragraph.Text.Size = UDim2.new(Paragraph.Text.Size.X.Scale, Paragraph.Text.Size.X.Offset, 0, Paragraph.Text.TextBounds.Y)
-				tween(Paragraph, {Size = UDim2.new(Paragraph.Size.X.Scale, Paragraph.Size.X.Offset, 0, Paragraph.Text.TextBounds.Y + 40)})
+				if not ParaText then return end
+				ParaText.Size = UDim2.new(ParaText.Size.X.Scale, ParaText.Size.X.Offset, 0, math.huge)
+				ParaText.Size = UDim2.new(ParaText.Size.X.Scale, ParaText.Size.X.Offset, 0, ParaText.TextBounds.Y)
+				tween(Paragraph, {Size = UDim2.new(Paragraph.Size.X.Scale, Paragraph.Size.X.Offset, 0, ParaText.TextBounds.Y + 40)})
 			end
 
 			function ParagraphV:Set(NewParagraphSettings)
@@ -5358,8 +5403,12 @@ function Window:CreateTab(TabSettings)
 
 				ParagraphV.Settings = NewParagraphSettings
 
-				Paragraph.Title.Text = NewParagraphSettings.Title
-				Paragraph.Text.Text = NewParagraphSettings.Text
+				if ParaTitle and NewParagraphSettings.Title then
+					LunaSetText(ParaTitle, NewParagraphSettings.Title)
+				end
+				if ParaText and NewParagraphSettings.Text ~= nil then
+					LunaSetText(ParaText, NewParagraphSettings.Text)
+				end
 
 				ParagraphV:Update()
 
@@ -8303,37 +8352,15 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			ShowTitle = false,
 		}, opts or {})
 
-		local previousActiveTab = Window.CurrentTab
 		local hostTab = self:CreateTab({
 			Name = opts.Name,
 			Icon = opts.Icon,
 			ImageSource = opts.ImageSource,
 			ShowTitle = false,
 		})
-		local function restorePreviousTab()
-			if not previousActiveTab then return end
-			local restore = Window._Tabs and Window._Tabs[previousActiveTab]
-			if restore and type(restore.Activate) == "function" then pcall(restore.Activate) end
-		end
-		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
-			task.defer(restorePreviousTab)
-			task.delay(0.15, restorePreviousTab)
-		end
-
 		local Page = hostTab.Page
-		local list = Page:FindFirstChildOfClass("UIListLayout")
-		if list then list:Destroy() end
-		local pad = Page:FindFirstChildOfClass("UIPadding")
-		if pad then pad:Destroy() end
-		if Page:IsA("ScrollingFrame") then
-			Page.CanvasSize = UDim2.new(0, 0, 0, 0)
-			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
-			Page.ScrollingEnabled = false
-		end
 
-		local httpRequest = request
 		local source = "ScriptBlox"
-		local query = ""
 		local pageNum = 1
 		local loading = false
 		local filters = {
@@ -8347,201 +8374,92 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			patched = false,
 		}
 
-		local accentChip = Color3.fromRGB(110, 102, 153)
-		local dimChip = Color3.fromRGB(38, 36, 48)
+		local statusLabel
+		local runSearch
 
-		local Container = Instance.new("Frame")
-		Container.Name = "ScriptSearcherRoot"
-		Container.BackgroundTransparency = 1
-		Container.BorderSizePixel = 0
-		Container.Position = UDim2.new(0, 8, 0, 4)
-		Container.Size = UDim2.new(1, -16, 1, -8)
-		Container.Parent = Page
-		Container.ZIndex = 2
-
-		local function refreshContainerSize()
-			local sz = Page.AbsoluteSize
-			if sz.X > 50 and sz.Y > 80 then
-				Container.Size = UDim2.fromOffset(sz.X - 16, sz.Y - 8)
-			end
-		end
-		Page:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshContainerSize)
-		task.defer(refreshContainerSize)
-		task.delay(0.35, refreshContainerSize)
-		local origActivate = hostTab.Activate
-		function hostTab:Activate()
-			origActivate()
-			task.defer(refreshContainerSize)
+		local function setStatus(msg)
+			if statusLabel then statusLabel:Set(tostring(msg)) end
 		end
 
-		local Row1 = Instance.new("Frame")
-		Row1.Name = "TopRow"
-		Row1.BackgroundTransparency = 1
-		Row1.Size = UDim2.new(1, 0, 0, 38)
-		Row1.Position = UDim2.new(0, 0, 0, 0)
-		Row1.ZIndex = 5
-		Row1.Parent = Container
+		local searchSec = hostTab:CreateSection("Search")
+		searchSec:CreateInput({
+			Name = "Query",
+			PlaceholderText = "e.g. infinite yield, arsenal, universal",
+			Enter = true,
+			Flag = "SS_Query",
+			Callback = function()
+				runSearch()
+			end,
+		})
+		searchSec:CreateDropdown({
+			Name = "API Source",
+			Options = {"ScriptBlox", "RScripts"},
+			CurrentOption = "ScriptBlox",
+			Flag = "SS_Source",
+			Callback = function(opt)
+				source = type(opt) == "table" and (opt[1] or opt) or opt
+				if type(source) ~= "string" then source = "ScriptBlox" end
+				setStatus("Source: " .. source)
+			end,
+		})
+		searchSec:CreateButton({
+			Name = "Search",
+			Description = "ScriptBlox / RScripts APIs",
+			Callback = function()
+				runSearch()
+			end,
+		})
 
-		local SearchBox = Instance.new("TextBox")
-		SearchBox.Name = "Search"
-		SearchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
-		SearchBox.BackgroundTransparency = 0.15
-		SearchBox.Size = UDim2.new(1, -252, 0, 36)
-		SearchBox.Position = UDim2.new(0, 0, 0, 0)
-		SearchBox.ZIndex = 6
-		SearchBox.Font = Enum.Font.GothamMedium
-		SearchBox.TextSize = 14
-		SearchBox.TextColor3 = Color3.fromRGB(235, 235, 240)
-		SearchBox.PlaceholderText = "Search scripts..."
-		SearchBox.PlaceholderColor3 = Color3.fromRGB(140, 140, 150)
-		SearchBox.Text = ""
-		SearchBox.ClearTextOnFocus = false
-		SearchBox.TextXAlignment = Enum.TextXAlignment.Left
-		SearchBox.Parent = Row1
-		local sbPad = Instance.new("UIPadding")
-		sbPad.PaddingLeft = UDim.new(0, 12)
-		sbPad.Parent = SearchBox
-		local sbCorner = Instance.new("UICorner")
-		sbCorner.CornerRadius = UDim.new(0, 8)
-		sbCorner.Parent = SearchBox
-
-		local BtnScriptBlox = Instance.new("TextButton")
-		BtnScriptBlox.BackgroundColor3 = accentChip
-		BtnScriptBlox.Size = UDim2.fromOffset(96, 36)
-		BtnScriptBlox.Position = UDim2.new(1, -248, 0, 0)
-		BtnScriptBlox.ZIndex = 8
-		BtnScriptBlox.Font = Enum.Font.GothamSemibold
-		BtnScriptBlox.TextSize = 12
-		BtnScriptBlox.TextColor3 = Color3.fromRGB(240, 240, 245)
-		BtnScriptBlox.Text = "ScriptBlox"
-		BtnScriptBlox.AutoButtonColor = false
-		BtnScriptBlox.Parent = Row1
-		do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = BtnScriptBlox end
-
-		local BtnRScripts = Instance.new("TextButton")
-		BtnRScripts.BackgroundColor3 = dimChip
-		BtnRScripts.Size = UDim2.fromOffset(96, 36)
-		BtnRScripts.Position = UDim2.new(1, -146, 0, 0)
-		BtnRScripts.ZIndex = 8
-		BtnRScripts.Font = Enum.Font.GothamSemibold
-		BtnRScripts.TextSize = 12
-		BtnRScripts.TextColor3 = Color3.fromRGB(240, 240, 245)
-		BtnRScripts.Text = "RScripts"
-		BtnRScripts.AutoButtonColor = false
-		BtnRScripts.Parent = Row1
-		do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = BtnRScripts end
-
-		local SearchBtn = Instance.new("TextButton")
-		SearchBtn.Size = UDim2.fromOffset(44, 36)
-		SearchBtn.Position = UDim2.new(1, -44, 0, 0)
-		SearchBtn.ZIndex = 8
-		SearchBtn.BackgroundColor3 = accentChip
-		SearchBtn.Font = Enum.Font.GothamBold
-		SearchBtn.TextSize = 13
-		SearchBtn.TextColor3 = Color3.new(1, 1, 1)
-		SearchBtn.Text = "Go"
-		SearchBtn.AutoButtonColor = false
-		SearchBtn.Parent = Row1
-		do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = SearchBtn end
-
-		local FilterRow = Instance.new("Frame")
-		FilterRow.Name = "Filters"
-		FilterRow.BackgroundTransparency = 1
-		FilterRow.Size = UDim2.new(1, 0, 0, 30)
-		FilterRow.Position = UDim2.new(0, 0, 0, 44)
-		FilterRow.ZIndex = 5
-		FilterRow.ClipsDescendants = false
-		FilterRow.Parent = Container
-		local filterLayout = Instance.new("UIListLayout")
-		filterLayout.FillDirection = Enum.FillDirection.Horizontal
-		filterLayout.Padding = UDim.new(0, 6)
-		filterLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		filterLayout.Parent = FilterRow
-
-		local filterDefs = {
-			{id = "verifiedOnly", label = "Verified", sources = {"RScripts"}},
-			{id = "notPaid", label = "Free", sources = {"RScripts"}},
-			{id = "unpatched", label = "Unpatched", sources = {"RScripts"}},
-			{id = "noKeySystem", label = "No Key", sources = {"RScripts"}},
-			{id = "key", label = "Key", sources = {"ScriptBlox"}},
-			{id = "universal", label = "Universal", sources = {"ScriptBlox"}},
-			{id = "verified", label = "Verified", sources = {"ScriptBlox"}},
-			{id = "patched", label = "Patched", sources = {"ScriptBlox"}},
-		}
-		local filterButtons = {}
-
-		local function setFilterVisible()
-			for _, fb in ipairs(filterButtons) do
-				local show = table.find(fb._sources, source) ~= nil
-				fb.Visible = show
-			end
+		local sbSec = hostTab:CreateSection("ScriptBlox filters")
+		local function sbToggle(name, key)
+			sbSec:CreateToggle({
+				Name = name,
+				CurrentValue = false,
+				Callback = function(v) filters[key] = v end,
+			})
 		end
+		sbToggle("Key system", "key")
+		sbToggle("Universal", "universal")
+		sbToggle("Verified", "verified")
+		sbToggle("Patched", "patched")
 
-		for i, def in ipairs(filterDefs) do
-			local chip = Instance.new("TextButton")
-			chip.Name = def.id
-			chip.BackgroundColor3 = Color3.fromRGB(32, 30, 40)
-			chip.BackgroundTransparency = 0.2
-			chip.Size = UDim2.new(0, 0, 0, 26)
-			chip.AutomaticSize = Enum.AutomaticSize.X
-			chip.Font = Enum.Font.GothamMedium
-			chip.TextSize = 12
-			chip.TextColor3 = Color3.fromRGB(200, 200, 210)
-			chip.Text = "  " .. def.label .. "  "
-			chip.AutoButtonColor = false
-			chip.LayoutOrder = i
-			chip._sources = def.sources
-			chip._key = def.id
-			chip.Parent = FilterRow
-			local cc = Instance.new("UICorner")
-			cc.CornerRadius = UDim.new(1, 0)
-			cc.Parent = chip
-			filterButtons[#filterButtons + 1] = chip
-			chip.MouseButton1Click:Connect(function()
-				filters[def.id] = not filters[def.id]
-				chip.BackgroundColor3 = filters[def.id] and Color3.fromRGB(110, 102, 153) or Color3.fromRGB(32, 30, 40)
-				chip.TextColor3 = filters[def.id] and Color3.new(1,1,1) or Color3.fromRGB(200, 200, 210)
-			end)
+		local rsSec = hostTab:CreateSection("RScripts filters")
+		local function rsToggle(name, key)
+			rsSec:CreateToggle({
+				Name = name,
+				CurrentValue = false,
+				Callback = function(v) filters[key] = v end,
+			})
 		end
+		rsToggle("Verified only", "verifiedOnly")
+		rsToggle("Free only", "notPaid")
+		rsToggle("Unpatched", "unpatched")
+		rsToggle("No key system", "noKeySystem")
 
-		local Status = Instance.new("TextLabel")
-		Status.BackgroundTransparency = 1
-		Status.Size = UDim2.new(1, 0, 0, 16)
-		Status.Position = UDim2.new(0, 0, 0, 78)
-		Status.ZIndex = 5
-		Status.Font = Enum.Font.Gotham
-		Status.TextSize = 12
-		Status.TextColor3 = Color3.fromRGB(150, 150, 160)
-		Status.TextXAlignment = Enum.TextXAlignment.Left
-		Status.Text = httpRequest and "ScriptBlox / RScripts — type query and press Go" or "HTTP request() required for search"
-		Status.Parent = Container
+		statusLabel = hostTab:CreateLabel({
+			Text = "Enter a query and press Search (needs HttpService / request).",
+			Style = 2,
+		})
 
-		local function pickSource(name)
-			source = name
-			BtnScriptBlox.BackgroundColor3 = name == "ScriptBlox" and accentChip or dimChip
-			BtnRScripts.BackgroundColor3 = name == "RScripts" and accentChip or dimChip
-			Status.Text = "Source: " .. name .. " — " .. (httpRequest and "ready" or "need request()")
-			setFilterVisible()
-		end
-		BtnScriptBlox.Activated:Connect(function() pickSource("ScriptBlox") end)
-		BtnRScripts.Activated:Connect(function() pickSource("RScripts") end)
-		BtnScriptBlox.MouseButton1Click:Connect(function() pickSource("ScriptBlox") end)
-		BtnRScripts.MouseButton1Click:Connect(function() pickSource("RScripts") end)
-		setFilterVisible()
+		local resultsHost = Instance.new("Frame")
+		resultsHost.Name = "ScriptSearcherResults"
+		resultsHost.BackgroundTransparency = 1
+		resultsHost.BorderSizePixel = 0
+		resultsHost.Size = UDim2.new(1, 0, 0, 300)
+		resultsHost.Parent = Page
 
 		local Scroll = Instance.new("ScrollingFrame")
-		Scroll.Name = "Results"
+		Scroll.Name = "ResultsScroll"
 		Scroll.BackgroundColor3 = Color3.fromRGB(22, 21, 28)
 		Scroll.BackgroundTransparency = 0.35
 		Scroll.BorderSizePixel = 0
-		Scroll.Size = UDim2.new(1, 0, 1, -100)
-		Scroll.Position = UDim2.new(0, 0, 0, 98)
-		Scroll.ZIndex = 4
+		Scroll.Size = UDim2.new(1, -4, 1, 0)
+		Scroll.Position = UDim2.new(0, 0, 0, 0)
 		Scroll.ScrollBarThickness = 4
 		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
 		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		Scroll.Parent = Container
+		Scroll.Parent = resultsHost
 		local scrollCorner = Instance.new("UICorner")
 		scrollCorner.CornerRadius = UDim.new(0, 8)
 		scrollCorner.Parent = Scroll
@@ -8552,6 +8470,8 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		local scrollPad = Instance.new("UIPadding")
 		scrollPad.PaddingTop = UDim.new(0, 4)
 		scrollPad.PaddingBottom = UDim.new(0, 8)
+		scrollPad.PaddingLeft = UDim.new(0, 4)
+		scrollPad.PaddingRight = UDim.new(0, 4)
 		scrollPad.Parent = Scroll
 
 		local function clearResults()
@@ -8610,10 +8530,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			btnRow.Position = UDim2.new(0, 8, 1, -34)
 			btnRow.Size = UDim2.new(1, -16, 0, 26)
 			btnRow.Parent = card
-			local bl = Instance.new("UIListLayout")
-			bl.FillDirection = Enum.FillDirection.Horizontal
-			bl.Padding = UDim.new(0, 6)
-			bl.Parent = btnRow
+			local btnLayout = Instance.new("UIListLayout")
+			btnLayout.FillDirection = Enum.FillDirection.Horizontal
+			btnLayout.Padding = UDim.new(0, 6)
+			btnLayout.Parent = btnRow
 
 			local function miniBtn(text, orderB, cb)
 				local b = Instance.new("TextButton")
@@ -8621,7 +8541,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				b.Size = UDim2.new(0.5, -3, 1, 0)
 				b.Font = Enum.Font.GothamSemibold
 				b.TextSize = 11
-				b.TextColor3 = Color3.new(1,1,1)
+				b.TextColor3 = Color3.new(1, 1, 1)
 				b.Text = text
 				b.LayoutOrder = orderB
 				b.AutoButtonColor = false
@@ -8630,6 +8550,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				bc.CornerRadius = UDim.new(0, 6)
 				bc.Parent = b
 				b.MouseButton1Click:Connect(cb)
+				b.Activated:Connect(cb)
 				return b
 			end
 
@@ -8644,7 +8565,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 						local body = LunaHttpGet(data.fetchUrl)
 						if body then
 							local ok2, err = pcall(function() loadstring(body)() end)
-							if not ok2 then Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"}) end
+							if not ok2 then
+								Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
+							end
 						else
 							Luna:Notification({Title = "Script Searcher", Content = "Could not fetch script.", Icon = "error"})
 						end
@@ -8658,6 +8581,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				elseif setclipboard and data.raw and data.raw ~= "" then
 					setclipboard(data.raw)
 					notifyCopy("Script copied.")
+				elseif setclipboard and data.fetchUrl then
+					setclipboard(data.fetchUrl)
+					notifyCopy("URL copied.")
 				end
 			end)
 
@@ -8665,10 +8591,30 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			card.MouseLeave:Connect(function() tween(cStroke, {Transparency = 0.75}) end)
 		end
 
-		local function buildRScriptsUrl()
+		local function getQuery()
+			local opt = Luna.Options and Luna.Options["SS_Query"]
+			if opt and opt.CurrentValue then
+				return tostring(opt.CurrentValue):gsub("^%s+", ""):gsub("%s+$", "")
+			end
+			if Luna.Options and Luna.Options["SS_Source"] then
+				-- no-op
+			end
+			return ""
+		end
+
+		local function syncSource()
+			local opt = Luna.Options and Luna.Options["SS_Source"]
+			if opt and opt.CurrentValue then
+				local v = opt.CurrentValue
+				if type(v) == "table" then v = v[1] end
+				if type(v) == "string" and v ~= "" then source = v end
+			end
+		end
+
+		local function buildRScriptsUrl(q)
 			local params = {
 				page = tostring(pageNum),
-				q = query,
+				q = q,
 				orderBy = "date",
 				sort = "desc",
 			}
@@ -8685,9 +8631,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return "https://rscripts.net/api/v2/scripts?" .. table.concat(parts, "&")
 		end
 
-		local function buildScriptBloxUrl()
-			local q = HttpService:UrlEncode(query)
-			local url = "https://scriptblox.com/api/script/search?q=" .. q .. "&mode=free&page=" .. tostring(pageNum) .. "&max=20"
+		local function buildScriptBloxUrl(q)
+			local url = "https://scriptblox.com/api/script/search?q=" .. HttpService:UrlEncode(q)
+				.. "&mode=free&page=" .. tostring(pageNum) .. "&max=20"
 			if filters.key then url = url .. "&key=1" end
 			if filters.universal then url = url .. "&universal=1" end
 			if filters.verified then url = url .. "&verified=1" end
@@ -8695,110 +8641,96 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return url
 		end
 
-		local function fetchScriptBlox()
-			if not httpRequest then
-				return nil, "Executor needs request / http.request"
+		local function parseRScripts(data)
+			if not data then return {} end
+			local list = data.scripts or (data.data and data.data.scripts)
+			if type(list) ~= "table" then return {} end
+			local cards = {}
+			for _, s in ipairs(list) do
+				local id = s._id or s.slug or s.id
+				table.insert(cards, {
+					title = s.title or "Untitled",
+					game = s.game and (s.game.title or s.game.name) or "Universal",
+					author = s.user and s.user.username or "—",
+					link = id and ("https://rscripts.net/script/" .. tostring(id)) or nil,
+					fetchUrl = s.rawScript,
+					raw = nil,
+				})
 			end
-			local url = buildScriptBloxUrl()
-			local ok, response = pcall(function()
-				return httpRequest({Url = url, Method = "GET"})
-			end)
-			if not ok or not response then
-				return nil, "ScriptBlox request failed"
-			end
-			local code = response.StatusCode or response.status
-			if code and tonumber(code) ~= 200 then
-				return nil, "ScriptBlox HTTP " .. tostring(code)
-			end
-			local body = response.Body or response.body
-			if not body then return nil, "Empty ScriptBlox response" end
-			local okJ, data = pcall(function() return HttpService:JSONDecode(body) end)
-			if not okJ then return nil, "ScriptBlox JSON error" end
-			return data
+			return cards
 		end
 
-		local function runSearch()
-			if loading then return end
-			query = SearchBox.Text
-			if query == "" then
-				Status.Text = "Enter a search term."
-				return
+		local function parseScriptBlox(data)
+			if not data then return {} end
+			local list = data.result and data.result.scripts
+			if type(list) ~= "table" then return {} end
+			local cards = {}
+			for _, s in ipairs(list) do
+				local slug = s.slug or s._id
+				table.insert(cards, {
+					title = s.title or "Untitled",
+					game = s.game and (s.game.name or s.game.title) or "Universal",
+					author = tostring(s.views or 0) .. " views",
+					link = slug and ("https://scriptblox.com/script/" .. tostring(slug)) or nil,
+					fetchUrl = nil,
+					raw = s.script,
+				})
 			end
-			if not httpRequest then
-				Status.Text = "Executor needs request / http.request for search."
+			return cards
+		end
+
+		runSearch = function()
+			if loading then return end
+			syncSource()
+			local query = getQuery()
+			if query == "" then
+				setStatus("Enter a search term.")
 				return
 			end
 			loading = true
-			Status.Text = "Searching " .. source .. "..."
+			pageNum = 1
+			setStatus("Searching " .. source .. "...")
 			clearResults()
 
 			task.spawn(function()
 				local cards = {}
 				local errMsg = nil
 				if source == "RScripts" then
-					local data, err = LunaHttpJSON(buildRScriptsUrl())
+					local data, err = LunaHttpJSON(buildRScriptsUrl(query))
 					errMsg = err
-					if data and data.scripts then
-						for _, s in ipairs(data.scripts) do
-							local id = s._id or s.slug
-							table.insert(cards, {
-								title = s.title or "Untitled",
-								game = s.game and s.game.title or "Universal",
-								author = s.user and s.user.username or "—",
-								link = id and ("https://rscripts.net/script/" .. tostring(id)) or nil,
-								fetchUrl = s.rawScript,
-								raw = nil,
-							})
+					if data then
+						cards = parseRScripts(data)
+						if #cards == 0 and data.message then
+							errMsg = tostring(data.message)
 						end
-					elseif data and data.message then
-						errMsg = tostring(data.message)
 					end
 				else
-					if source == "ScriptBlox" then
-						task.wait(1.05)
-					end
-					local data, err = fetchScriptBlox()
+					task.wait(1.05)
+					local data, err = LunaHttpJSON(buildScriptBloxUrl(query))
 					errMsg = err
-					local listR = data and data.result and data.result.scripts
-					if listR then
-						for _, s in ipairs(listR) do
-							local slug = s.slug or s._id
-							table.insert(cards, {
-								title = s.title or "Untitled",
-								game = s.game and s.game.name or "Universal",
-								author = tostring(s.views or 0) .. " views",
-								link = slug and ("https://scriptblox.com/script/" .. tostring(slug)) or nil,
-								fetchUrl = nil,
-								raw = s.script,
-							})
+					if data then
+						cards = parseScriptBlox(data)
+						if #cards == 0 and data.message then
+							errMsg = tostring(data.message)
 						end
-					elseif data and data.message then
-						errMsg = tostring(data.message)
 					end
 				end
 
-				for i, c in ipairs(cards) do makeCard(c, i) end
+				for i, c in ipairs(cards) do
+					makeCard(c, i)
+				end
 				if #cards > 0 then
-					Status.Text = #cards .. " results on " .. source
+					setStatus(#cards .. " results (" .. source .. ")")
 				elseif errMsg then
-					Status.Text = errMsg
+					setStatus(errMsg)
 				else
-					Status.Text = "No scripts found."
+					setStatus("No scripts found.")
 				end
 				loading = false
 			end)
 		end
 
-		local function triggerSearch()
-			pageNum = 1
-			runSearch()
-		end
-
-		SearchBox.FocusLost:Connect(function(enter)
-			if enter then triggerSearch() end
-		end)
-		SearchBtn.MouseButton1Click:Connect(triggerSearch)
-		pickSource(source)
+		setStatus("Ready — use Search or press Enter in Query.")
 
 		Window._ScriptSearcherTab = hostTab
 		return hostTab
