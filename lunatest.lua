@@ -6773,13 +6773,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 					ind = ind + 1
 				end
 				if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-				SafeCallback(bleh)
+				if not DropdownSettings.MultipleOptions then
+					pcall(function() SafeCallback(bleh) end)
+				else
+					SafeCallback(bleh)
+				end
 				for _, Option in pairs(Dropdown.List:GetChildren()) do
 					if Option.ClassName == "TextLabel" then
 						tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 					end
 				end
-				tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+				if type(bleh) == "string" and Dropdown.List:FindFirstChild(bleh) then
+					tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+				elseif type(bleh) == "table" then
+					for _, name in pairs(bleh) do
+						if Dropdown.List:FindFirstChild(name) then
+							tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+						end
+					end
+				end
 
 				if DropdownSettings.MultipleOptions then
 					if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
@@ -9719,6 +9731,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		pcall(focusStartup)
 		task.delay(0.2, function() pcall(focusStartup) end)
 		task.delay(0.65, function() pcall(focusStartup) end)
+		task.defer(function()
+			task.wait(0.05)
+			Window:NotifyTabsChanged()
+		end)
 	end)
 
 	-- ============================================================
@@ -9838,38 +9854,62 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		Window.GetTabNames = function()
 			local entries = {}
-			if Window._HomeTabButton then
+			local seen = {}
+
+			local function addEntry(name, order)
+				if not name or name == "" or seen[name] then return end
+				if name == "Home" then
+					name = "Dashboard"
+				end
+				seen[name] = true
 				table.insert(entries, {
-					name = "Dashboard",
-					order = Window._HomeTabButton.LayoutOrder or 1,
+					name = name,
+					order = order or 9999,
 				})
 			end
-			for name, reg in pairs(Window._TabRegistry or {}) do
-				if reg.Button then
-					table.insert(entries, {
-						name = name,
-						order = reg.Button.LayoutOrder or (Window._TabCreationOrder and Window._TabCreationOrder[name]) or 9999,
-					})
+
+			if Window._HomeTabButton then
+				addEntry("Dashboard", Window._HomeTabButton.LayoutOrder or 1)
+			end
+
+			if Navigation and Navigation.Tabs then
+				for _, child in ipairs(Navigation.Tabs:GetChildren()) do
+					if child.ClassName == "Frame" and child.Name ~= "InActive Template" then
+						local tabName = child:GetAttribute("LunaTabName")
+						if tabName and tabName ~= "" then
+							addEntry(tabName, child.LayoutOrder)
+						end
+					end
 				end
 			end
+
+			for name, reg in pairs(Window._TabRegistry or {}) do
+				if reg.Button then
+					addEntry(name, reg.Button.LayoutOrder or (Window._TabCreationOrder and Window._TabCreationOrder[name]) or 9999)
+				end
+			end
+
 			table.sort(entries, function(a, b)
 				if a.order ~= b.order then
 					return a.order < b.order
 				end
 				return a.name < b.name
 			end)
+
 			local names = {}
-			local seen = {}
 			for _, entry in ipairs(entries) do
-				if not seen[entry.name] then
-					seen[entry.name] = true
-					table.insert(names, entry.name)
-				end
+				table.insert(names, entry.name)
 			end
 			if #names == 0 then
 				names = {"Dashboard"}
 			end
 			return names
+		end
+
+		Window.NotifyTabsChanged = function()
+			if Window._TabListRefreshHook then
+				pcall(Window._TabListRefreshHook)
+			end
 		end
 
 		local function setDashboardVisible(visible)
