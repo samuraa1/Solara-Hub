@@ -2363,13 +2363,14 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 			end
 		end)
 
+		local dragTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 		RunService.RenderStepped:Connect(function()
 			if not dragging then return end
 			local position = UserInputService:GetMouseLocation() + relative + inset
-			Window.Position = UDim2.fromOffset(position.X, position.Y)
+			TweenService:Create(Window, dragTweenInfo, {Position = UDim2.fromOffset(position.X, position.Y)}):Play()
 			if enableTaptic and dragBar then
 				local yOff = getDragBarYOffset(Window)
-				dragBar.Position = UDim2.fromOffset(position.X, position.Y + yOff)
+				TweenService:Create(dragBar, dragTweenInfo, {Position = UDim2.fromOffset(position.X, position.Y + yOff)}):Play()
 			end
 		end)
 	end)
@@ -2569,6 +2570,11 @@ function Luna:CreateWindow(WindowSettings)
 		-- API key required). Set false to skip; the host can still create it
 		-- manually with Window:CreateAiTab().
 		AiTab = false,
+		AiSettings = nil,
+		ScriptSearcherTab = false,
+		ScriptSearcherSettings = nil,
+		MusicPlayerTab = false,
+		MusicPlayerSettings = nil,
 
 		-- New: enables Ctrl + / Ctrl - in-window zoom. Disable if the host
 		-- already remaps those shortcuts.
@@ -2609,6 +2615,7 @@ function Luna:CreateWindow(WindowSettings)
 		-- Each entry: { Name=str, Type=str, Frame=Instance, Tab=str, Activate=fn() }
 		_SearchIndex = {},
 		_Tabs = {}, -- name -> { Activate = function }
+		_TabRegistry = {}, -- name -> { Button, Page, Activate, Hidden }
 	}
 
 	Main.Title.Title.Text = WindowSettings.Name
@@ -3285,6 +3292,12 @@ function Window:CreateTab(TabSettings)
 
 		-- Register in search index for SearchBar (used to jump back to a tab)
 		Window._Tabs[TabSettings.Name] = { Activate = function() Tab:Activate() end, Page = TabPage }
+		Window._TabRegistry[TabSettings.Name] = {
+			Button = TabButton,
+			Page = TabPage,
+			Activate = function() Tab:Activate() end,
+			Hidden = false,
+		}
 
 		if FirstTab then
 			Tab:Activate()
@@ -8128,6 +8141,755 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		return AiTab
 	end
 
+	function Window:CreateScriptSearcherTab(opts)
+		opts = Kwargify({
+			Name = "Script Searcher",
+			Icon = "search",
+			ImageSource = "Lucide",
+			ShowTitle = false,
+		}, opts or {})
+
+		local previousActiveTab = Window.CurrentTab
+		local hostTab = self:CreateTab({
+			Name = opts.Name,
+			Icon = opts.Icon,
+			ImageSource = opts.ImageSource,
+			ShowTitle = false,
+		})
+		local function restorePreviousTab()
+			if not previousActiveTab then return end
+			local restore = Window._Tabs and Window._Tabs[previousActiveTab]
+			if restore and type(restore.Activate) == "function" then pcall(restore.Activate) end
+		end
+		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
+			task.defer(restorePreviousTab)
+			task.delay(0.15, restorePreviousTab)
+		end
+
+		local Page = hostTab.Page
+		local list = Page:FindFirstChildOfClass("UIListLayout")
+		if list then list:Destroy() end
+		local pad = Page:FindFirstChildOfClass("UIPadding")
+		if pad then pad:Destroy() end
+		if Page:IsA("ScrollingFrame") then
+			Page.CanvasSize = UDim2.new(0, 0, 0, 0)
+			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
+			Page.ScrollingEnabled = true
+		end
+
+		local source = "RScripts"
+		local query = ""
+		local pageNum = 1
+		local loading = false
+		local filters = {
+			verifiedOnly = false,
+			isPatched = false,
+			paid = false,
+			key = false,
+			unc = false,
+			universal = false,
+			verified = false,
+			patched = false,
+		}
+
+		local function httpJSON(url)
+			if request then
+				local ok, res = pcall(function()
+					return request({Url = url, Method = "GET", Headers = {["Accept"] = "application/json"}})
+				end)
+				if ok and res and res.Body then
+					return HttpService:JSONDecode(res.Body)
+				end
+			end
+			local ok, body = pcall(function() return game:HttpGet(url, true) end)
+			if ok and body then return HttpService:JSONDecode(body) end
+			return nil
+		end
+
+		local Root = Instance.new("Frame")
+		Root.Name = "ScriptSearcherRoot"
+		Root.BackgroundTransparency = 1
+		Root.Size = UDim2.new(1, 0, 1, 0)
+		Root.Parent = Page
+
+		local Top = Instance.new("Frame")
+		Top.BackgroundTransparency = 1
+		Top.Size = UDim2.new(1, -16, 0, 44)
+		Top.Position = UDim2.new(0, 8, 0, 4)
+		Top.Parent = Root
+
+		local SearchBox = Instance.new("TextBox")
+		SearchBox.Name = "Search"
+		SearchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
+		SearchBox.BackgroundTransparency = 0.15
+		SearchBox.Size = UDim2.new(1, -150, 1, 0)
+		SearchBox.Position = UDim2.new(0, 0, 0, 0)
+		SearchBox.Font = Enum.Font.GothamMedium
+		SearchBox.TextSize = 14
+		SearchBox.TextColor3 = Color3.fromRGB(235, 235, 240)
+		SearchBox.PlaceholderText = "Search scripts..."
+		SearchBox.PlaceholderColor3 = Color3.fromRGB(140, 140, 150)
+		SearchBox.Text = ""
+		SearchBox.ClearTextOnFocus = false
+		SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+		SearchBox.Parent = Top
+		local sbPad = Instance.new("UIPadding")
+		sbPad.PaddingLeft = UDim.new(0, 12)
+		sbPad.Parent = SearchBox
+		local sbCorner = Instance.new("UICorner")
+		sbCorner.CornerRadius = UDim.new(0, 8)
+		sbCorner.Parent = SearchBox
+		local sbStroke = Instance.new("UIStroke")
+		sbStroke.Color = Color3.fromRGB(110, 102, 153)
+		sbStroke.Transparency = 0.6
+		sbStroke.Parent = SearchBox
+
+		local SourceBtn = Instance.new("TextButton")
+		SourceBtn.Name = "Source"
+		SourceBtn.BackgroundColor3 = Color3.fromRGB(38, 36, 48)
+		SourceBtn.Size = UDim2.new(0, 138, 1, 0)
+		SourceBtn.Position = UDim2.new(1, -138, 0, 0)
+		SourceBtn.Font = Enum.Font.GothamSemibold
+		SourceBtn.TextSize = 13
+		SourceBtn.TextColor3 = Color3.fromRGB(240, 240, 245)
+		SourceBtn.Text = "RScripts ▾"
+		SourceBtn.AutoButtonColor = false
+		SourceBtn.Parent = Top
+		local srcCorner = Instance.new("UICorner")
+		srcCorner.CornerRadius = UDim.new(0, 8)
+		srcCorner.Parent = SourceBtn
+
+		local FilterRow = Instance.new("Frame")
+		FilterRow.BackgroundTransparency = 1
+		FilterRow.Size = UDim2.new(1, -16, 0, 32)
+		FilterRow.Position = UDim2.new(0, 8, 0, 52)
+		FilterRow.Parent = Root
+		local filterLayout = Instance.new("UIListLayout")
+		filterLayout.FillDirection = Enum.FillDirection.Horizontal
+		filterLayout.Padding = UDim.new(0, 6)
+		filterLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		filterLayout.Parent = FilterRow
+
+		local filterDefs = {
+			{id = "verifiedOnly", label = "Verified", sources = {"RScripts"}},
+			{id = "isPatched", label = "Patched", sources = {"RScripts"}},
+			{id = "paid", label = "Paid", sources = {"RScripts"}},
+			{id = "key", label = "Key", sources = {"RScripts", "ScriptBlox"}},
+			{id = "unc", label = "UNC", sources = {"RScripts"}},
+			{id = "universal", label = "Universal", sources = {"RScripts", "ScriptBlox"}},
+			{id = "verified", label = "Verified", sources = {"ScriptBlox"}},
+			{id = "patched", label = "Patched", sources = {"ScriptBlox"}},
+		}
+		local filterButtons = {}
+
+		local function setFilterVisible()
+			for _, fb in ipairs(filterButtons) do
+				local show = table.find(fb._sources, source) ~= nil
+				fb.Visible = show
+			end
+		end
+
+		for i, def in ipairs(filterDefs) do
+			local chip = Instance.new("TextButton")
+			chip.Name = def.id
+			chip.BackgroundColor3 = Color3.fromRGB(32, 30, 40)
+			chip.BackgroundTransparency = 0.2
+			chip.Size = UDim2.new(0, 0, 0, 26)
+			chip.AutomaticSize = Enum.AutomaticSize.X
+			chip.Font = Enum.Font.GothamMedium
+			chip.TextSize = 12
+			chip.TextColor3 = Color3.fromRGB(200, 200, 210)
+			chip.Text = "  " .. def.label .. "  "
+			chip.AutoButtonColor = false
+			chip.LayoutOrder = i
+			chip._sources = def.sources
+			chip._key = def.id
+			chip.Parent = FilterRow
+			local cc = Instance.new("UICorner")
+			cc.CornerRadius = UDim.new(1, 0)
+			cc.Parent = chip
+			filterButtons[#filterButtons + 1] = chip
+			chip.MouseButton1Click:Connect(function()
+				filters[def.id] = not filters[def.id]
+				chip.BackgroundColor3 = filters[def.id] and Color3.fromRGB(110, 102, 153) or Color3.fromRGB(32, 30, 40)
+				chip.TextColor3 = filters[def.id] and Color3.new(1,1,1) or Color3.fromRGB(200, 200, 210)
+			end)
+		end
+		setFilterVisible()
+
+		local Status = Instance.new("TextLabel")
+		Status.BackgroundTransparency = 1
+		Status.Size = UDim2.new(1, -16, 0, 18)
+		Status.Position = UDim2.new(0, 8, 0, 86)
+		Status.Font = Enum.Font.Gotham
+		Status.TextSize = 12
+		Status.TextColor3 = Color3.fromRGB(150, 150, 160)
+		Status.TextXAlignment = Enum.TextXAlignment.Left
+		Status.Text = "Search for scripts on RScripts or ScriptBlox"
+		Status.Parent = Root
+
+		local Scroll = Instance.new("ScrollingFrame")
+		Scroll.Name = "Results"
+		Scroll.BackgroundTransparency = 1
+		Scroll.BorderSizePixel = 0
+		Scroll.Size = UDim2.new(1, -16, 1, -108)
+		Scroll.Position = UDim2.new(0, 8, 0, 106)
+		Scroll.ScrollBarThickness = 4
+		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		Scroll.Parent = Root
+		local grid = Instance.new("UIGridLayout")
+		grid.CellSize = UDim2.new(0.5, -8, 0, 118)
+		grid.CellPadding = UDim2.new(0, 8, 0, 8)
+		grid.SortOrder = Enum.SortOrder.LayoutOrder
+		grid.Parent = Scroll
+		local scrollPad = Instance.new("UIPadding")
+		scrollPad.PaddingTop = UDim.new(0, 4)
+		scrollPad.PaddingBottom = UDim.new(0, 8)
+		scrollPad.Parent = Scroll
+
+		local function clearResults()
+			for _, ch in ipairs(Scroll:GetChildren()) do
+				if ch:IsA("Frame") then ch:Destroy() end
+			end
+		end
+
+		local function notifyCopy(text)
+			Luna:Notification({Title = "Script Searcher", Content = text, Icon = "content_copy"})
+		end
+
+		local function makeCard(data, order)
+			local card = Instance.new("Frame")
+			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
+			card.BackgroundTransparency = 0.05
+			card.LayoutOrder = order
+			card.Parent = Scroll
+			local cCorner = Instance.new("UICorner")
+			cCorner.CornerRadius = UDim.new(0, 10)
+			cCorner.Parent = card
+			local cStroke = Instance.new("UIStroke")
+			cStroke.Color = Color3.fromRGB(70, 68, 85)
+			cStroke.Transparency = 0.75
+			cStroke.Parent = card
+
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 10, 0, 8)
+			title.Size = UDim2.new(1, -20, 0, 36)
+			title.Font = Enum.Font.GothamSemibold
+			title.TextSize = 13
+			title.TextColor3 = Color3.fromRGB(245, 245, 250)
+			title.TextWrapped = true
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.TextYAlignment = Enum.TextYAlignment.Top
+			title.Text = data.title or "Untitled"
+			title.Parent = card
+
+			local meta = Instance.new("TextLabel")
+			meta.BackgroundTransparency = 1
+			meta.Position = UDim2.new(0, 10, 0, 44)
+			meta.Size = UDim2.new(1, -20, 0, 32)
+			meta.Font = Enum.Font.Gotham
+			meta.TextSize = 11
+			meta.TextColor3 = Color3.fromRGB(160, 160, 170)
+			meta.TextWrapped = true
+			meta.TextXAlignment = Enum.TextXAlignment.Left
+			meta.TextYAlignment = Enum.TextYAlignment.Top
+			meta.Text = (data.game or "Unknown") .. "\n" .. (data.author or data.owner or "—")
+			meta.Parent = card
+
+			local btnRow = Instance.new("Frame")
+			btnRow.BackgroundTransparency = 1
+			btnRow.Position = UDim2.new(0, 8, 1, -34)
+			btnRow.Size = UDim2.new(1, -16, 0, 26)
+			btnRow.Parent = card
+			local bl = Instance.new("UIListLayout")
+			bl.FillDirection = Enum.FillDirection.Horizontal
+			bl.Padding = UDim.new(0, 6)
+			bl.Parent = btnRow
+
+			local function miniBtn(text, orderB, cb)
+				local b = Instance.new("TextButton")
+				b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+				b.Size = UDim2.new(0.5, -3, 1, 0)
+				b.Font = Enum.Font.GothamSemibold
+				b.TextSize = 11
+				b.TextColor3 = Color3.new(1,1,1)
+				b.Text = text
+				b.LayoutOrder = orderB
+				b.AutoButtonColor = false
+				b.Parent = btnRow
+				local bc = Instance.new("UICorner")
+				bc.CornerRadius = UDim.new(0, 6)
+				bc.Parent = b
+				b.MouseButton1Click:Connect(cb)
+				return b
+			end
+
+			miniBtn("Execute", 1, function()
+				if data.raw and data.raw ~= "" then
+					local ok, err = pcall(function() loadstring(data.raw)() end)
+					if not ok then
+						Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
+					end
+				elseif data.fetchUrl then
+					task.spawn(function()
+						local ok, body = pcall(function() return game:HttpGet(data.fetchUrl, true) end)
+						if ok and body then
+							local ok2, err = pcall(function() loadstring(body)() end)
+							if not ok2 then Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"}) end
+						else
+							Luna:Notification({Title = "Script Searcher", Content = "Could not fetch script.", Icon = "error"})
+						end
+					end)
+				end
+			end)
+			miniBtn("Copy", 2, function()
+				if setclipboard and data.link then
+					setclipboard(data.link)
+					notifyCopy("Link copied.")
+				elseif setclipboard and data.raw and data.raw ~= "" then
+					setclipboard(data.raw)
+					notifyCopy("Script copied.")
+				end
+			end)
+
+			card.MouseEnter:Connect(function() tween(cStroke, {Transparency = 0.35}) end)
+			card.MouseLeave:Connect(function() tween(cStroke, {Transparency = 0.75}) end)
+		end
+
+		local function buildRScriptsUrl()
+			local params = {
+				["page"] = tostring(pageNum),
+				["q"] = query,
+				["orderBy"] = "date",
+				["sort"] = "desc",
+			}
+			if filters.verifiedOnly then params["verifiedOnly"] = "true" end
+			if filters.isPatched then params["isPatched"] = "true" end
+			if filters.paid then params["paid"] = "true" end
+			if filters.key then params["key"] = "true" end
+			if filters.unc then params["unc"] = "true" end
+			if filters.universal then params["universal"] = "true" end
+			local parts = {}
+			for k, v in pairs(params) do
+				if v and v ~= "" then table.insert(parts, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(tostring(v))) end
+			end
+			return "https://rscripts.net/api/v2/scripts?" .. table.concat(parts, "&")
+		end
+
+		local function buildScriptBloxUrl()
+			local q = HttpService:UrlEncode(query)
+			local url = "https://scriptblox.com/api/script/search?q=" .. q .. "&page=" .. tostring(pageNum) .. "&max=20"
+			if filters.key then url = url .. "&key=true" end
+			if filters.universal then url = url .. "&universal=true" end
+			if filters.verified then url = url .. "&verified=true" end
+			if filters.patched then url = url .. "&patched=true" end
+			return url
+		end
+
+		local function runSearch()
+			if loading then return end
+			if query == "" then
+				Status.Text = "Enter a search term."
+				return
+			end
+			loading = true
+			Status.Text = "Searching..."
+			clearResults()
+
+			task.spawn(function()
+				local cards = {}
+				if source == "RScripts" then
+					local data = httpJSON(buildRScriptsUrl())
+					if data and data.scripts then
+						for _, s in ipairs(data.scripts) do
+							local slug = s.slug or s._id
+							table.insert(cards, {
+								title = s.title or s.name,
+								game = s.game and (s.game.name or s.game.title) or "Universal",
+								author = s.creator and s.creator.username or s.owner,
+								link = slug and ("https://rscripts.net/script/" .. slug) or nil,
+								fetchUrl = slug and ("https://rscripts.net/raw/" .. slug) or nil,
+								raw = s.script,
+							})
+						end
+					end
+				else
+					task.wait(1)
+					local data = httpJSON(buildScriptBloxUrl())
+					local listR = data and (data.result and data.result.scripts or data.scripts)
+					if listR then
+						for _, s in ipairs(listR) do
+							local slug = s.slug or s._id
+							table.insert(cards, {
+								title = s.title,
+								game = s.game and s.game.name or "Universal",
+								author = s.owner and s.owner.username or s.creator,
+								link = slug and ("https://scriptblox.com/script/" .. slug) or nil,
+								fetchUrl = slug and ("https://scriptblox.com/api/script/" .. slug) or nil,
+							})
+						end
+					end
+				end
+
+				for i, c in ipairs(cards) do makeCard(c, i) end
+				Status.Text = #cards > 0 and (#cards .. " results on " .. source) or "No scripts found."
+				loading = false
+			end)
+		end
+
+		SearchBox.FocusLost:Connect(function(enter)
+			if enter then
+				query = SearchBox.Text
+				pageNum = 1
+				runSearch()
+			end
+		end)
+
+		local menuOpen = false
+		local menu = Instance.new("Frame")
+		menu.Visible = false
+		menu.BackgroundColor3 = Color3.fromRGB(32, 30, 42)
+		menu.Size = UDim2.new(0, 138, 0, 72)
+		menu.Position = UDim2.new(1, -146, 0, 48)
+		menu.ZIndex = 20
+		menu.Parent = Root
+		local mc = Instance.new("UICorner")
+		mc.CornerRadius = UDim.new(0, 8)
+		mc.Parent = menu
+		local function pickSource(name, label)
+			source = name
+			SourceBtn.Text = label .. " ▾"
+			setFilterVisible()
+			menu.Visible = false
+			menuOpen = false
+		end
+		for idx, pair in ipairs({{"RScripts", "RScripts"}, {"ScriptBlox", "ScriptBlox"}}) do
+			local opt = Instance.new("TextButton")
+			opt.BackgroundTransparency = 1
+			opt.Size = UDim2.new(1, 0, 0, 34)
+			opt.Position = UDim2.new(0, 0, 0, (idx-1)*34)
+			opt.Font = Enum.Font.GothamMedium
+			opt.TextSize = 13
+			opt.TextColor3 = Color3.fromRGB(230,230,240)
+			opt.Text = pair[2]
+			opt.ZIndex = 21
+			opt.Parent = menu
+			opt.MouseButton1Click:Connect(function() pickSource(pair[1], pair[2]) end)
+		end
+		SourceBtn.MouseButton1Click:Connect(function()
+			menuOpen = not menuOpen
+			menu.Visible = menuOpen
+		end)
+
+		Window._ScriptSearcherTab = hostTab
+		return hostTab
+	end
+
+	function Window:CreateMusicPlayerTab(opts)
+		opts = Kwargify({
+			Name = "Music Player",
+			Icon = "music_note",
+			ImageSource = "Lucide",
+		}, opts or {})
+
+		local previousActiveTab = Window.CurrentTab
+		local hostTab = self:CreateTab({
+			Name = opts.Name,
+			Icon = opts.Icon,
+			ImageSource = opts.ImageSource,
+			ShowTitle = false,
+		})
+		local function restorePreviousTab()
+			if not previousActiveTab then return end
+			local restore = Window._Tabs and Window._Tabs[previousActiveTab]
+			if restore and type(restore.Activate) == "function" then pcall(restore.Activate) end
+		end
+		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
+			task.defer(restorePreviousTab)
+			task.delay(0.15, restorePreviousTab)
+		end
+
+		local Page = hostTab.Page
+		local list = Page:FindFirstChildOfClass("UIListLayout")
+		if list then list:Destroy() end
+		local pad = Page:FindFirstChildOfClass("UIPadding")
+		if pad then pad:Destroy() end
+		if Page:IsA("ScrollingFrame") then
+			Page.ScrollingEnabled = false
+		end
+
+		local queue = {}
+		local queueIdx = 0
+		local playing = false
+		local sound = Instance.new("Sound")
+		sound.Volume = 0.6
+		sound.Parent = getService("SoundService")
+
+		local audiusHost = "https://discoveryprovider.audius.co"
+
+		local function httpJSON(url)
+			if request then
+				local ok, res = pcall(function()
+					return request({Url = url, Method = "GET"})
+				end)
+				if ok and res and res.Body then return HttpService:JSONDecode(res.Body) end
+			end
+			local ok, body = pcall(function() return game:HttpGet(url, true) end)
+			if ok and body then return HttpService:JSONDecode(body) end
+		end
+
+		local Root = Instance.new("Frame")
+		Root.BackgroundTransparency = 1
+		Root.Size = UDim2.new(1, 0, 1, 0)
+		Root.Parent = Page
+
+		local SearchBox = Instance.new("TextBox")
+		SearchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
+		SearchBox.Size = UDim2.new(1, -16, 0, 36)
+		SearchBox.Position = UDim2.new(0, 8, 0, 6)
+		SearchBox.Font = Enum.Font.GothamMedium
+		SearchBox.TextSize = 14
+		SearchBox.PlaceholderText = "Search tracks (Audius)..."
+		SearchBox.TextColor3 = Color3.fromRGB(240,240,245)
+		SearchBox.Parent = Root
+		local sc = Instance.new("UICorner")
+		sc.CornerRadius = UDim.new(0, 8)
+		sc.Parent = SearchBox
+
+		local Art = Instance.new("ImageLabel")
+		Art.BackgroundColor3 = Color3.fromRGB(35, 33, 45)
+		Art.Size = UDim2.new(0, 140, 0, 140)
+		Art.Position = UDim2.new(0.5, -70, 0, 52)
+		Art.Image = ""
+		Art.Parent = Root
+		local ac = Instance.new("UICorner")
+		ac.CornerRadius = UDim.new(0, 12)
+		ac.Parent = Art
+
+		local TitleLbl = Instance.new("TextLabel")
+		TitleLbl.BackgroundTransparency = 1
+		TitleLbl.Size = UDim2.new(1, -24, 0, 22)
+		TitleLbl.Position = UDim2.new(0, 12, 0, 200)
+		TitleLbl.Font = Enum.Font.GothamBold
+		TitleLbl.TextSize = 16
+		TitleLbl.TextColor3 = Color3.new(1,1,1)
+		TitleLbl.Text = "Not playing"
+		TitleLbl.Parent = Root
+
+		local ArtistLbl = Instance.new("TextLabel")
+		ArtistLbl.BackgroundTransparency = 1
+		ArtistLbl.Size = UDim2.new(1, -24, 0, 18)
+		ArtistLbl.Position = UDim2.new(0, 12, 0, 222)
+		ArtistLbl.Font = Enum.Font.Gotham
+		ArtistLbl.TextSize = 13
+		ArtistLbl.TextColor3 = Color3.fromRGB(170,170,180)
+		ArtistLbl.Text = "—"
+		ArtistLbl.Parent = Root
+
+		local ProgressBg = Instance.new("Frame")
+		ProgressBg.BackgroundColor3 = Color3.fromRGB(45, 43, 55)
+		ProgressBg.Size = UDim2.new(1, -32, 0, 4)
+		ProgressBg.Position = UDim2.new(0, 16, 0, 252)
+		ProgressBg.Parent = Root
+		local pbc = Instance.new("UICorner")
+		pbc.CornerRadius = UDim.new(1, 0)
+		pbc.Parent = ProgressBg
+		local ProgressFill = Instance.new("Frame")
+		ProgressFill.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+		ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+		ProgressFill.Parent = ProgressBg
+		local pfc = Instance.new("UICorner")
+		pfc.CornerRadius = UDim.new(1, 0)
+		pfc.Parent = ProgressFill
+
+		local Controls = Instance.new("Frame")
+		Controls.BackgroundTransparency = 1
+		Controls.Size = UDim2.new(0, 160, 0, 44)
+		Controls.Position = UDim2.new(0.5, -80, 0, 268)
+		Controls.Parent = Root
+		local cl = Instance.new("UIListLayout")
+		cl.FillDirection = Enum.FillDirection.Horizontal
+		cl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		cl.Padding = UDim.new(0, 12)
+		cl.Parent = Controls
+
+		local function ctrlBtn(iconText, order, cb)
+			local b = Instance.new("TextButton")
+			b.Size = UDim2.new(0, 44, 0, 44)
+			b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+			b.Font = Enum.Font.GothamBold
+			b.TextSize = 18
+			b.TextColor3 = Color3.new(1,1,1)
+			b.Text = iconText
+			b.LayoutOrder = order
+			b.Parent = Controls
+			local bc = Instance.new("UICorner")
+			bc.CornerRadius = UDim.new(1, 0)
+			bc.Parent = b
+			b.MouseButton1Click:Connect(cb)
+			return b
+		end
+
+		local QueueScroll = Instance.new("ScrollingFrame")
+		QueueScroll.BackgroundTransparency = 1
+		QueueScroll.Size = UDim2.new(1, -16, 1, -330)
+		QueueScroll.Position = UDim2.new(0, 8, 0, 322)
+		QueueScroll.ScrollBarThickness = 3
+		QueueScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		QueueScroll.Parent = Root
+		local ql = Instance.new("UIListLayout")
+		ql.Padding = UDim.new(0, 4)
+		ql.Parent = QueueScroll
+
+		local function formatTime(t)
+			t = math.floor(t or 0)
+			return string.format("%d:%02d", math.floor(t/60), t % 60)
+		end
+
+		local TimeLbl = Instance.new("TextLabel")
+		TimeLbl.BackgroundTransparency = 1
+		TimeLbl.Size = UDim2.new(1, -32, 0, 14)
+		TimeLbl.Position = UDim2.new(0, 16, 0, 258)
+		TimeLbl.Font = Enum.Font.Gotham
+		TimeLbl.TextSize = 11
+		TimeLbl.TextColor3 = Color3.fromRGB(150,150,160)
+		TimeLbl.Text = "0:00 / 0:00"
+		TimeLbl.Parent = Root
+
+		local function updateProgress()
+			if sound.TimeLength > 0 then
+				ProgressFill.Size = UDim2.new(math.clamp(sound.TimePosition / sound.TimeLength, 0, 1), 0, 1, 0)
+				TimeLbl.Text = formatTime(sound.TimePosition) .. " / " .. formatTime(sound.TimeLength)
+			end
+		end
+		RunService.Heartbeat:Connect(function()
+			if playing then updateProgress() end
+		end)
+
+		local function playTrack(track)
+			if not track then return end
+			TitleLbl.Text = track.title or "Track"
+			ArtistLbl.Text = track.user and track.user.name or "Unknown"
+			if track.artwork and track.artwork["150x150"] then
+				Art.Image = track.artwork["150x150"]
+			end
+			local streamUrl = audiusHost .. "/v1/tracks/" .. tostring(track.id) .. "/stream?app_name=SolaraHub"
+			playing = false
+			sound:Stop()
+			task.spawn(function()
+				if getcustomasset and writefile and request then
+					local ok, res = pcall(function()
+						return request({Url = streamUrl, Method = "GET"})
+					end)
+					if ok and res and res.Body then
+						pcall(function() writefile("SolaraHub_music_cache.mp3", res.Body) end)
+						local ok2, asset = pcall(function() return getcustomasset("SolaraHub_music_cache.mp3") end)
+						if ok2 and asset then
+							sound.SoundId = asset
+							sound:Play()
+							playing = true
+							return
+						end
+					end
+				end
+				Luna:Notification({
+					Title = "Music Player",
+					Content = "Your executor needs getcustomasset + request to stream audio.",
+					Icon = "music_off",
+				})
+			end)
+		end
+
+		local function playCurrent()
+			local tr = queue[queueIdx]
+			if tr then playTrack(tr) end
+		end
+
+		ctrlBtn("⏮", 1, function()
+			if queueIdx > 1 then queueIdx -= 1 playCurrent() end
+		end)
+		local playBtn = ctrlBtn("▶", 2, function()
+			if playing then
+				sound:Pause()
+				playing = false
+				playBtn.Text = "▶"
+			else
+				if sound.TimePosition > 0 and sound.IsPaused then
+					sound:Resume()
+					playing = true
+					playBtn.Text = "⏸"
+				else
+					playCurrent()
+					playBtn.Text = "⏸"
+				end
+			end
+		end)
+		ctrlBtn("⏭", 3, function()
+			if queueIdx < #queue then queueIdx += 1 playCurrent() end
+		end)
+		sound.Ended:Connect(function()
+			playing = false
+			playBtn.Text = "▶"
+			if queueIdx < #queue then
+				queueIdx += 1
+				playCurrent()
+				playBtn.Text = "⏸"
+				playing = true
+			end
+		end)
+
+		local function addQueueItem(track, order)
+			local row = Instance.new("TextButton")
+			row.BackgroundColor3 = Color3.fromRGB(30, 28, 38)
+			row.Size = UDim2.new(1, 0, 0, 36)
+			row.LayoutOrder = order
+			row.Font = Enum.Font.GothamMedium
+			row.TextSize = 12
+			row.TextColor3 = Color3.fromRGB(220,220,230)
+			row.Text = "  " .. (track.title or "?") .. " — " .. (track.user and track.user.name or "")
+			row.TextXAlignment = Enum.TextXAlignment.Left
+			row.AutoButtonColor = false
+			row.Parent = QueueScroll
+			local rc = Instance.new("UICorner")
+			rc.CornerRadius = UDim.new(0, 6)
+			rc.Parent = row
+			row.MouseButton1Click:Connect(function()
+				queueIdx = order
+				playCurrent()
+				playBtn.Text = "⏸"
+				playing = true
+			end)
+		end
+
+		SearchBox.FocusLost:Connect(function(enter)
+			if not enter or SearchBox.Text == "" then return end
+			task.spawn(function()
+				local data = httpJSON(audiusHost .. "/v1/tracks/search?query=" .. HttpService:UrlEncode(SearchBox.Text) .. "&limit=15")
+				for _, ch in ipairs(QueueScroll:GetChildren()) do
+					if ch:IsA("TextButton") then ch:Destroy() end
+				end
+				queue = {}
+				if data and data.data then
+					for i, tr in ipairs(data.data) do
+						queue[i] = tr
+						addQueueItem(tr, i)
+					end
+					if #queue > 0 then
+						queueIdx = 1
+						playCurrent()
+						playBtn.Text = "⏸"
+						playing = true
+					end
+				end
+			end)
+		end)
+
+		Window._MusicPlayerTab = hostTab
+		return hostTab
+	end
 
 	Elements.Parent.Visible = true
 	tween(Elements.Parent, {BackgroundTransparency = 0.1})
@@ -8940,18 +9702,20 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 	end
 
 	-- ============================================================
-	-- Auto-create AI tab if requested
+	-- Auto-create optional tabs (AI, Script Searcher, Music Player)
 	-- ============================================================
-	if WindowSettings.AiTab then
+	if WindowSettings.AiTab or WindowSettings.ScriptSearcherTab or WindowSettings.MusicPlayerTab then
 		task.defer(function()
-			-- Deferred so it's added AFTER the user's CreateTab calls; this puts
-			-- the AI tab at the end of the nav list instead of the very top.
 			local savedTab = Window.CurrentTab
-			pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
-			-- Belt-and-braces: even if CreateAiTab's own restore loop failed
-			-- (e.g. user passed AiTab without a HomeTab), make sure we go back
-			-- to whatever was active before. We try a couple of times because
-			-- UIPageLayout settles asynchronously.
+			if WindowSettings.AiTab then
+				pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
+			end
+			if WindowSettings.ScriptSearcherTab then
+				pcall(function() Window:CreateScriptSearcherTab(WindowSettings.ScriptSearcherSettings) end)
+			end
+			if WindowSettings.MusicPlayerTab then
+				pcall(function() Window:CreateMusicPlayerTab(WindowSettings.MusicPlayerSettings) end)
+			end
 			if savedTab and Window._Tabs and Window._Tabs[savedTab] then
 				local restore = Window._Tabs[savedTab].Activate
 				if type(restore) == "function" then
@@ -9017,6 +9781,62 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		Window.ResetTheme = function()
 			Window.SetThemeAccent(Color3.fromRGB(110, 102, 153))
+		end
+
+		Window.SetThemeGradient = function(c1, c2, c3)
+			if typeof(c1) == "ColorSequence" then
+				Luna.ThemeGradient = c1
+			elseif typeof(c1) == "Color3" and typeof(c2) == "Color3" and typeof(c3) == "Color3" then
+				Luna.ThemeGradient = ColorSequence.new{
+					ColorSequenceKeypoint.new(0, c1),
+					ColorSequenceKeypoint.new(0.5, c2),
+					ColorSequenceKeypoint.new(1, c3),
+				}
+			end
+			pcall(function() LunaUI.ThemeRemote.Value = not LunaUI.ThemeRemote.Value end)
+		end
+
+		Window.ApplyGradientPreset = function(presetName)
+			local preset = PresetGradients[presetName]
+			if preset then
+				Window.SetThemeGradient(preset[1], preset[2], preset[3])
+			end
+		end
+
+		Window.GetGradientPresets = function()
+			local names = {}
+			for name in pairs(PresetGradients) do
+				table.insert(names, name)
+			end
+			table.sort(names)
+			return names
+		end
+
+		Window.GetTabNames = function()
+			local names = {}
+			for name in pairs(Window._TabRegistry or {}) do
+				table.insert(names, name)
+			end
+			table.sort(names)
+			return names
+		end
+
+		Window.SetTabVisible = function(tabName, visible)
+			local entry = Window._TabRegistry and Window._TabRegistry[tabName]
+			if not entry or not entry.Button then return end
+			entry.Hidden = not visible
+			entry.Button.Visible = visible
+		end
+
+		Window.ApplyHiddenTabs = function(hiddenList)
+			if type(hiddenList) ~= "table" then return end
+			local hideSet = {}
+			for _, n in ipairs(hiddenList) do hideSet[n] = true end
+			for name, entry in pairs(Window._TabRegistry or {}) do
+				local hide = hideSet[name] == true
+				entry.Hidden = hide
+				if entry.Button then entry.Button.Visible = not hide end
+			end
 		end
 	end
 
