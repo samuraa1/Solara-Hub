@@ -2728,8 +2728,6 @@ function Luna:CreateWindow(WindowSettings)
 		AiSettings = nil,
 		ScriptSearcherTab = false,
 		ScriptSearcherSettings = nil,
-		MusicPlayerTab = false,
-		MusicPlayerSettings = nil,
 
 		-- New: enables Ctrl + / Ctrl - in-window zoom. Disable if the host
 		-- already remaps those shortcuts.
@@ -8333,6 +8331,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Page.ScrollingEnabled = false
 		end
 
+		local httpRequest = request
 		local source = "ScriptBlox"
 		local query = ""
 		local pageNum = 1
@@ -8348,24 +8347,48 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			patched = false,
 		}
 
-		local Root = Instance.new("Frame")
-		Root.Name = "ScriptSearcherRoot"
-		Root.BackgroundTransparency = 1
-		Root.Size = UDim2.new(1, 0, 1, 0)
-		Root.Parent = Page
+		local accentChip = Color3.fromRGB(110, 102, 153)
+		local dimChip = Color3.fromRGB(38, 36, 48)
 
-		local Top = Instance.new("Frame")
-		Top.BackgroundTransparency = 1
-		Top.Size = UDim2.new(1, -16, 0, 44)
-		Top.Position = UDim2.new(0, 8, 0, 4)
-		Top.Parent = Root
+		local Container = Instance.new("Frame")
+		Container.Name = "ScriptSearcherRoot"
+		Container.BackgroundTransparency = 1
+		Container.BorderSizePixel = 0
+		Container.Position = UDim2.new(0, 8, 0, 4)
+		Container.Size = UDim2.new(1, -16, 1, -8)
+		Container.Parent = Page
+		Container.ZIndex = 2
+
+		local function refreshContainerSize()
+			local sz = Page.AbsoluteSize
+			if sz.X > 50 and sz.Y > 80 then
+				Container.Size = UDim2.fromOffset(sz.X - 16, sz.Y - 8)
+			end
+		end
+		Page:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshContainerSize)
+		task.defer(refreshContainerSize)
+		task.delay(0.35, refreshContainerSize)
+		local origActivate = hostTab.Activate
+		function hostTab:Activate()
+			origActivate()
+			task.defer(refreshContainerSize)
+		end
+
+		local Row1 = Instance.new("Frame")
+		Row1.Name = "TopRow"
+		Row1.BackgroundTransparency = 1
+		Row1.Size = UDim2.new(1, 0, 0, 38)
+		Row1.Position = UDim2.new(0, 0, 0, 0)
+		Row1.ZIndex = 5
+		Row1.Parent = Container
 
 		local SearchBox = Instance.new("TextBox")
 		SearchBox.Name = "Search"
 		SearchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 		SearchBox.BackgroundTransparency = 0.15
-		SearchBox.Size = UDim2.new(1, -248, 1, 0)
+		SearchBox.Size = UDim2.new(1, -252, 0, 36)
 		SearchBox.Position = UDim2.new(0, 0, 0, 0)
+		SearchBox.ZIndex = 6
 		SearchBox.Font = Enum.Font.GothamMedium
 		SearchBox.TextSize = 14
 		SearchBox.TextColor3 = Color3.fromRGB(235, 235, 240)
@@ -8374,62 +8397,61 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchBox.Text = ""
 		SearchBox.ClearTextOnFocus = false
 		SearchBox.TextXAlignment = Enum.TextXAlignment.Left
-		SearchBox.Parent = Top
+		SearchBox.Parent = Row1
 		local sbPad = Instance.new("UIPadding")
 		sbPad.PaddingLeft = UDim.new(0, 12)
 		sbPad.Parent = SearchBox
 		local sbCorner = Instance.new("UICorner")
 		sbCorner.CornerRadius = UDim.new(0, 8)
 		sbCorner.Parent = SearchBox
-		local sbStroke = Instance.new("UIStroke")
-		sbStroke.Color = Color3.fromRGB(110, 102, 153)
-		sbStroke.Transparency = 0.6
-		sbStroke.Parent = SearchBox
 
-		local accentChip = Color3.fromRGB(110, 102, 153)
-		local dimChip = Color3.fromRGB(38, 36, 48)
+		local BtnScriptBlox = Instance.new("TextButton")
+		BtnScriptBlox.BackgroundColor3 = accentChip
+		BtnScriptBlox.Size = UDim2.fromOffset(96, 36)
+		BtnScriptBlox.Position = UDim2.new(1, -248, 0, 0)
+		BtnScriptBlox.ZIndex = 8
+		BtnScriptBlox.Font = Enum.Font.GothamSemibold
+		BtnScriptBlox.TextSize = 12
+		BtnScriptBlox.TextColor3 = Color3.fromRGB(240, 240, 245)
+		BtnScriptBlox.Text = "ScriptBlox"
+		BtnScriptBlox.AutoButtonColor = false
+		BtnScriptBlox.Parent = Row1
+		do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = BtnScriptBlox end
 
-		local function makeSourceBtn(label, xOff, pickName)
-			local b = Instance.new("TextButton")
-			b.BackgroundColor3 = source == pickName and accentChip or dimChip
-			b.Size = UDim2.new(0, 88, 1, 0)
-			b.Position = UDim2.new(1, xOff, 0, 0)
-			b.Font = Enum.Font.GothamSemibold
-			b.TextSize = 12
-			b.TextColor3 = Color3.fromRGB(240, 240, 245)
-			b.Text = label
-			b.AutoButtonColor = false
-			b.Parent = Top
-			local c = Instance.new("UICorner")
-			c.CornerRadius = UDim.new(0, 8)
-			c.Parent = b
-			return b
-		end
-
-		local BtnScriptBlox = makeSourceBtn("ScriptBlox", -198, "ScriptBlox")
-		local BtnRScripts = makeSourceBtn("RScripts", -104, "RScripts")
+		local BtnRScripts = Instance.new("TextButton")
+		BtnRScripts.BackgroundColor3 = dimChip
+		BtnRScripts.Size = UDim2.fromOffset(96, 36)
+		BtnRScripts.Position = UDim2.new(1, -146, 0, 0)
+		BtnRScripts.ZIndex = 8
+		BtnRScripts.Font = Enum.Font.GothamSemibold
+		BtnRScripts.TextSize = 12
+		BtnRScripts.TextColor3 = Color3.fromRGB(240, 240, 245)
+		BtnRScripts.Text = "RScripts"
+		BtnRScripts.AutoButtonColor = false
+		BtnRScripts.Parent = Row1
+		do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = BtnRScripts end
 
 		local SearchBtn = Instance.new("TextButton")
-		SearchBtn.BackgroundColor3 = accentChip
-		SearchBtn.Size = UDim2.new(0, 44, 1, 0)
+		SearchBtn.Size = UDim2.fromOffset(44, 36)
 		SearchBtn.Position = UDim2.new(1, -44, 0, 0)
+		SearchBtn.ZIndex = 8
+		SearchBtn.BackgroundColor3 = accentChip
 		SearchBtn.Font = Enum.Font.GothamBold
-		SearchBtn.TextSize = 16
+		SearchBtn.TextSize = 13
 		SearchBtn.TextColor3 = Color3.new(1, 1, 1)
-		SearchBtn.Text = "⌕"
+		SearchBtn.Text = "Go"
 		SearchBtn.AutoButtonColor = false
-		SearchBtn.Parent = Top
-		local sbc = Instance.new("UICorner")
-		sbc.CornerRadius = UDim.new(0, 8)
-		sbc.Parent = SearchBtn
+		SearchBtn.Parent = Row1
+		do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = SearchBtn end
 
 		local FilterRow = Instance.new("Frame")
 		FilterRow.Name = "Filters"
 		FilterRow.BackgroundTransparency = 1
-		FilterRow.Size = UDim2.new(1, -16, 0, 34)
-		FilterRow.Position = UDim2.new(0, 8, 0, 52)
+		FilterRow.Size = UDim2.new(1, 0, 0, 30)
+		FilterRow.Position = UDim2.new(0, 0, 0, 44)
+		FilterRow.ZIndex = 5
 		FilterRow.ClipsDescendants = false
-		FilterRow.Parent = Root
+		FilterRow.Parent = Container
 		local filterLayout = Instance.new("UIListLayout")
 		filterLayout.FillDirection = Enum.FillDirection.Horizontal
 		filterLayout.Padding = UDim.new(0, 6)
@@ -8482,39 +8504,44 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end)
 		end
 
-		local function pickSource(name)
-			source = name
-			BtnScriptBlox.BackgroundColor3 = name == "ScriptBlox" and accentChip or dimChip
-			BtnRScripts.BackgroundColor3 = name == "RScripts" and accentChip or dimChip
-			setFilterVisible()
-		end
-		BtnScriptBlox.MouseButton1Click:Connect(function() pickSource("ScriptBlox") end)
-		BtnRScripts.MouseButton1Click:Connect(function() pickSource("RScripts") end)
-		setFilterVisible()
-
 		local Status = Instance.new("TextLabel")
 		Status.BackgroundTransparency = 1
-		Status.Size = UDim2.new(1, -16, 0, 18)
-		Status.Position = UDim2.new(0, 8, 0, 86)
+		Status.Size = UDim2.new(1, 0, 0, 16)
+		Status.Position = UDim2.new(0, 0, 0, 78)
+		Status.ZIndex = 5
 		Status.Font = Enum.Font.Gotham
 		Status.TextSize = 12
 		Status.TextColor3 = Color3.fromRGB(150, 150, 160)
 		Status.TextXAlignment = Enum.TextXAlignment.Left
-		Status.Text = "Search for scripts on RScripts or ScriptBlox"
-		Status.Parent = Root
+		Status.Text = httpRequest and "ScriptBlox / RScripts — type query and press Go" or "HTTP request() required for search"
+		Status.Parent = Container
+
+		local function pickSource(name)
+			source = name
+			BtnScriptBlox.BackgroundColor3 = name == "ScriptBlox" and accentChip or dimChip
+			BtnRScripts.BackgroundColor3 = name == "RScripts" and accentChip or dimChip
+			Status.Text = "Source: " .. name .. " — " .. (httpRequest and "ready" or "need request()")
+			setFilterVisible()
+		end
+		BtnScriptBlox.Activated:Connect(function() pickSource("ScriptBlox") end)
+		BtnRScripts.Activated:Connect(function() pickSource("RScripts") end)
+		BtnScriptBlox.MouseButton1Click:Connect(function() pickSource("ScriptBlox") end)
+		BtnRScripts.MouseButton1Click:Connect(function() pickSource("RScripts") end)
+		setFilterVisible()
 
 		local Scroll = Instance.new("ScrollingFrame")
 		Scroll.Name = "Results"
 		Scroll.BackgroundColor3 = Color3.fromRGB(22, 21, 28)
 		Scroll.BackgroundTransparency = 0.35
 		Scroll.BorderSizePixel = 0
-		Scroll.Size = UDim2.new(1, -16, 1, -112)
-		Scroll.Position = UDim2.new(0, 8, 0, 108)
+		Scroll.Size = UDim2.new(1, 0, 1, -100)
+		Scroll.Position = UDim2.new(0, 0, 0, 98)
+		Scroll.ZIndex = 4
 		Scroll.ScrollBarThickness = 4
 		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
 		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		Scroll.Parent = Root
+		Scroll.Parent = Container
 		local scrollCorner = Instance.new("UICorner")
 		scrollCorner.CornerRadius = UDim.new(0, 8)
 		scrollCorner.Parent = Scroll
@@ -8668,6 +8695,28 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return url
 		end
 
+		local function fetchScriptBlox()
+			if not httpRequest then
+				return nil, "Executor needs request / http.request"
+			end
+			local url = buildScriptBloxUrl()
+			local ok, response = pcall(function()
+				return httpRequest({Url = url, Method = "GET"})
+			end)
+			if not ok or not response then
+				return nil, "ScriptBlox request failed"
+			end
+			local code = response.StatusCode or response.status
+			if code and tonumber(code) ~= 200 then
+				return nil, "ScriptBlox HTTP " .. tostring(code)
+			end
+			local body = response.Body or response.body
+			if not body then return nil, "Empty ScriptBlox response" end
+			local okJ, data = pcall(function() return HttpService:JSONDecode(body) end)
+			if not okJ then return nil, "ScriptBlox JSON error" end
+			return data
+		end
+
 		local function runSearch()
 			if loading then return end
 			query = SearchBox.Text
@@ -8675,8 +8724,12 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				Status.Text = "Enter a search term."
 				return
 			end
+			if not httpRequest then
+				Status.Text = "Executor needs request / http.request for search."
+				return
+			end
 			loading = true
-			Status.Text = "Searching..."
+			Status.Text = "Searching " .. source .. "..."
 			clearResults()
 
 			task.spawn(function()
@@ -8701,10 +8754,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 						errMsg = tostring(data.message)
 					end
 				else
-					if not request then
+					if source == "ScriptBlox" then
 						task.wait(1.05)
 					end
-					local data, err = LunaHttpJSON(buildScriptBloxUrl())
+					local data, err = fetchScriptBlox()
 					errMsg = err
 					local listR = data and data.result and data.result.scripts
 					if listR then
@@ -8748,352 +8801,6 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		pickSource(source)
 
 		Window._ScriptSearcherTab = hostTab
-		return hostTab
-	end
-
-	function Window:CreateMusicPlayerTab(opts)
-		opts = Kwargify({
-			Name = "Music Player",
-			Icon = "music_note",
-			ImageSource = "Lucide",
-		}, opts or {})
-
-		local previousActiveTab = Window.CurrentTab
-		local hostTab = self:CreateTab({
-			Name = opts.Name,
-			Icon = opts.Icon,
-			ImageSource = opts.ImageSource,
-			ShowTitle = false,
-		})
-		local function restorePreviousTab()
-			if not previousActiveTab then return end
-			local restore = Window._Tabs and Window._Tabs[previousActiveTab]
-			if restore and type(restore.Activate) == "function" then pcall(restore.Activate) end
-		end
-		if previousActiveTab and Window._Tabs and Window._Tabs[previousActiveTab] then
-			task.defer(restorePreviousTab)
-			task.delay(0.15, restorePreviousTab)
-		end
-
-		local Page = hostTab.Page
-		local list = Page:FindFirstChildOfClass("UIListLayout")
-		if list then list:Destroy() end
-		local pad = Page:FindFirstChildOfClass("UIPadding")
-		if pad then pad:Destroy() end
-		if Page:IsA("ScrollingFrame") then
-			Page.ScrollingEnabled = false
-		end
-
-		local queue = {}
-		local queueIdx = 0
-		local playing = false
-		local sound = Instance.new("Sound")
-		sound.Volume = 0.6
-		sound.Parent = getService("SoundService")
-
-		local Root = Instance.new("Frame")
-		Root.BackgroundTransparency = 1
-		Root.Size = UDim2.new(1, 0, 1, 0)
-		Root.Parent = Page
-
-		local SearchBox = Instance.new("TextBox")
-		SearchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
-		SearchBox.Size = UDim2.new(1, -16, 0, 36)
-		SearchBox.Position = UDim2.new(0, 8, 0, 6)
-		SearchBox.Font = Enum.Font.GothamMedium
-		SearchBox.TextSize = 14
-		SearchBox.PlaceholderText = "Search full tracks (YouTube via Piped)..."
-		SearchBox.TextColor3 = Color3.fromRGB(240,240,245)
-		SearchBox.Parent = Root
-		local sc = Instance.new("UICorner")
-		sc.CornerRadius = UDim.new(0, 8)
-		sc.Parent = SearchBox
-
-		local Art = Instance.new("ImageLabel")
-		Art.BackgroundColor3 = Color3.fromRGB(35, 33, 45)
-		Art.Size = UDim2.new(0, 140, 0, 140)
-		Art.Position = UDim2.new(0.5, -70, 0, 52)
-		Art.Image = ""
-		Art.Parent = Root
-		local ac = Instance.new("UICorner")
-		ac.CornerRadius = UDim.new(0, 12)
-		ac.Parent = Art
-
-		local TitleLbl = Instance.new("TextLabel")
-		TitleLbl.BackgroundTransparency = 1
-		TitleLbl.Size = UDim2.new(1, -24, 0, 22)
-		TitleLbl.Position = UDim2.new(0, 12, 0, 200)
-		TitleLbl.Font = Enum.Font.GothamBold
-		TitleLbl.TextSize = 16
-		TitleLbl.TextColor3 = Color3.new(1,1,1)
-		TitleLbl.Text = "Not playing"
-		TitleLbl.Parent = Root
-
-		local ArtistLbl = Instance.new("TextLabel")
-		ArtistLbl.BackgroundTransparency = 1
-		ArtistLbl.Size = UDim2.new(1, -24, 0, 18)
-		ArtistLbl.Position = UDim2.new(0, 12, 0, 222)
-		ArtistLbl.Font = Enum.Font.Gotham
-		ArtistLbl.TextSize = 13
-		ArtistLbl.TextColor3 = Color3.fromRGB(170,170,180)
-		ArtistLbl.Text = "—"
-		ArtistLbl.Parent = Root
-
-		local ProgressBg = Instance.new("Frame")
-		ProgressBg.BackgroundColor3 = Color3.fromRGB(45, 43, 55)
-		ProgressBg.Size = UDim2.new(1, -32, 0, 4)
-		ProgressBg.Position = UDim2.new(0, 16, 0, 252)
-		ProgressBg.Parent = Root
-		local pbc = Instance.new("UICorner")
-		pbc.CornerRadius = UDim.new(1, 0)
-		pbc.Parent = ProgressBg
-		local ProgressFill = Instance.new("Frame")
-		ProgressFill.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
-		ProgressFill.Size = UDim2.new(0, 0, 1, 0)
-		ProgressFill.Parent = ProgressBg
-		local pfc = Instance.new("UICorner")
-		pfc.CornerRadius = UDim.new(1, 0)
-		pfc.Parent = ProgressFill
-
-		local Controls = Instance.new("Frame")
-		Controls.BackgroundTransparency = 1
-		Controls.Size = UDim2.new(0, 160, 0, 44)
-		Controls.Position = UDim2.new(0.5, -80, 0, 268)
-		Controls.Parent = Root
-		local cl = Instance.new("UIListLayout")
-		cl.FillDirection = Enum.FillDirection.Horizontal
-		cl.HorizontalAlignment = Enum.HorizontalAlignment.Center
-		cl.Padding = UDim.new(0, 12)
-		cl.Parent = Controls
-
-		local function ctrlBtn(iconText, order, cb)
-			local b = Instance.new("TextButton")
-			b.Size = UDim2.new(0, 44, 0, 44)
-			b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
-			b.Font = Enum.Font.GothamBold
-			b.TextSize = 18
-			b.TextColor3 = Color3.new(1,1,1)
-			b.Text = iconText
-			b.LayoutOrder = order
-			b.Parent = Controls
-			local bc = Instance.new("UICorner")
-			bc.CornerRadius = UDim.new(1, 0)
-			bc.Parent = b
-			b.MouseButton1Click:Connect(cb)
-			return b
-		end
-
-		local QueueScroll = Instance.new("ScrollingFrame")
-		QueueScroll.BackgroundTransparency = 1
-		QueueScroll.Size = UDim2.new(1, -16, 1, -330)
-		QueueScroll.Position = UDim2.new(0, 8, 0, 322)
-		QueueScroll.ScrollBarThickness = 3
-		QueueScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		QueueScroll.Parent = Root
-		local ql = Instance.new("UIListLayout")
-		ql.Padding = UDim.new(0, 4)
-		ql.Parent = QueueScroll
-
-		local function formatTime(t)
-			t = math.floor(t or 0)
-			return string.format("%d:%02d", math.floor(t/60), t % 60)
-		end
-
-		local TimeLbl = Instance.new("TextLabel")
-		TimeLbl.BackgroundTransparency = 1
-		TimeLbl.Size = UDim2.new(1, -32, 0, 14)
-		TimeLbl.Position = UDim2.new(0, 16, 0, 258)
-		TimeLbl.Font = Enum.Font.Gotham
-		TimeLbl.TextSize = 11
-		TimeLbl.TextColor3 = Color3.fromRGB(150,150,160)
-		TimeLbl.Text = "0:00 / 0:00"
-		TimeLbl.Parent = Root
-
-		local function updateProgress()
-			if sound.TimeLength > 0 then
-				ProgressFill.Size = UDim2.new(math.clamp(sound.TimePosition / sound.TimeLength, 0, 1), 0, 1, 0)
-				TimeLbl.Text = formatTime(sound.TimePosition) .. " / " .. formatTime(sound.TimeLength)
-			end
-		end
-		RunService.Heartbeat:Connect(function()
-			if playing then updateProgress() end
-		end)
-
-		local function pipedStreamUrl(videoId)
-			for _, host in ipairs(PIPED_API_HOSTS) do
-				local data, err = LunaHttpJSON(host .. "/streams/" .. videoId)
-				if data and data.audioStreams then
-					for _, stream in ipairs(data.audioStreams) do
-						local url = stream.url or stream.proxyUrl
-						if url and (not stream.mimeType or string.find(stream.mimeType, "audio")) then
-							return url
-						end
-					end
-					local first = data.audioStreams[1]
-					if first then return first.url or first.proxyUrl end
-				end
-			end
-			return nil
-		end
-
-		local function playTrack(track)
-			if not track then return end
-			TitleLbl.Text = track.title or "Track"
-			ArtistLbl.Text = track.artist or "Unknown"
-			if track.cover then Art.Image = track.cover end
-			playing = false
-			sound:Stop()
-			task.spawn(function()
-				local streamUrl = track.streamUrl
-				if not streamUrl and track.videoId then
-					streamUrl = pipedStreamUrl(track.videoId)
-				end
-				if not streamUrl and track.preview then
-					streamUrl = track.preview
-				end
-				if not streamUrl then
-					Luna:Notification({Title = "Music Player", Content = "No stream URL for this track.", Icon = "music_off"})
-					return
-				end
-				local ok, err = LunaPlaySoundFromUrl(sound, streamUrl, "SolaraHub_track_" .. tostring(track.videoId or "audio") .. ".mp3")
-				if ok then
-					playing = true
-				else
-					Luna:Notification({
-						Title = "Music Player",
-						Content = tostring(err or "Playback failed"),
-						Icon = "music_off",
-					})
-				end
-			end)
-		end
-
-		local function playCurrent()
-			local tr = queue[queueIdx]
-			if tr then playTrack(tr) end
-		end
-
-		ctrlBtn("⏮", 1, function()
-			if queueIdx > 1 then queueIdx -= 1 playCurrent() end
-		end)
-		local playBtn = ctrlBtn("▶", 2, function()
-			if playing then
-				sound:Pause()
-				playing = false
-				playBtn.Text = "▶"
-			else
-				if sound.TimePosition > 0 and sound.IsPaused then
-					sound:Resume()
-					playing = true
-					playBtn.Text = "⏸"
-				else
-					playCurrent()
-					playBtn.Text = "⏸"
-				end
-			end
-		end)
-		ctrlBtn("⏭", 3, function()
-			if queueIdx < #queue then queueIdx += 1 playCurrent() end
-		end)
-		sound.Ended:Connect(function()
-			playing = false
-			playBtn.Text = "▶"
-			if queueIdx < #queue then
-				queueIdx += 1
-				playCurrent()
-				playBtn.Text = "⏸"
-				playing = true
-			end
-		end)
-
-		local function addQueueItem(track, order)
-			local row = Instance.new("TextButton")
-			row.BackgroundColor3 = Color3.fromRGB(30, 28, 38)
-			row.Size = UDim2.new(1, 0, 0, 36)
-			row.LayoutOrder = order
-			row.Font = Enum.Font.GothamMedium
-			row.TextSize = 12
-			row.TextColor3 = Color3.fromRGB(220,220,230)
-			row.Text = "  " .. (track.title or "?") .. " — " .. (track.artist or "")
-			row.TextXAlignment = Enum.TextXAlignment.Left
-			row.AutoButtonColor = false
-			row.Parent = QueueScroll
-			local rc = Instance.new("UICorner")
-			rc.CornerRadius = UDim.new(0, 6)
-			rc.Parent = row
-			row.MouseButton1Click:Connect(function()
-				queueIdx = order
-				playCurrent()
-				playBtn.Text = "⏸"
-				playing = true
-			end)
-		end
-
-		local function searchMusic()
-			if SearchBox.Text == "" then return end
-			task.spawn(function()
-				local q = HttpService:UrlEncode(SearchBox.Text)
-				for _, ch in ipairs(QueueScroll:GetChildren()) do
-					if ch:IsA("TextButton") then ch:Destroy() end
-				end
-				queue = {}
-				local found = false
-				for _, host in ipairs(PIPED_API_HOSTS) do
-					local data, err = LunaHttpJSON(host .. "/search?q=" .. q .. "&filter=music_songs")
-					if data and data.items then
-						for i, item in ipairs(data.items) do
-							if i > 15 then break end
-							local vid = item.url and item.url:match("[?&]v=([^&]+)") or item.url and item.url:match("/([^/?]+)$")
-							local trackItem = {
-								title = item.title or "Track",
-								artist = item.uploaderName or item.uploader or "YouTube",
-								cover = item.thumbnail or "",
-								videoId = vid,
-								streamUrl = nil,
-							}
-							queue[#queue + 1] = trackItem
-							addQueueItem(trackItem, #queue)
-						end
-						found = #queue > 0
-						break
-					elseif err and not found then
-						Luna:Notification({Title = "Music Player", Content = err, Icon = "error"})
-					end
-				end
-				if not found and #queue == 0 then
-					local data, err = LunaHttpJSON("https://api.deezer.com/search?q=" .. q .. "&limit=10")
-					if data and data.data then
-						for i, tr in ipairs(data.data) do
-							local trackItem = {
-								title = (tr.title or "?") .. " (preview)",
-								artist = tr.artist and tr.artist.name or "Deezer",
-								cover = tr.album and tr.album.cover_medium or "",
-								preview = tr.preview,
-								videoId = "dz_" .. tostring(tr.id),
-							}
-							queue[#queue + 1] = trackItem
-							addQueueItem(trackItem, #queue)
-						end
-						found = #queue > 0
-					elseif err then
-						Luna:Notification({Title = "Music Player", Content = err, Icon = "error"})
-					end
-				end
-				if #queue > 0 then
-					queueIdx = 1
-					playCurrent()
-					playBtn.Text = "⏸"
-				elseif not found then
-					Luna:Notification({Title = "Music Player", Content = "No tracks found.", Icon = "search_off"})
-				end
-			end)
-		end
-
-		SearchBox.FocusLost:Connect(function(enter)
-			if enter then searchMusic() end
-		end)
-
-		Window._MusicPlayerTab = hostTab
 		return hostTab
 	end
 
@@ -9910,7 +9617,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 	-- ============================================================
 	-- Auto-create optional tabs (AI, Script Searcher, Music Player)
 	-- ============================================================
-	if WindowSettings.AiTab or WindowSettings.ScriptSearcherTab or WindowSettings.MusicPlayerTab then
+	if WindowSettings.AiTab or WindowSettings.ScriptSearcherTab then
 		task.defer(function()
 			local savedTab = Window.CurrentTab
 			if WindowSettings.AiTab then
@@ -9918,9 +9625,6 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end
 			if WindowSettings.ScriptSearcherTab then
 				pcall(function() Window:CreateScriptSearcherTab(WindowSettings.ScriptSearcherSettings) end)
-			end
-			if WindowSettings.MusicPlayerTab then
-				pcall(function() Window:CreateMusicPlayerTab(WindowSettings.MusicPlayerSettings) end)
 			end
 			if savedTab and Window._Tabs and Window._Tabs[savedTab] then
 				local restore = Window._Tabs[savedTab].Activate
