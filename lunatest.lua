@@ -1571,6 +1571,53 @@ local IconModule = {
 
 -- Other Variables
 local request = (syn and syn.request) or (http and http.request) or http_request or nil
+
+-- Safe HTTP for Script Searcher / Music Player (avoids JSONDecode on HTML error pages).
+local function LunaHttpGet(url)
+	local headers = {
+		["Accept"] = "application/json, text/plain, */*",
+		["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	}
+	if request then
+		local ok, res = pcall(function()
+			return request({Url = url, Method = "GET", Headers = headers})
+		end)
+		if ok and res then
+			local body = res.Body or res.body
+			if body and tostring(body) ~= "" then
+				return tostring(body)
+			end
+		end
+	end
+	local ok, body = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if ok and body and body ~= "" then
+		return body
+	end
+	return nil
+end
+
+local function LunaHttpJSON(url)
+	local body = LunaHttpGet(url)
+	if not body then
+		return nil, "Request failed (check executor HTTP / network)"
+	end
+	body = body:gsub("^%s+", ""):gsub("^%x%x%x%x", "")
+	local first = body:sub(1, 1)
+	if first ~= "{" and first ~= "[" then
+		local snippet = body:sub(1, 120):gsub("%s+", " ")
+		return nil, "Not JSON: " .. snippet
+	end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(body)
+	end)
+	if ok then
+		return decoded
+	end
+	return nil, "JSON parse: " .. tostring(decoded)
+end
+
 local tweeninfo = TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 local PresetGradients = {
 	["Nightlight (Classic)"] = {Color3.fromRGB(147, 255, 239), Color3.fromRGB(201,211,233), Color3.fromRGB(255, 167, 227)},
@@ -2917,6 +2964,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		-- Register Home in the tab registry for search results
 		HomeTabButton:SetAttribute("LunaTabName", "Home")
 		Window._Tabs["Home"] = { Activate = function() HomeTab:Activate() end, Page = HomeTabPage }
+		Window._HomeTabButton = HomeTabButton
 
 		HomeTab:Activate()
 		FirstTab = false
@@ -8183,28 +8231,14 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		local loading = false
 		local filters = {
 			verifiedOnly = false,
-			isPatched = false,
-			paid = false,
+			notPaid = false,
+			unpatched = false,
+			noKeySystem = false,
 			key = false,
-			unc = false,
 			universal = false,
 			verified = false,
 			patched = false,
 		}
-
-		local function httpJSON(url)
-			if request then
-				local ok, res = pcall(function()
-					return request({Url = url, Method = "GET", Headers = {["Accept"] = "application/json"}})
-				end)
-				if ok and res and res.Body then
-					return HttpService:JSONDecode(res.Body)
-				end
-			end
-			local ok, body = pcall(function() return game:HttpGet(url, true) end)
-			if ok and body then return HttpService:JSONDecode(body) end
-			return nil
-		end
 
 		local Root = Instance.new("Frame")
 		Root.Name = "ScriptSearcherRoot"
@@ -8272,11 +8306,11 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local filterDefs = {
 			{id = "verifiedOnly", label = "Verified", sources = {"RScripts"}},
-			{id = "isPatched", label = "Patched", sources = {"RScripts"}},
-			{id = "paid", label = "Paid", sources = {"RScripts"}},
-			{id = "key", label = "Key", sources = {"RScripts", "ScriptBlox"}},
-			{id = "unc", label = "UNC", sources = {"RScripts"}},
-			{id = "universal", label = "Universal", sources = {"RScripts", "ScriptBlox"}},
+			{id = "notPaid", label = "Free", sources = {"RScripts"}},
+			{id = "unpatched", label = "Unpatched", sources = {"RScripts"}},
+			{id = "noKeySystem", label = "No Key", sources = {"RScripts"}},
+			{id = "key", label = "Key", sources = {"ScriptBlox"}},
+			{id = "universal", label = "Universal", sources = {"ScriptBlox"}},
 			{id = "verified", label = "Verified", sources = {"ScriptBlox"}},
 			{id = "patched", label = "Patched", sources = {"ScriptBlox"}},
 		}
@@ -8461,20 +8495,20 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local function buildRScriptsUrl()
 			local params = {
-				["page"] = tostring(pageNum),
-				["q"] = query,
-				["orderBy"] = "date",
-				["sort"] = "desc",
+				page = tostring(pageNum),
+				q = query,
+				orderBy = "date",
+				sort = "desc",
 			}
-			if filters.verifiedOnly then params["verifiedOnly"] = "true" end
-			if filters.isPatched then params["isPatched"] = "true" end
-			if filters.paid then params["paid"] = "true" end
-			if filters.key then params["key"] = "true" end
-			if filters.unc then params["unc"] = "true" end
-			if filters.universal then params["universal"] = "true" end
+			if filters.verifiedOnly then params.verifiedOnly = "true" end
+			if filters.notPaid then params.notPaid = "true" end
+			if filters.unpatched then params.unpatched = "true" end
+			if filters.noKeySystem then params.noKeySystem = "true" end
 			local parts = {}
 			for k, v in pairs(params) do
-				if v and v ~= "" then table.insert(parts, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(tostring(v))) end
+				if v and v ~= "" then
+					table.insert(parts, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(tostring(v)))
+				end
 			end
 			return "https://rscripts.net/api/v2/scripts?" .. table.concat(parts, "&")
 		end
@@ -8482,15 +8516,16 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		local function buildScriptBloxUrl()
 			local q = HttpService:UrlEncode(query)
 			local url = "https://scriptblox.com/api/script/search?q=" .. q .. "&page=" .. tostring(pageNum) .. "&max=20"
-			if filters.key then url = url .. "&key=true" end
-			if filters.universal then url = url .. "&universal=true" end
-			if filters.verified then url = url .. "&verified=true" end
-			if filters.patched then url = url .. "&patched=true" end
+			if filters.key then url = url .. "&key=1" end
+			if filters.universal then url = url .. "&universal=1" end
+			if filters.verified then url = url .. "&verified=1" end
+			if filters.patched then url = url .. "&patched=1" end
 			return url
 		end
 
 		local function runSearch()
 			if loading then return end
+			query = SearchBox.Text
 			if query == "" then
 				Status.Text = "Enter a search term."
 				return
@@ -8501,48 +8536,61 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 			task.spawn(function()
 				local cards = {}
+				local errMsg = nil
 				if source == "RScripts" then
-					local data = httpJSON(buildRScriptsUrl())
+					local data, err = LunaHttpJSON(buildRScriptsUrl())
+					errMsg = err
 					if data and data.scripts then
 						for _, s in ipairs(data.scripts) do
-							local slug = s.slug or s._id
+							local id = s._id or s.slug
 							table.insert(cards, {
-								title = s.title or s.name,
-								game = s.game and (s.game.name or s.game.title) or "Universal",
-								author = s.creator and s.creator.username or s.owner,
-								link = slug and ("https://rscripts.net/script/" .. slug) or nil,
-								fetchUrl = slug and ("https://rscripts.net/raw/" .. slug) or nil,
-								raw = s.script,
+								title = s.title or "Untitled",
+								game = s.game and s.game.title or "Universal",
+								author = s.user and s.user.username or "—",
+								link = id and ("https://rscripts.net/script/" .. tostring(id)) or nil,
+								fetchUrl = s.rawScript,
+								raw = nil,
 							})
 						end
+					elseif data and data.message then
+						errMsg = tostring(data.message)
 					end
 				else
-					task.wait(1)
-					local data = httpJSON(buildScriptBloxUrl())
-					local listR = data and (data.result and data.result.scripts or data.scripts)
+					task.wait(1.05)
+					local data, err = LunaHttpJSON(buildScriptBloxUrl())
+					errMsg = err
+					local listR = data and data.result and data.result.scripts
 					if listR then
 						for _, s in ipairs(listR) do
 							local slug = s.slug or s._id
 							table.insert(cards, {
-								title = s.title,
+								title = s.title or "Untitled",
 								game = s.game and s.game.name or "Universal",
-								author = s.owner and s.owner.username or s.creator,
-								link = slug and ("https://scriptblox.com/script/" .. slug) or nil,
-								fetchUrl = slug and ("https://scriptblox.com/api/script/" .. slug) or nil,
+								author = "ScriptBlox",
+								link = slug and ("https://scriptblox.com/script/" .. tostring(slug)) or nil,
+								fetchUrl = nil,
+								raw = s.script,
 							})
 						end
+					elseif data and data.message then
+						errMsg = tostring(data.message)
 					end
 				end
 
 				for i, c in ipairs(cards) do makeCard(c, i) end
-				Status.Text = #cards > 0 and (#cards .. " results on " .. source) or "No scripts found."
+				if #cards > 0 then
+					Status.Text = #cards .. " results on " .. source
+				elseif errMsg then
+					Status.Text = errMsg
+				else
+					Status.Text = "No scripts found."
+				end
 				loading = false
 			end)
 		end
 
 		SearchBox.FocusLost:Connect(function(enter)
 			if enter then
-				query = SearchBox.Text
 				pageNum = 1
 				runSearch()
 			end
@@ -8628,19 +8676,6 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		sound.Volume = 0.6
 		sound.Parent = getService("SoundService")
 
-		local audiusHost = "https://discoveryprovider.audius.co"
-
-		local function httpJSON(url)
-			if request then
-				local ok, res = pcall(function()
-					return request({Url = url, Method = "GET"})
-				end)
-				if ok and res and res.Body then return HttpService:JSONDecode(res.Body) end
-			end
-			local ok, body = pcall(function() return game:HttpGet(url, true) end)
-			if ok and body then return HttpService:JSONDecode(body) end
-		end
-
 		local Root = Instance.new("Frame")
 		Root.BackgroundTransparency = 1
 		Root.Size = UDim2.new(1, 0, 1, 0)
@@ -8652,7 +8687,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchBox.Position = UDim2.new(0, 8, 0, 6)
 		SearchBox.Font = Enum.Font.GothamMedium
 		SearchBox.TextSize = 14
-		SearchBox.PlaceholderText = "Search tracks (Audius)..."
+		SearchBox.PlaceholderText = "Search tracks (Deezer previews)..."
 		SearchBox.TextColor3 = Color3.fromRGB(240,240,245)
 		SearchBox.Parent = Root
 		local sc = Instance.new("UICorner")
@@ -8770,36 +8805,39 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end)
 
 		local function playTrack(track)
-			if not track then return end
-			TitleLbl.Text = track.title or "Track"
-			ArtistLbl.Text = track.user and track.user.name or "Unknown"
-			if track.artwork and track.artwork["150x150"] then
-				Art.Image = track.artwork["150x150"]
+			if not track or not track.preview then
+				Luna:Notification({Title = "Music Player", Content = "No preview for this track.", Icon = "music_off"})
+				return
 			end
-			local streamUrl = audiusHost .. "/v1/tracks/" .. tostring(track.id) .. "/stream?app_name=SolaraHub"
+			TitleLbl.Text = track.title or "Track"
+			ArtistLbl.Text = track.artist or "Unknown"
+			if track.cover then Art.Image = track.cover end
 			playing = false
 			sound:Stop()
 			task.spawn(function()
-				if getcustomasset and writefile and request then
-					local ok, res = pcall(function()
-						return request({Url = streamUrl, Method = "GET"})
-					end)
-					if ok and res and res.Body then
-						pcall(function() writefile("SolaraHub_music_cache.mp3", res.Body) end)
-						local ok2, asset = pcall(function() return getcustomasset("SolaraHub_music_cache.mp3") end)
-						if ok2 and asset then
-							sound.SoundId = asset
+				local previewUrl = track.preview
+				local cacheName = "SolaraHub_music_preview.mp3"
+				local loaded = false
+				if getcustomasset and writefile then
+					local bytes = LunaHttpGet(previewUrl)
+					if bytes then
+						pcall(function() writefile(cacheName, bytes) end)
+						local okAsset, assetId = pcall(function() return getcustomasset(cacheName) end)
+						if okAsset and assetId then
+							sound.SoundId = assetId
 							sound:Play()
 							playing = true
-							return
+							loaded = true
 						end
 					end
 				end
-				Luna:Notification({
-					Title = "Music Player",
-					Content = "Your executor needs getcustomasset + request to stream audio.",
-					Icon = "music_off",
-				})
+				if not loaded then
+					Luna:Notification({
+						Title = "Music Player",
+						Content = "Need getcustomasset + writefile + HTTP to play previews.",
+						Icon = "music_off",
+					})
+				end
 			end)
 		end
 
@@ -8849,7 +8887,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			row.Font = Enum.Font.GothamMedium
 			row.TextSize = 12
 			row.TextColor3 = Color3.fromRGB(220,220,230)
-			row.Text = "  " .. (track.title or "?") .. " — " .. (track.user and track.user.name or "")
+			row.Text = "  " .. (track.title or "?") .. " — " .. (track.artist or "")
 			row.TextXAlignment = Enum.TextXAlignment.Left
 			row.AutoButtonColor = false
 			row.Parent = QueueScroll
@@ -8867,22 +8905,32 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchBox.FocusLost:Connect(function(enter)
 			if not enter or SearchBox.Text == "" then return end
 			task.spawn(function()
-				local data = httpJSON(audiusHost .. "/v1/tracks/search?query=" .. HttpService:UrlEncode(SearchBox.Text) .. "&limit=15")
+				local q = HttpService:UrlEncode(SearchBox.Text)
+				local data, err = LunaHttpJSON("https://api.deezer.com/search?q=" .. q .. "&limit=15")
 				for _, ch in ipairs(QueueScroll:GetChildren()) do
 					if ch:IsA("TextButton") then ch:Destroy() end
 				end
 				queue = {}
 				if data and data.data then
 					for i, tr in ipairs(data.data) do
-						queue[i] = tr
-						addQueueItem(tr, i)
+						local item = {
+							title = tr.title,
+							artist = tr.artist and tr.artist.name or "Unknown",
+							cover = tr.album and tr.album.cover_medium or "",
+							preview = tr.preview,
+						}
+						queue[i] = item
+						addQueueItem(item, i)
 					end
 					if #queue > 0 then
 						queueIdx = 1
 						playCurrent()
 						playBtn.Text = "⏸"
-						playing = true
+					elseif err then
+						Luna:Notification({Title = "Music Player", Content = err, Icon = "error"})
 					end
+				elseif err then
+					Luna:Notification({Title = "Music Player", Content = err, Icon = "error"})
 				end
 			end)
 		end)
@@ -9813,15 +9861,32 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 
 		Window.GetTabNames = function()
-			local names = {}
+			local names = {"Dashboard"}
+			local seen = {Dashboard = true}
 			for name in pairs(Window._TabRegistry or {}) do
-				table.insert(names, name)
+				if name ~= "Home" and not seen[name] then
+					seen[name] = true
+					table.insert(names, name)
+				end
 			end
-			table.sort(names)
+			table.sort(names, function(a, b)
+				if a == "Dashboard" then return true end
+				if b == "Dashboard" then return false end
+				return a < b
+			end)
 			return names
 		end
 
+		local function setDashboardVisible(visible)
+			local btn = Window._HomeTabButton
+			if btn then btn.Visible = visible end
+		end
+
 		Window.SetTabVisible = function(tabName, visible)
+			if tabName == "Dashboard" or tabName == "Home" then
+				setDashboardVisible(visible)
+				return
+			end
 			local entry = Window._TabRegistry and Window._TabRegistry[tabName]
 			if not entry or not entry.Button then return end
 			entry.Hidden = not visible
@@ -9832,10 +9897,14 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			if type(hiddenList) ~= "table" then return end
 			local hideSet = {}
 			for _, n in ipairs(hiddenList) do hideSet[n] = true end
+			local hideDash = hideSet["Dashboard"] == true or hideSet["Home"] == true
+			setDashboardVisible(not hideDash)
 			for name, entry in pairs(Window._TabRegistry or {}) do
-				local hide = hideSet[name] == true
-				entry.Hidden = hide
-				if entry.Button then entry.Button.Visible = not hide end
+				if name ~= "Home" then
+					local hide = hideSet[name] == true
+					entry.Hidden = hide
+					if entry.Button then entry.Button.Visible = not hide end
+				end
 			end
 		end
 	end
