@@ -2257,6 +2257,51 @@ function tween(object, goal, callback, tweenin)
 	tween:Play()
 end
 
+local function LunaTweenDropdownOption(list, optionName, props)
+	if type(optionName) ~= "string" or optionName == "" or not list then return end
+	local item = list:FindFirstChild(optionName)
+	if item then
+		tween(item, props)
+	end
+end
+
+local function LunaSanitizeDropdownCurrent(options, current, multiple)
+	local optSet = {}
+	if type(options) == "table" then
+		for _, o in pairs(options) do
+			if type(o) == "string" and o ~= "" then
+				optSet[o] = true
+			end
+		end
+	end
+	local names = {}
+	for o in pairs(optSet) do
+		table.insert(names, o)
+	end
+	table.sort(names)
+	if #names == 0 then
+		return multiple and {} or nil
+	end
+	if multiple then
+		local out = {}
+		if type(current) == "table" then
+			for _, c in ipairs(current) do
+				if type(c) == "string" and optSet[c] then
+					table.insert(out, c)
+				end
+			end
+		elseif type(current) == "string" and optSet[current] then
+			table.insert(out, current)
+		end
+		return out
+	end
+	local pick = type(current) == "table" and current[1] or current
+	if type(pick) == "string" and optSet[pick] then
+		return pick
+	end
+	return names[1]
+end
+
 -- Interface Management
 local LunaUI = isStudio and script.Parent:WaitForChild("Luna UI") or game:GetObjects("rbxassetid://86467455075715")[1]
 
@@ -4746,7 +4791,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 
 					Toggle()
-					tween(Dropdown.List[name], {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
+					LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
 				end
 
 				local function Refresh()
@@ -4859,15 +4904,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 				Refresh()
 
-				if DropdownSettings.CurrentOption then
-					if type(DropdownSettings.CurrentOption) == "string" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-					end
-					if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-					end
+				if DropdownSettings.MultipleOptions then
+					DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						true
+					) or {}
 				else
-					DropdownSettings.CurrentOption = {}
+					local single = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						false
+					)
+					DropdownSettings.CurrentOption = single and {single} or {}
 				end
 
 				local bleh, ind = nil,0
@@ -4875,13 +4924,18 @@ function Window:CreateHomeTab(HomeTabSettings)
 					ind = ind + 1
 				end
 				if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-				SafeCallback(bleh)
-				if type(bleh) == "string" then 
-					tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
-				else
-					for i,v in pairs(bleh) do
-						tween(Dropdown.List[v], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+				pcall(function() SafeCallback(bleh) end)
+				for _, Option in pairs(Dropdown.List:GetChildren()) do
+					if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
+						tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 					end
+				end
+				if DropdownSettings.MultipleOptions then
+					for _, name in pairs(DropdownSettings.CurrentOption) do
+						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+					end
+				else
+					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 				end
 
 				if DropdownSettings.MultipleOptions then
@@ -4896,9 +4950,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					else
 						DropdownSettings.CurrentOption = {}
 						Dropdown.Selected.PlaceholderText = "None"
-					end
-					for _, name in pairs(DropdownSettings.CurrentOption) do
-						tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
 					end
 				else
 					Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
@@ -4931,15 +4982,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 					Refresh()
 
-					if DropdownSettings.CurrentOption then
-						if type(DropdownSettings.CurrentOption) == "string" then
-							DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-						end
-						if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-							DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-						end
+					if DropdownSettings.MultipleOptions then
+						DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+							DropdownSettings.Options,
+							DropdownSettings.CurrentOption,
+							true
+						) or {}
 					else
-						DropdownSettings.CurrentOption = {}
+						local single = LunaSanitizeDropdownCurrent(
+							DropdownSettings.Options,
+							DropdownSettings.CurrentOption,
+							false
+						)
+						DropdownSettings.CurrentOption = single and {single} or {}
 					end
 
 					local bleh, ind = nil,0
@@ -4947,13 +5002,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 						ind = ind + 1
 					end
 					if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-					SafeCallback(bleh)
+					pcall(function() SafeCallback(bleh) end)
 					for _, Option in pairs(Dropdown.List:GetChildren()) do
-						if Option.ClassName == "TextLabel" then
+						if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
 							tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 						end
 					end
-					tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+					if DropdownSettings.MultipleOptions then
+						for _, name in pairs(DropdownSettings.CurrentOption) do
+							LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+						end
+					else
+						LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+					end
 
 					if DropdownSettings.MultipleOptions then
 						if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
@@ -4967,9 +5028,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						else
 							DropdownSettings.CurrentOption = {}
 							Dropdown.Selected.PlaceholderText = "None"
-						end
-						for _, name in pairs(DropdownSettings.CurrentOption) do
-							tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
 						end
 					else
 						Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
@@ -6572,7 +6630,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 
 				Toggle()
-				tween(Dropdown.List[name], {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
+				LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
 			end
 
 			local function Refresh()
@@ -6685,15 +6743,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 			Refresh()
 
-			if DropdownSettings.CurrentOption then
-				if type(DropdownSettings.CurrentOption) == "string" then
-					DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-				end
-				if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-					DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-				end
+			if DropdownSettings.MultipleOptions then
+				DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+					DropdownSettings.Options,
+					DropdownSettings.CurrentOption,
+					true
+				) or {}
 			else
-				DropdownSettings.CurrentOption = {}
+				local single = LunaSanitizeDropdownCurrent(
+					DropdownSettings.Options,
+					DropdownSettings.CurrentOption,
+					false
+				)
+				DropdownSettings.CurrentOption = single and {single} or {}
 			end
 
 			local bleh, ind = nil,0
@@ -6701,13 +6763,18 @@ function Window:CreateHomeTab(HomeTabSettings)
 				ind = ind + 1
 			end
 			if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-			SafeCallback(bleh)
-			if type(bleh) == "string" then 
-				tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
-			else
-				for i,v in pairs(bleh) do
-					tween(Dropdown.List[v], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+			pcall(function() SafeCallback(bleh) end)
+			for _, Option in pairs(Dropdown.List:GetChildren()) do
+				if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
+					tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 				end
+			end
+			if DropdownSettings.MultipleOptions then
+				for _, name in pairs(DropdownSettings.CurrentOption) do
+					LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+				end
+			else
+				LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 			end
 
 			if DropdownSettings.MultipleOptions then
@@ -6722,9 +6789,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				else
 					DropdownSettings.CurrentOption = {}
 					Dropdown.Selected.PlaceholderText = "None"
-				end
-				for _, name in pairs(DropdownSettings.CurrentOption) do
-					tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
 				end
 			else
 				Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
@@ -6757,15 +6821,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 				Refresh()
 
-				if DropdownSettings.CurrentOption then
-					if type(DropdownSettings.CurrentOption) == "string" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-					end
-					if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-					end
+				if DropdownSettings.MultipleOptions then
+					DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						true
+					) or {}
 				else
-					DropdownSettings.CurrentOption = {}
+					local single = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						false
+					)
+					DropdownSettings.CurrentOption = single and {single} or {}
 				end
 
 				local bleh, ind = nil,0
@@ -6773,24 +6841,18 @@ function Window:CreateHomeTab(HomeTabSettings)
 					ind = ind + 1
 				end
 				if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-				if not DropdownSettings.MultipleOptions then
-					pcall(function() SafeCallback(bleh) end)
-				else
-					SafeCallback(bleh)
-				end
+				pcall(function() SafeCallback(bleh) end)
 				for _, Option in pairs(Dropdown.List:GetChildren()) do
-					if Option.ClassName == "TextLabel" then
+					if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
 						tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 					end
 				end
-				if type(bleh) == "string" and Dropdown.List:FindFirstChild(bleh) then
-					tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
-				elseif type(bleh) == "table" then
-					for _, name in pairs(bleh) do
-						if Dropdown.List:FindFirstChild(name) then
-							tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
-						end
+				if DropdownSettings.MultipleOptions then
+					for _, name in pairs(DropdownSettings.CurrentOption) do
+						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
 					end
+				else
+					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 				end
 
 				if DropdownSettings.MultipleOptions then
@@ -6805,9 +6867,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					else
 						DropdownSettings.CurrentOption = {}
 						Dropdown.Selected.PlaceholderText = "None"
-					end
-					for _, name in pairs(DropdownSettings.CurrentOption) do
-						tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
 					end
 				else
 					Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
