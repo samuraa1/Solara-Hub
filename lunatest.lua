@@ -3397,7 +3397,30 @@ function Window:CreateHomeTab(HomeTabSettings)
 		return HomeTab
 	end
 	
-function Window:CreateTab(TabSettings)
+	function Window:PlaceTabAfter(tabName, afterTabName)
+		if not tabName or not afterTabName or not self._TabRegistry then return end
+		local target = self._TabRegistry[tabName]
+		local anchor = self._TabRegistry[afterTabName]
+		if not target or not anchor or not target.Button or not anchor.Button then return end
+		local newOrder = (anchor.Button.LayoutOrder or 0) + 1
+		for name, reg in pairs(self._TabRegistry) do
+			if name ~= tabName and reg.Button and reg.Button ~= target.Button then
+				local order = reg.Button.LayoutOrder or 0
+				if order >= newOrder then
+					reg.Button.LayoutOrder = order + 1
+					if reg.Page then
+						reg.Page.LayoutOrder = order + 1
+					end
+				end
+			end
+		end
+		target.Button.LayoutOrder = newOrder
+		if target.Page then
+			target.Page.LayoutOrder = newOrder
+		end
+	end
+
+	function Window:CreateTab(TabSettings)
 
 		local Tab = {}
 
@@ -3405,7 +3428,8 @@ function Window:CreateTab(TabSettings)
 			Name = "Tab",
 			ShowTitle = true,
 			Icon = "view_in_ar",
-			ImageSource = "Material" 
+			ImageSource = "Material",
+			NavLayoutOrder = nil,
 		}, TabSettings or {})
 
 		local TabButton = Navigation.Tabs["InActive Template"]:Clone()
@@ -3420,6 +3444,9 @@ function Window:CreateTab(TabSettings)
 		ApplyIcon(TabButton.ImageLabel, GetIcon(TabSettings.Icon, TabSettings.ImageSource))
 
 		TabButton.Visible = true
+		if TabSettings.NavLayoutOrder ~= nil then
+			TabButton.LayoutOrder = TabSettings.NavLayoutOrder
+		end
 
 		local TabPage = Elements.Template:Clone()
 		TabPage.Name = RandomName()
@@ -3435,7 +3462,7 @@ function Window:CreateTab(TabSettings)
 			TabPage.UIPadding.PaddingTop = UDim.new(0,10)
 		end
 
-		TabPage.LayoutOrder = #Elements:GetChildren() - 3
+		TabPage.LayoutOrder = TabSettings.NavLayoutOrder or (#Elements:GetChildren() - 3)
 
 		for _, TemplateElement in ipairs(TabPage:GetChildren()) do
 			if TemplateElement.ClassName == "Frame" or TemplateElement.ClassName == "TextLabel" and TemplateElement.Name ~= "Title" then
@@ -7449,6 +7476,7 @@ function Window:CreateTab(TabSettings)
 			Name = "Solara Hub AI",
 			Icon = "bot",
 			ImageSource = "Material",
+			PlaceAfter = "Universal Scripts",
 			SystemPrompt = nil,         -- if set, replaces the default Solara-aware prompt
 			Knowledge = nil,            -- extra context block injected into the system prompt
 			Model = "openai",
@@ -8340,6 +8368,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			appendMessage("assistant", "Hey! I'm **Solara Hub AI**. I can help with **Solara Hub**, write/fix **Luau scripts**, explain **executor APIs**, and answer Roblox questions. Paste code or describe what you need — I'll use ```lua blocks with *Copy* / *Execute* buttons.")
 		end)
 
+		if opts.PlaceAfter then
+			self:PlaceTabAfter(opts.Name, opts.PlaceAfter)
+		end
+
 		Window._AiTab = AiTab
 		return AiTab
 	end
@@ -8350,6 +8382,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Icon = "search",
 			ImageSource = "Lucide",
 			ShowTitle = false,
+			PlaceAfter = nil,
 		}, opts or {})
 
 		local hostTab = self:CreateTab({
@@ -8794,6 +8827,14 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 
 		setStatus("Ready — use Search or press Enter in Query.")
+
+		local placeAfter = opts.PlaceAfter
+		if not placeAfter and WindowSettings.AiTab and WindowSettings.AiSettings then
+			placeAfter = WindowSettings.AiSettings.Name or "Solara Hub AI"
+		end
+		if placeAfter then
+			self:PlaceTabAfter(opts.Name, placeAfter)
+		end
 
 		Window._ScriptSearcherTab = hostTab
 		return hostTab
