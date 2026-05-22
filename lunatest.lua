@@ -1572,36 +1572,95 @@ local IconModule = {
 -- Other Variables
 local request = (syn and syn.request) or (http and http.request) or http_request or nil
 
--- Safe HTTP for Script Searcher / Music Player (avoids JSONDecode on HTML error pages).
-local function LunaHttpGet(url)
-	local headers = {
+-- Resolve executor globals (writefile/getcustomasset live on _G / getgenv / syn, not always as locals).
+local function LunaResolveExecFn(...)
+	local names = {...}
+	for i = 1, #names do
+		local n = names[i]
+		if type(_G) == "table" and type(_G[n]) == "function" then
+			return _G[n]
+		end
+	end
+	if type(getgenv) == "function" then
+		local g = getgenv()
+		if type(g) == "table" then
+			for i = 1, #names do
+				local fn = g[names[i]]
+				if type(fn) == "function" then return fn end
+			end
+		end
+	end
+	if type(syn) == "table" then
+		for i = 1, #names do
+			local fn = syn[names[i]]
+			if type(fn) == "function" then return fn end
+		end
+	end
+	if type(fluxus) == "table" then
+		for i = 1, #names do
+			local fn = fluxus[names[i]]
+			if type(fn) == "function" then return fn end
+		end
+	end
+	if type(getfenv) == "function" then
+		local ok, env = pcall(getfenv, 0)
+		if ok and type(env) == "table" then
+			for i = 1, #names do
+				local fn = env[names[i]]
+				if type(fn) == "function" then return fn end
+			end
+		end
+	end
+	return nil
+end
+
+local LunaWriteFile = LunaResolveExecFn("writefile", "write_file")
+local LunaReadFile = LunaResolveExecFn("readfile", "read_file")
+local LunaGetCustomAsset = LunaResolveExecFn("getcustomasset", "getsynasset", "getsynasset_async")
+
+local function LunaHttpHeaders()
+	return {
 		["Accept"] = "application/json, text/plain, */*",
 		["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
+end
+
+-- Safe HTTP for Script Searcher / Music Player (avoids JSONDecode on HTML error pages).
+local function LunaHttpRequest(url)
 	if request then
 		local ok, res = pcall(function()
-			return request({Url = url, Method = "GET", Headers = headers})
+			return request({Url = url, Method = "GET", Headers = LunaHttpHeaders()})
 		end)
 		if ok and res then
 			local body = res.Body or res.body
+			local code = res.StatusCode or res.status or res.Status
 			if body and tostring(body) ~= "" then
-				return tostring(body)
+				return tostring(body), code
 			end
+			return nil, code
 		end
 	end
 	local ok, body = pcall(function()
 		return game:HttpGet(url)
 	end)
 	if ok and body and body ~= "" then
-		return body
+		return body, 200
 	end
-	return nil
+	return nil, nil
+end
+
+local function LunaHttpGet(url)
+	local body = LunaHttpRequest(url)
+	return body
 end
 
 local function LunaHttpJSON(url)
-	local body = LunaHttpGet(url)
+	local body, code = LunaHttpRequest(url)
 	if not body then
-		return nil, "Request failed (check executor HTTP / network)"
+		return nil, "Request failed (enable HTTP / use an executor with request)"
+	end
+	if code and tonumber(code) and tonumber(code) ~= 200 then
+		return nil, "HTTP " .. tostring(code)
 	end
 	body = body:gsub("^%s+", ""):gsub("^%x%x%x%x", "")
 	local first = body:sub(1, 1)
@@ -1617,6 +1676,55 @@ local function LunaHttpJSON(url)
 	end
 	return nil, "JSON parse: " .. tostring(decoded)
 end
+
+local function LunaDownloadBytes(url)
+	if request then
+		local ok, res = pcall(function()
+			return request({Url = url, Method = "GET"})
+		end)
+		if ok and res then
+			local body = res.Body or res.body
+			if body and #tostring(body) > 0 then
+				return body
+			end
+		end
+	end
+	local ok, body = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if ok and body then return body end
+	return nil
+end
+
+local function LunaPlaySoundFromUrl(sound, url, cacheName)
+	cacheName = cacheName or "SolaraHub_track.mp3"
+	local writeFn = LunaWriteFile or LunaResolveExecFn("writefile", "write_file")
+	local assetFn = LunaGetCustomAsset or LunaResolveExecFn("getcustomasset", "getsynasset")
+	if not writeFn or not assetFn then
+		return false, "writefile/getcustomasset not found in executor"
+	end
+	local bytes = LunaDownloadBytes(url)
+	if not bytes then
+		return false, "Could not download audio"
+	end
+	local okW, errW = pcall(writeFn, cacheName, bytes)
+	if not okW then
+		return false, "writefile: " .. tostring(errW)
+	end
+	local okA, assetId = pcall(assetFn, cacheName)
+	if not okA or not assetId then
+		return false, "getcustomasset: " .. tostring(assetId)
+	end
+	sound.SoundId = assetId
+	sound:Play()
+	return true
+end
+
+local PIPED_API_HOSTS = {
+	"https://pipedapi.kavin.rocks",
+	"https://pipedapi.adminforge.de",
+	"https://api.piped.projectsegfau.lt",
+}
 
 local tweeninfo = TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 local PresetGradients = {
@@ -8222,10 +8330,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		if Page:IsA("ScrollingFrame") then
 			Page.CanvasSize = UDim2.new(0, 0, 0, 0)
 			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
-			Page.ScrollingEnabled = true
+			Page.ScrollingEnabled = false
 		end
 
-		local source = "RScripts"
+		local source = "ScriptBlox"
 		local query = ""
 		local pageNum = 1
 		local loading = false
@@ -8256,7 +8364,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchBox.Name = "Search"
 		SearchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 		SearchBox.BackgroundTransparency = 0.15
-		SearchBox.Size = UDim2.new(1, -150, 1, 0)
+		SearchBox.Size = UDim2.new(1, -248, 1, 0)
 		SearchBox.Position = UDim2.new(0, 0, 0, 0)
 		SearchBox.Font = Enum.Font.GothamMedium
 		SearchBox.TextSize = 14
@@ -8278,25 +8386,49 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		sbStroke.Transparency = 0.6
 		sbStroke.Parent = SearchBox
 
-		local SourceBtn = Instance.new("TextButton")
-		SourceBtn.Name = "Source"
-		SourceBtn.BackgroundColor3 = Color3.fromRGB(38, 36, 48)
-		SourceBtn.Size = UDim2.new(0, 138, 1, 0)
-		SourceBtn.Position = UDim2.new(1, -138, 0, 0)
-		SourceBtn.Font = Enum.Font.GothamSemibold
-		SourceBtn.TextSize = 13
-		SourceBtn.TextColor3 = Color3.fromRGB(240, 240, 245)
-		SourceBtn.Text = "RScripts ▾"
-		SourceBtn.AutoButtonColor = false
-		SourceBtn.Parent = Top
-		local srcCorner = Instance.new("UICorner")
-		srcCorner.CornerRadius = UDim.new(0, 8)
-		srcCorner.Parent = SourceBtn
+		local accentChip = Color3.fromRGB(110, 102, 153)
+		local dimChip = Color3.fromRGB(38, 36, 48)
+
+		local function makeSourceBtn(label, xOff, pickName)
+			local b = Instance.new("TextButton")
+			b.BackgroundColor3 = source == pickName and accentChip or dimChip
+			b.Size = UDim2.new(0, 88, 1, 0)
+			b.Position = UDim2.new(1, xOff, 0, 0)
+			b.Font = Enum.Font.GothamSemibold
+			b.TextSize = 12
+			b.TextColor3 = Color3.fromRGB(240, 240, 245)
+			b.Text = label
+			b.AutoButtonColor = false
+			b.Parent = Top
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, 8)
+			c.Parent = b
+			return b
+		end
+
+		local BtnScriptBlox = makeSourceBtn("ScriptBlox", -198, "ScriptBlox")
+		local BtnRScripts = makeSourceBtn("RScripts", -104, "RScripts")
+
+		local SearchBtn = Instance.new("TextButton")
+		SearchBtn.BackgroundColor3 = accentChip
+		SearchBtn.Size = UDim2.new(0, 44, 1, 0)
+		SearchBtn.Position = UDim2.new(1, -44, 0, 0)
+		SearchBtn.Font = Enum.Font.GothamBold
+		SearchBtn.TextSize = 16
+		SearchBtn.TextColor3 = Color3.new(1, 1, 1)
+		SearchBtn.Text = "⌕"
+		SearchBtn.AutoButtonColor = false
+		SearchBtn.Parent = Top
+		local sbc = Instance.new("UICorner")
+		sbc.CornerRadius = UDim.new(0, 8)
+		sbc.Parent = SearchBtn
 
 		local FilterRow = Instance.new("Frame")
+		FilterRow.Name = "Filters"
 		FilterRow.BackgroundTransparency = 1
-		FilterRow.Size = UDim2.new(1, -16, 0, 32)
+		FilterRow.Size = UDim2.new(1, -16, 0, 34)
 		FilterRow.Position = UDim2.new(0, 8, 0, 52)
+		FilterRow.ClipsDescendants = false
 		FilterRow.Parent = Root
 		local filterLayout = Instance.new("UIListLayout")
 		filterLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -8349,6 +8481,15 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				chip.TextColor3 = filters[def.id] and Color3.new(1,1,1) or Color3.fromRGB(200, 200, 210)
 			end)
 		end
+
+		local function pickSource(name)
+			source = name
+			BtnScriptBlox.BackgroundColor3 = name == "ScriptBlox" and accentChip or dimChip
+			BtnRScripts.BackgroundColor3 = name == "RScripts" and accentChip or dimChip
+			setFilterVisible()
+		end
+		BtnScriptBlox.MouseButton1Click:Connect(function() pickSource("ScriptBlox") end)
+		BtnRScripts.MouseButton1Click:Connect(function() pickSource("RScripts") end)
 		setFilterVisible()
 
 		local Status = Instance.new("TextLabel")
@@ -8364,20 +8505,23 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local Scroll = Instance.new("ScrollingFrame")
 		Scroll.Name = "Results"
-		Scroll.BackgroundTransparency = 1
+		Scroll.BackgroundColor3 = Color3.fromRGB(22, 21, 28)
+		Scroll.BackgroundTransparency = 0.35
 		Scroll.BorderSizePixel = 0
-		Scroll.Size = UDim2.new(1, -16, 1, -108)
-		Scroll.Position = UDim2.new(0, 8, 0, 106)
+		Scroll.Size = UDim2.new(1, -16, 1, -112)
+		Scroll.Position = UDim2.new(0, 8, 0, 108)
 		Scroll.ScrollBarThickness = 4
 		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
 		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Scroll.Parent = Root
-		local grid = Instance.new("UIGridLayout")
-		grid.CellSize = UDim2.new(0.5, -8, 0, 118)
-		grid.CellPadding = UDim2.new(0, 8, 0, 8)
-		grid.SortOrder = Enum.SortOrder.LayoutOrder
-		grid.Parent = Scroll
+		local scrollCorner = Instance.new("UICorner")
+		scrollCorner.CornerRadius = UDim.new(0, 8)
+		scrollCorner.Parent = Scroll
+		local listLayout = Instance.new("UIListLayout")
+		listLayout.Padding = UDim.new(0, 6)
+		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		listLayout.Parent = Scroll
 		local scrollPad = Instance.new("UIPadding")
 		scrollPad.PaddingTop = UDim.new(0, 4)
 		scrollPad.PaddingBottom = UDim.new(0, 8)
@@ -8397,6 +8541,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			local card = Instance.new("Frame")
 			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
 			card.BackgroundTransparency = 0.05
+			card.Size = UDim2.new(1, -8, 0, 88)
 			card.LayoutOrder = order
 			card.Parent = Scroll
 			local cCorner = Instance.new("UICorner")
@@ -8469,8 +8614,8 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 					end
 				elseif data.fetchUrl then
 					task.spawn(function()
-						local ok, body = pcall(function() return game:HttpGet(data.fetchUrl, true) end)
-						if ok and body then
+						local body = LunaHttpGet(data.fetchUrl)
+						if body then
 							local ok2, err = pcall(function() loadstring(body)() end)
 							if not ok2 then Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"}) end
 						else
@@ -8515,7 +8660,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local function buildScriptBloxUrl()
 			local q = HttpService:UrlEncode(query)
-			local url = "https://scriptblox.com/api/script/search?q=" .. q .. "&page=" .. tostring(pageNum) .. "&max=20"
+			local url = "https://scriptblox.com/api/script/search?q=" .. q .. "&mode=free&page=" .. tostring(pageNum) .. "&max=20"
 			if filters.key then url = url .. "&key=1" end
 			if filters.universal then url = url .. "&universal=1" end
 			if filters.verified then url = url .. "&verified=1" end
@@ -8556,7 +8701,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 						errMsg = tostring(data.message)
 					end
 				else
-					task.wait(1.05)
+					if not request then
+						task.wait(1.05)
+					end
 					local data, err = LunaHttpJSON(buildScriptBloxUrl())
 					errMsg = err
 					local listR = data and data.result and data.result.scripts
@@ -8566,7 +8713,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 							table.insert(cards, {
 								title = s.title or "Untitled",
 								game = s.game and s.game.name or "Universal",
-								author = "ScriptBlox",
+								author = tostring(s.views or 0) .. " views",
 								link = slug and ("https://scriptblox.com/script/" .. tostring(slug)) or nil,
 								fetchUrl = nil,
 								raw = s.script,
@@ -8589,48 +8736,16 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end)
 		end
 
-		SearchBox.FocusLost:Connect(function(enter)
-			if enter then
-				pageNum = 1
-				runSearch()
-			end
-		end)
+		local function triggerSearch()
+			pageNum = 1
+			runSearch()
+		end
 
-		local menuOpen = false
-		local menu = Instance.new("Frame")
-		menu.Visible = false
-		menu.BackgroundColor3 = Color3.fromRGB(32, 30, 42)
-		menu.Size = UDim2.new(0, 138, 0, 72)
-		menu.Position = UDim2.new(1, -146, 0, 48)
-		menu.ZIndex = 20
-		menu.Parent = Root
-		local mc = Instance.new("UICorner")
-		mc.CornerRadius = UDim.new(0, 8)
-		mc.Parent = menu
-		local function pickSource(name, label)
-			source = name
-			SourceBtn.Text = label .. " ▾"
-			setFilterVisible()
-			menu.Visible = false
-			menuOpen = false
-		end
-		for idx, pair in ipairs({{"RScripts", "RScripts"}, {"ScriptBlox", "ScriptBlox"}}) do
-			local opt = Instance.new("TextButton")
-			opt.BackgroundTransparency = 1
-			opt.Size = UDim2.new(1, 0, 0, 34)
-			opt.Position = UDim2.new(0, 0, 0, (idx-1)*34)
-			opt.Font = Enum.Font.GothamMedium
-			opt.TextSize = 13
-			opt.TextColor3 = Color3.fromRGB(230,230,240)
-			opt.Text = pair[2]
-			opt.ZIndex = 21
-			opt.Parent = menu
-			opt.MouseButton1Click:Connect(function() pickSource(pair[1], pair[2]) end)
-		end
-		SourceBtn.MouseButton1Click:Connect(function()
-			menuOpen = not menuOpen
-			menu.Visible = menuOpen
+		SearchBox.FocusLost:Connect(function(enter)
+			if enter then triggerSearch() end
 		end)
+		SearchBtn.MouseButton1Click:Connect(triggerSearch)
+		pickSource(source)
 
 		Window._ScriptSearcherTab = hostTab
 		return hostTab
@@ -8687,7 +8802,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchBox.Position = UDim2.new(0, 8, 0, 6)
 		SearchBox.Font = Enum.Font.GothamMedium
 		SearchBox.TextSize = 14
-		SearchBox.PlaceholderText = "Search tracks (Deezer previews)..."
+		SearchBox.PlaceholderText = "Search full tracks (YouTube via Piped)..."
 		SearchBox.TextColor3 = Color3.fromRGB(240,240,245)
 		SearchBox.Parent = Root
 		local sc = Instance.new("UICorner")
@@ -8804,37 +8919,49 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			if playing then updateProgress() end
 		end)
 
-		local function playTrack(track)
-			if not track or not track.preview then
-				Luna:Notification({Title = "Music Player", Content = "No preview for this track.", Icon = "music_off"})
-				return
+		local function pipedStreamUrl(videoId)
+			for _, host in ipairs(PIPED_API_HOSTS) do
+				local data, err = LunaHttpJSON(host .. "/streams/" .. videoId)
+				if data and data.audioStreams then
+					for _, stream in ipairs(data.audioStreams) do
+						local url = stream.url or stream.proxyUrl
+						if url and (not stream.mimeType or string.find(stream.mimeType, "audio")) then
+							return url
+						end
+					end
+					local first = data.audioStreams[1]
+					if first then return first.url or first.proxyUrl end
+				end
 			end
+			return nil
+		end
+
+		local function playTrack(track)
+			if not track then return end
 			TitleLbl.Text = track.title or "Track"
 			ArtistLbl.Text = track.artist or "Unknown"
 			if track.cover then Art.Image = track.cover end
 			playing = false
 			sound:Stop()
 			task.spawn(function()
-				local previewUrl = track.preview
-				local cacheName = "SolaraHub_music_preview.mp3"
-				local loaded = false
-				if getcustomasset and writefile then
-					local bytes = LunaHttpGet(previewUrl)
-					if bytes then
-						pcall(function() writefile(cacheName, bytes) end)
-						local okAsset, assetId = pcall(function() return getcustomasset(cacheName) end)
-						if okAsset and assetId then
-							sound.SoundId = assetId
-							sound:Play()
-							playing = true
-							loaded = true
-						end
-					end
+				local streamUrl = track.streamUrl
+				if not streamUrl and track.videoId then
+					streamUrl = pipedStreamUrl(track.videoId)
 				end
-				if not loaded then
+				if not streamUrl and track.preview then
+					streamUrl = track.preview
+				end
+				if not streamUrl then
+					Luna:Notification({Title = "Music Player", Content = "No stream URL for this track.", Icon = "music_off"})
+					return
+				end
+				local ok, err = LunaPlaySoundFromUrl(sound, streamUrl, "SolaraHub_track_" .. tostring(track.videoId or "audio") .. ".mp3")
+				if ok then
+					playing = true
+				else
 					Luna:Notification({
 						Title = "Music Player",
-						Content = "Need getcustomasset + writefile + HTTP to play previews.",
+						Content = tostring(err or "Playback failed"),
 						Icon = "music_off",
 					})
 				end
@@ -8902,37 +9029,68 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end)
 		end
 
-		SearchBox.FocusLost:Connect(function(enter)
-			if not enter or SearchBox.Text == "" then return end
+		local function searchMusic()
+			if SearchBox.Text == "" then return end
 			task.spawn(function()
 				local q = HttpService:UrlEncode(SearchBox.Text)
-				local data, err = LunaHttpJSON("https://api.deezer.com/search?q=" .. q .. "&limit=15")
 				for _, ch in ipairs(QueueScroll:GetChildren()) do
 					if ch:IsA("TextButton") then ch:Destroy() end
 				end
 				queue = {}
-				if data and data.data then
-					for i, tr in ipairs(data.data) do
-						local item = {
-							title = tr.title,
-							artist = tr.artist and tr.artist.name or "Unknown",
-							cover = tr.album and tr.album.cover_medium or "",
-							preview = tr.preview,
-						}
-						queue[i] = item
-						addQueueItem(item, i)
+				local found = false
+				for _, host in ipairs(PIPED_API_HOSTS) do
+					local data, err = LunaHttpJSON(host .. "/search?q=" .. q .. "&filter=music_songs")
+					if data and data.items then
+						for i, item in ipairs(data.items) do
+							if i > 15 then break end
+							local vid = item.url and item.url:match("[?&]v=([^&]+)") or item.url and item.url:match("/([^/?]+)$")
+							local trackItem = {
+								title = item.title or "Track",
+								artist = item.uploaderName or item.uploader or "YouTube",
+								cover = item.thumbnail or "",
+								videoId = vid,
+								streamUrl = nil,
+							}
+							queue[#queue + 1] = trackItem
+							addQueueItem(trackItem, #queue)
+						end
+						found = #queue > 0
+						break
+					elseif err and not found then
+						Luna:Notification({Title = "Music Player", Content = err, Icon = "error"})
 					end
-					if #queue > 0 then
-						queueIdx = 1
-						playCurrent()
-						playBtn.Text = "⏸"
+				end
+				if not found and #queue == 0 then
+					local data, err = LunaHttpJSON("https://api.deezer.com/search?q=" .. q .. "&limit=10")
+					if data and data.data then
+						for i, tr in ipairs(data.data) do
+							local trackItem = {
+								title = (tr.title or "?") .. " (preview)",
+								artist = tr.artist and tr.artist.name or "Deezer",
+								cover = tr.album and tr.album.cover_medium or "",
+								preview = tr.preview,
+								videoId = "dz_" .. tostring(tr.id),
+							}
+							queue[#queue + 1] = trackItem
+							addQueueItem(trackItem, #queue)
+						end
+						found = #queue > 0
 					elseif err then
 						Luna:Notification({Title = "Music Player", Content = err, Icon = "error"})
 					end
-				elseif err then
-					Luna:Notification({Title = "Music Player", Content = err, Icon = "error"})
+				end
+				if #queue > 0 then
+					queueIdx = 1
+					playCurrent()
+					playBtn.Text = "⏸"
+				elseif not found then
+					Luna:Notification({Title = "Music Player", Content = "No tracks found.", Icon = "search_off"})
 				end
 			end)
+		end
+
+		SearchBox.FocusLost:Connect(function(enter)
+			if enter then searchMusic() end
 		end)
 
 		Window._MusicPlayerTab = hostTab
@@ -9785,6 +9943,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Accent = Color3.fromRGB(110, 102, 153),
 			Background = nil, -- nil = keep the original frame colour
 		}
+		Window._StrokeOriginals = {}
 
 		-- Returns true if a UIStroke / Frame is part of the "chrome" we want to
 		-- recolour. We deliberately skip the AI chat code-blocks, the search
@@ -9799,21 +9958,48 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return true
 		end
 
+		local function cacheStrokeColor(stroke)
+			if not Window._StrokeOriginals[stroke] then
+				Window._StrokeOriginals[stroke] = stroke.Color
+			end
+		end
+
+		local function forEachThemeStroke(callback)
+			local roots = {LunaUI, Main, dragBar}
+			for _, root in ipairs(roots) do
+				if root and root.Parent then
+					for _, d in ipairs(root:GetDescendants()) do
+						if d:IsA("UIStroke") and shouldRecolour(d) and d.Transparency < 0.9 then
+							callback(d)
+						end
+					end
+					if root:IsA("GuiObject") then
+						local direct = root:FindFirstChildOfClass("UIStroke")
+						if direct and shouldRecolour(direct) and direct.Transparency < 0.9 then
+							callback(direct)
+						end
+					end
+				end
+			end
+		end
+
 		Window.SetThemeAccent = function(color)
 			if typeof(color) ~= "Color3" then return end
 			Window._Theme.Accent = color
 			task.spawn(function()
-				for _, d in ipairs(LunaUI:GetDescendants()) do
-					if d:IsA("UIStroke") and shouldRecolour(d) then
-						-- Only push the accent to strokes whose alpha is "lit"
-						-- enough to matter, so we don't recolour borderline-
-						-- invisible decorative strokes into eyesores.
-						if d.Transparency < 0.9 then
-							d.Color = color
-						end
-					end
-				end
+				forEachThemeStroke(function(stroke)
+					cacheStrokeColor(stroke)
+					stroke.Color = color
+				end)
 			end)
+		end
+
+		Window.ClearThemeAccent = function()
+			for stroke, original in pairs(Window._StrokeOriginals) do
+				if stroke.Parent then
+					stroke.Color = original
+				end
+			end
 		end
 
 		Window.SetThemeBackground = function(color)
@@ -9828,7 +10014,8 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		Window.GetTheme = function() return Window._Theme end
 
 		Window.ResetTheme = function()
-			Window.SetThemeAccent(Color3.fromRGB(110, 102, 153))
+			Window.ClearThemeAccent()
+			Window._Theme.Accent = Color3.fromRGB(110, 102, 153)
 		end
 
 		Window.SetThemeGradient = function(c1, c2, c3)
