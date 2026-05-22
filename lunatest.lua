@@ -17,7 +17,6 @@ by    d8b   db d88888b d8888b. db    db db       .d8b.       .d8888.  .d88b.  d8
 
 Main Credits
 
-Claude Opus 4.7 | fixed some bugs + added ai chat and etc.
 Hunter (Nebula Softworks) | Designing And Programming | Main Developer
 JustHey (Nebula Softworks) | Configurations, Bug Fixing And More! | Co Developer
 Throit | Color Picker
@@ -52,15 +51,26 @@ local Luna = {
 	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))} 
 }
 
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
-local Localization = game:GetService("LocalizationService")
-local Players = game:GetService("Players")
+local function getService(serviceName)
+	local svc = game:GetService(serviceName)
+	if cloneref then
+		return cloneref(svc)
+	end
+	return svc
+end
+
+local UserInputService = getService("UserInputService")
+local TweenService = getService("TweenService")
+local HttpService = getService("HttpService")
+local RunService = getService("RunService")
+local Localization = getService("LocalizationService")
+local Players = getService("Players")
 local Player = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local CoreGui = game:GetService("CoreGui")
+local CoreGui = getService("CoreGui")
+local GuiService = getService("GuiService")
+local MarketplaceService = getService("MarketplaceService")
+local Stats = getService("Stats")
 
 local isStudio
 local website = "github.com/Nebula-Softworks"
@@ -1801,9 +1811,19 @@ local LUNA_TEMPLATE_PLACEHOLDERS = {
     ["paragraph"] = true,
     ["but with description"] = true,
     ["but with a description"] = true,
+    ["но с описанием"] = true,
     ["section"] = true,
     ["tab"] = true,
 }
+
+local function _isStaleTemplateOriginal(orig, currentText)
+    if type(orig) ~= "string" or type(currentText) ~= "string" then return false end
+    if orig == currentText then return false end
+    local key = orig:gsub("%s+", ""):lower()
+    if LUNA_TEMPLATE_PLACEHOLDERS[key] then return true end
+    if orig:lower():find("lorem ipsum", 1, true) then return true end
+    return false
+end
 
 -- Should we skip translating a specific value? Numbers, single chars, URLs,
 -- whitespace and asset IDs are pointless to send through the API.
@@ -1817,6 +1837,20 @@ local function _shouldTranslateValue(text)
     if trimmed:match("^%a+://") then return false end
     if LUNA_TEMPLATE_PLACEHOLDERS[trimmed:lower()] then return false end
     return true
+end
+
+-- Writes UI text and stamps the canonical English original for the translator.
+local function LunaSetText(obj, text)
+    if not obj then return end
+    text = tostring(text or "")
+    obj.Text = text
+    if text == "" or not _shouldTranslateValue(text) then
+        obj:SetAttribute("LunaOriginalText", nil)
+        obj:SetAttribute("LunaTranslated", nil)
+    else
+        obj:SetAttribute("LunaOriginalText", text)
+        obj:SetAttribute("LunaTranslated", nil)
+    end
 end
 
 local _LunaHttpRequest = (syn and syn.request) or (http and http.request) or http_request or request
@@ -1887,6 +1921,11 @@ local function _translateOne(obj, target)
     if not _isTranslatableText(obj) then return end
     local orig = obj:GetAttribute("LunaOriginalText")
     local lastTranslated = obj:GetAttribute("LunaTranslated")
+    if _isStaleTemplateOriginal(orig, obj.Text) then
+        orig = nil
+        obj:SetAttribute("LunaOriginalText", nil)
+        obj:SetAttribute("LunaTranslated", nil)
+    end
     if orig == nil then
         orig = obj.Text
         if not _shouldTranslateValue(orig) then return end
@@ -2137,16 +2176,30 @@ local Dragger = Main.Drag
 local dragBar = LunaUI.Drag
 local dragInteract = dragBar and dragBar.Interact or nil
 local dragBarCosmetic = dragBar and dragBar.Drag or nil
+-- Keep rescue handle at ScreenGui root (sibling of SmartWindow), never inside Main.
+if dragBar and dragBar.Parent ~= LunaUI then
+	dragBar.Parent = LunaUI
+end
 
--- Rescue handle: sits just below Main (ScreenGui root, not a child of Main).
+-- Rayfield-style offset: half the window height + padding (scales on resize).
+local function getDragBarYOffset(mainFrame)
+	if not mainFrame then return 255 end
+	return math.floor(mainFrame.AbsoluteSize.Y * 0.5) + 14
+end
+
+-- Rescue handle tracks Main.Position (not AbsolutePosition) so UIScale/Zoom stay aligned.
 local function syncDragBarPosition(mainFrame)
 	if not dragBar or not mainFrame then return end
-	local p = mainFrame.AbsolutePosition
-	local s = mainFrame.AbsoluteSize
-	dragBar.AnchorPoint = Vector2.new(0.5, 0)
-	dragBar.Position = UDim2.fromOffset(p.X + s.X * 0.5, p.Y + s.Y + 14)
-	if dragBar.ZIndex < 50 then
-		dragBar.ZIndex = 50
+	local mp = mainFrame.Position
+	local yOff = getDragBarYOffset(mainFrame)
+	dragBar.AnchorPoint = Vector2.new(0.5, 0.5)
+	dragBar.Position = UDim2.new(mp.X.Scale, mp.X.Offset, mp.Y.Scale, mp.Y.Offset + yOff)
+	if dragBar.ZIndex < 100 then
+		dragBar.ZIndex = 100
+	end
+	if dragInteract then
+		dragInteract.AnchorPoint = Vector2.new(0.5, 0.5)
+		dragInteract.Position = dragBar.Position
 	end
 end
 local Elements = Main.Elements.Interactions
@@ -2246,46 +2299,72 @@ local NotificationsPaddingOffset = (NotificationsListLayout and NotificationsLis
 
 local function Draggable(Bar, Window, enableTaptic, tapticOffset)
 	pcall(function()
-		local Dragging, DragInput, MousePos, FramePos
+		-- Rayfield-style rescue handle: RenderStepped + mouse location keeps dragBar
+		-- outside the window and aligned when UIScale / resize changes.
+		if enableTaptic and dragBar then
+			local dragging = false
+			local relative = nil
+			local inset = Vector2.zero
+			local screenGui = Window:FindFirstAncestorWhichIsA("ScreenGui")
+			if screenGui and screenGui.IgnoreGuiInset then
+				inset = GuiService:GetGuiInset()
+			end
 
-		local function connectFunctions()
-			if dragBar and enableTaptic then
+			local function connectFunctions()
 				dragBar.MouseEnter:Connect(function()
-					if not Dragging then
+					if not dragging then
 						TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.5, Size = UDim2.new(0, 120, 0, 4)}):Play()
 					end
 				end)
-
 				dragBar.MouseLeave:Connect(function()
-					if not Dragging then
+					if not dragging then
 						TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.7, Size = UDim2.new(0, 100, 0, 4)}):Play()
 					end
 				end)
 			end
+			connectFunctions()
+
+			Bar.InputBegan:Connect(function(input, processed)
+				if processed then return end
+				local t = input.UserInputType.Name
+				if t == "MouseButton1" or t == "Touch" then
+					dragging = true
+					relative = Window.AbsolutePosition + Window.AbsoluteSize * Window.AnchorPoint - UserInputService:GetMouseLocation()
+					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
+				end
+			end)
+
+			UserInputService.InputEnded:Connect(function(input)
+				if not dragging then return end
+				local t = input.UserInputType.Name
+				if t == "MouseButton1" or t == "Touch" then
+					dragging = false
+					connectFunctions()
+					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 100, 0, 4), BackgroundTransparency = 0.7}):Play()
+					syncDragBarPosition(Window)
+				end
+			end)
+
+			RunService.RenderStepped:Connect(function()
+				if not dragging then return end
+				local position = UserInputService:GetMouseLocation() + relative + inset
+				local yOff = getDragBarYOffset(Window)
+				Window.Position = UDim2.fromOffset(position.X, position.Y)
+				dragBar.Position = UDim2.fromOffset(position.X, position.Y + yOff)
+				if dragInteract then
+					dragInteract.Position = dragBar.Position
+				end
+			end)
+			return
 		end
 
-		connectFunctions()
+		local Dragging, DragInput, MousePos, FramePos
 
 		Bar.InputBegan:Connect(function(Input)
 			if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
 				Dragging = true
 				MousePos = Input.Position
 				FramePos = Window.Position
-
-				if enableTaptic then
-					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
-				end
-
-				Input.Changed:Connect(function()
-					if Input.UserInputState == Enum.UserInputState.End then
-						Dragging = false
-						connectFunctions()
-
-						if enableTaptic then
-							TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 100, 0, 4), BackgroundTransparency = 0.7}):Play()
-						end
-					end
-				end)
 			end
 		end)
 
@@ -2298,16 +2377,10 @@ local function Draggable(Bar, Window, enableTaptic, tapticOffset)
 		UserInputService.InputChanged:Connect(function(Input)
 			if Input == DragInput and Dragging then
 				local Delta = Input.Position - MousePos
-
 				local newMainPosition = UDim2.new(FramePos.X.Scale, FramePos.X.Offset + Delta.X, FramePos.Y.Scale, FramePos.Y.Offset + Delta.Y)
 				TweenService:Create(Window, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Position = newMainPosition}):Play()
-
-				if dragBar then
-					syncDragBarPosition(Window)
-				end
 			end
 		end)
-
 	end)
 end
 
@@ -2888,7 +2961,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end)
 
 		local friendsCooldown = 0
-		local function getPing() return math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
+		local function getPing() return math.clamp(Stats.Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
 
 		local function checkFriends()
 			if friendsCooldown == 0 then
@@ -3332,16 +3405,14 @@ function Window:CreateTab(TabSettings)
 				}
 
 
-				local Button
-				if ButtonSettings.Description == nil and ButtonSettings.Description ~= "" then
-					Button = Elements.Template.Button:Clone()
-				else
-					Button = Elements.Template.ButtonDesc:Clone()
-				end
+				local hasDesc = type(ButtonSettings.Description) == "string" and ButtonSettings.Description ~= ""
+				local Button = hasDesc and Elements.Template.ButtonDesc:Clone() or Elements.Template.Button:Clone()
 				RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
-				Button.Title.Text = ButtonSettings.Name
-				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-					Button.Desc.Text = ButtonSettings.Description
+				LunaSetText(Button.Title, ButtonSettings.Name)
+				if hasDesc and Button:FindFirstChild("Desc") then
+					LunaSetText(Button.Desc, ButtonSettings.Description)
+				elseif Button:FindFirstChild("Desc") then
+					Button.Desc.Visible = false
 				end
 				Button.Visible = true
 				Button.Parent = TabPage
@@ -3441,7 +3512,7 @@ function Window:CreateTab(TabSettings)
 					Label = Elements.Template.Warn:Clone()
 				end
 
-				Label.Text.Text = LabelSettings.Text
+				LunaSetText(Label.Text, LabelSettings.Text)
 				Label.Visible = true
 				Label.Parent = TabPage
 
@@ -3460,7 +3531,7 @@ function Window:CreateTab(TabSettings)
 				function LabelV:Set(NewLabel)
 					LabelSettings.Text = NewLabel
 					LabelV.Settings = LabelSettings
-					Label.Text.Text = NewLabel
+					LunaSetText(Label.Text, NewLabel)
 				end
 
 				function LabelV:Destroy()
@@ -3485,8 +3556,8 @@ function Window:CreateTab(TabSettings)
 				}
 
 				local Paragraph = Elements.Template.Paragraph:Clone()
-				Paragraph.Title.Text = ParagraphSettings.Title
-				Paragraph.Text.Text = ParagraphSettings.Text
+				LunaSetText(Paragraph.Title, ParagraphSettings.Title)
+				LunaSetText(Paragraph.Text, ParagraphSettings.Text)
 				Paragraph.Visible = true
 				Paragraph.Parent = TabPage
 
@@ -3515,8 +3586,8 @@ function Window:CreateTab(TabSettings)
 
 					ParagraphV.Settings = NewParagraphSettings
 
-					Paragraph.Title.Text = NewParagraphSettings.Title
-					Paragraph.Text.Text = NewParagraphSettings.Text
+					LunaSetText(Paragraph.Title, NewParagraphSettings.Title)
+					LunaSetText(Paragraph.Text, NewParagraphSettings.Text)
 
 					ParagraphV:Update()
 
@@ -3753,9 +3824,11 @@ function Window:CreateTab(TabSettings)
 				Toggle.Parent = TabPage
 
 				RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
-				Toggle.Title.Text = ToggleSettings.Name
-				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
-					Toggle.Desc.Text = ToggleSettings.Description
+				LunaSetText(Toggle.Title, ToggleSettings.Name)
+				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle:FindFirstChild("Desc") then
+					LunaSetText(Toggle.Desc, ToggleSettings.Description)
+				elseif Toggle:FindFirstChild("Desc") then
+					Toggle.Desc.Visible = false
 				end
 
 				Toggle.UIStroke.Transparency = 1
@@ -4155,7 +4228,7 @@ function Window:CreateTab(TabSettings)
 
 				RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 				Input.Title.Text = InputSettings.Name
-				if descriptionbool then Input.Desc.Text = InputSettings.Description end
+				if descriptionbool then LunaSetText(Input.Desc, InputSettings.Description) end
 				Input.Visible = true
 				Input.Parent = TabPage
 
@@ -4324,7 +4397,7 @@ function Window:CreateTab(TabSettings)
 
 				RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 				Dropdown.Title.Text = DropdownSettings.Name
-				if descriptionbool then Dropdown.Desc.Text = DropdownSettings.Description end
+				if descriptionbool then LunaSetText(Dropdown.Desc, DropdownSettings.Description) end
 
 				Dropdown.Parent = TabPage
 				Dropdown.Visible = true
@@ -4948,16 +5021,14 @@ function Window:CreateTab(TabSettings)
 			}
 
 
-			local Button
-			if ButtonSettings.Description == nil and ButtonSettings.Description ~= "" then
-				Button = Elements.Template.Button:Clone()
-			else
-				Button = Elements.Template.ButtonDesc:Clone()
-			end
+			local hasDesc = type(ButtonSettings.Description) == "string" and ButtonSettings.Description ~= ""
+			local Button = hasDesc and Elements.Template.ButtonDesc:Clone() or Elements.Template.Button:Clone()
 			RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
-			Button.Title.Text = ButtonSettings.Name
-			if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-				Button.Desc.Text = ButtonSettings.Description
+			LunaSetText(Button.Title, ButtonSettings.Name)
+			if hasDesc and Button:FindFirstChild("Desc") then
+				LunaSetText(Button.Desc, ButtonSettings.Description)
+			elseif Button:FindFirstChild("Desc") then
+				Button.Desc.Visible = false
 			end
 			Button.Visible = true
 			Button.Parent = TabPage
@@ -5021,9 +5092,9 @@ function Window:CreateTab(TabSettings)
 				ButtonV.Settings = ButtonSettings2
 
 				RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
-				Button.Title.Text = ButtonSettings.Name
+				LunaSetText(Button.Title, ButtonSettings.Name)
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
-					Button.Desc.Text = ButtonSettings.Description
+					LunaSetText(Button.Desc, ButtonSettings.Description)
 				end
 			end
 
@@ -5056,7 +5127,7 @@ function Window:CreateTab(TabSettings)
 				Label = Elements.Template.Warn:Clone()
 			end
 
-			Label.Text.Text = LabelSettings.Text
+			LunaSetText(Label.Text, LabelSettings.Text)
 			Label.Visible = true
 			Label.Parent = TabPage
 
@@ -5365,9 +5436,11 @@ function Window:CreateTab(TabSettings)
 			Toggle.Parent = TabPage
 
 			RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
-			Toggle.Title.Text = ToggleSettings.Name
-			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
-				Toggle.Desc.Text = ToggleSettings.Description
+			LunaSetText(Toggle.Title, ToggleSettings.Name)
+			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle:FindFirstChild("Desc") then
+				LunaSetText(Toggle.Desc, ToggleSettings.Description)
+			elseif Toggle:FindFirstChild("Desc") then
+				Toggle.Desc.Visible = false
 			end
 
 			Toggle.UIStroke.Transparency = 1
@@ -5953,7 +6026,7 @@ function Window:CreateTab(TabSettings)
 
 			RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 			Input.Title.Text = InputSettings.Name
-			if descriptionbool then Input.Desc.Text = InputSettings.Description end
+			if descriptionbool then LunaSetText(Input.Desc, InputSettings.Description) end
 			Input.Visible = true
 			Input.Parent = TabPage
 
@@ -6121,7 +6194,7 @@ function Window:CreateTab(TabSettings)
 
 			RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 			Dropdown.Title.Text = DropdownSettings.Name
-			if descriptionbool then Dropdown.Desc.Text = DropdownSettings.Description end
+			if descriptionbool then LunaSetText(Dropdown.Desc, DropdownSettings.Description) end
 
 			Dropdown.Parent = TabPage
 			Dropdown.Visible = true
@@ -7858,7 +7931,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 					local user = Players.LocalPlayer
 					local gameName = "Unknown"
 					pcall(function()
-						local info = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
+						local info = MarketplaceService:GetProductInfo(game.PlaceId)
 						if info and info.Name then gameName = info.Name end
 					end)
 					local payload = HttpService:JSONEncode({
@@ -8984,6 +9057,22 @@ function Luna:SetLanguage(targetCode, customTranslator)
 		_watchNewText(LunaUI)
 	end
 	_translateTree(LunaUI, targetCode)
+	-- Second pass clears stale template originals (e.g. "But with description", lorem ipsum)
+	-- that were snapshotted before host scripts finished assigning real text.
+	if targetCode ~= "en" then
+		task.delay(0.4, function()
+			for _, obj in ipairs(LunaUI:GetDescendants()) do
+				if _isTranslatableText(obj) then
+					local orig = obj:GetAttribute("LunaOriginalText")
+					if _isStaleTemplateOriginal(orig, obj.Text) then
+						obj:SetAttribute("LunaOriginalText", nil)
+						obj:SetAttribute("LunaTranslated", nil)
+					end
+				end
+			end
+			_translateTree(LunaUI, targetCode)
+		end)
+	end
 end
 
 -- Direct translate-a-string helper (sync; will yield while waiting for HTTP).
