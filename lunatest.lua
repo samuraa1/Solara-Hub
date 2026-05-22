@@ -8382,7 +8382,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 
 		local searchSec = hostTab:CreateSection("Search")
-		searchSec:CreateInput({
+		local queryInput = searchSec:CreateInput({
 			Name = "Query",
 			PlaceholderText = "e.g. infinite yield, arsenal, universal",
 			Enter = true,
@@ -8391,14 +8391,15 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				runSearch()
 			end,
 		})
-		searchSec:CreateDropdown({
+		local sourceDropdown = searchSec:CreateDropdown({
 			Name = "API Source",
 			Options = {"ScriptBlox", "RScripts"},
 			CurrentOption = "ScriptBlox",
 			Flag = "SS_Source",
 			Callback = function(opt)
-				source = type(opt) == "table" and (opt[1] or opt) or opt
-				if type(source) ~= "string" then source = "ScriptBlox" end
+				local v = opt
+				if type(v) == "table" then v = v[1] end
+				if type(v) == "string" and v ~= "" then source = v end
 				setStatus("Source: " .. source)
 			end,
 		})
@@ -8409,6 +8410,65 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				runSearch()
 			end,
 		})
+
+		statusLabel = searchSec:CreateLabel({
+			Text = "Enter a query and press Search (needs HttpService / request).",
+			Style = 2,
+		})
+
+		local resultsHost = Instance.new("Frame")
+		resultsHost.Name = "ScriptSearcherResults"
+		resultsHost.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
+		resultsHost.BackgroundTransparency = 0.15
+		resultsHost.BorderSizePixel = 0
+		resultsHost.Size = UDim2.new(1, 0, 0, 340)
+		resultsHost.LayoutOrder = 4
+		resultsHost.Parent = Page
+		local hostCorner = Instance.new("UICorner")
+		hostCorner.CornerRadius = UDim.new(0, 8)
+		hostCorner.Parent = resultsHost
+		local hostStroke = Instance.new("UIStroke")
+		hostStroke.Color = Color3.fromRGB(70, 68, 85)
+		hostStroke.Transparency = 0.6
+		hostStroke.Parent = resultsHost
+
+		local Scroll = Instance.new("ScrollingFrame")
+		Scroll.Name = "ResultsScroll"
+		Scroll.BackgroundTransparency = 1
+		Scroll.BorderSizePixel = 0
+		Scroll.Size = UDim2.new(1, -8, 1, -8)
+		Scroll.Position = UDim2.new(0, 4, 0, 4)
+		Scroll.ScrollBarThickness = 5
+		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		Scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+		Scroll.Parent = resultsHost
+		local listLayout = Instance.new("UIListLayout")
+		listLayout.Padding = UDim.new(0, 6)
+		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		listLayout.Parent = Scroll
+		local scrollPad = Instance.new("UIPadding")
+		scrollPad.PaddingTop = UDim.new(0, 4)
+		scrollPad.PaddingBottom = UDim.new(0, 8)
+		scrollPad.PaddingLeft = UDim.new(0, 4)
+		scrollPad.PaddingRight = UDim.new(0, 4)
+		scrollPad.Parent = Scroll
+
+		local function cardWidth()
+			return math.max(Scroll.AbsoluteSize.X - 12, 220)
+		end
+
+		local function scrollToResults()
+			if not Page:IsA("ScrollingFrame") then return end
+			task.defer(function()
+				task.wait(0.15)
+				local pageY = Page.AbsolutePosition.Y
+				local hostY = resultsHost.AbsolutePosition.Y
+				local target = hostY - pageY + Page.CanvasPosition.Y - 12
+				Page.CanvasPosition = Vector2.new(0, math.max(0, target))
+			end)
+		end
 
 		local sbSec = hostTab:CreateSection("ScriptBlox filters")
 		local function sbToggle(name, key)
@@ -8436,43 +8496,17 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		rsToggle("Unpatched", "unpatched")
 		rsToggle("No key system", "noKeySystem")
 
-		statusLabel = hostTab:CreateLabel({
-			Text = "Enter a query and press Search (needs HttpService / request).",
-			Style = 2,
-		})
-
-		local resultsHost = Instance.new("Frame")
-		resultsHost.Name = "ScriptSearcherResults"
-		resultsHost.BackgroundTransparency = 1
-		resultsHost.BorderSizePixel = 0
-		resultsHost.Size = UDim2.new(1, 0, 0, 300)
-		resultsHost.Parent = Page
-
-		local Scroll = Instance.new("ScrollingFrame")
-		Scroll.Name = "ResultsScroll"
-		Scroll.BackgroundColor3 = Color3.fromRGB(22, 21, 28)
-		Scroll.BackgroundTransparency = 0.35
-		Scroll.BorderSizePixel = 0
-		Scroll.Size = UDim2.new(1, -4, 1, 0)
-		Scroll.Position = UDim2.new(0, 0, 0, 0)
-		Scroll.ScrollBarThickness = 4
-		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
-		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		Scroll.Parent = resultsHost
-		local scrollCorner = Instance.new("UICorner")
-		scrollCorner.CornerRadius = UDim.new(0, 8)
-		scrollCorner.Parent = Scroll
-		local listLayout = Instance.new("UIListLayout")
-		listLayout.Padding = UDim.new(0, 6)
-		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		listLayout.Parent = Scroll
-		local scrollPad = Instance.new("UIPadding")
-		scrollPad.PaddingTop = UDim.new(0, 4)
-		scrollPad.PaddingBottom = UDim.new(0, 8)
-		scrollPad.PaddingLeft = UDim.new(0, 4)
-		scrollPad.PaddingRight = UDim.new(0, 4)
-		scrollPad.Parent = Scroll
+		local function setSectionLayoutOrder(sectionTitle, order)
+			for _, ch in ipairs(Page:GetChildren()) do
+				if ch:IsA("TextLabel") and ch.Text == sectionTitle then
+					ch.LayoutOrder = order
+					break
+				end
+			end
+		end
+		setSectionLayoutOrder("Search", 1)
+		setSectionLayoutOrder("ScriptBlox filters", 20)
+		setSectionLayoutOrder("RScripts filters", 21)
 
 		local function clearResults()
 			for _, ch in ipairs(Scroll:GetChildren()) do
@@ -8488,8 +8522,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			local card = Instance.new("Frame")
 			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
 			card.BackgroundTransparency = 0.05
-			card.Size = UDim2.new(1, -8, 0, 88)
+			card.Size = UDim2.fromOffset(cardWidth(), 88)
 			card.LayoutOrder = order
+			card.ZIndex = 2
 			card.Parent = Scroll
 			local cCorner = Instance.new("UICorner")
 			cCorner.CornerRadius = UDim.new(0, 10)
@@ -8592,20 +8627,39 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 
 		local function getQuery()
+			if queryInput and queryInput.CurrentValue then
+				local t = tostring(queryInput.CurrentValue)
+				t = t:gsub("^%s+", ""):gsub("%s+$", "")
+				if t ~= "" then return t end
+			end
 			local opt = Luna.Options and Luna.Options["SS_Query"]
 			if opt and opt.CurrentValue then
 				return tostring(opt.CurrentValue):gsub("^%s+", ""):gsub("%s+$", "")
 			end
-			if Luna.Options and Luna.Options["SS_Source"] then
-				-- no-op
-			end
 			return ""
 		end
 
+		Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			local w = cardWidth()
+			for _, ch in ipairs(Scroll:GetChildren()) do
+				if ch:IsA("Frame") then
+					ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+				end
+			end
+		end)
+
 		local function syncSource()
+			if sourceDropdown and sourceDropdown.CurrentOption then
+				local v = sourceDropdown.CurrentOption
+				if type(v) == "table" then v = v[1] end
+				if type(v) == "string" and v ~= "" then
+					source = v
+					return
+				end
+			end
 			local opt = Luna.Options and Luna.Options["SS_Source"]
-			if opt and opt.CurrentValue then
-				local v = opt.CurrentValue
+			if opt and opt.CurrentOption then
+				local v = opt.CurrentOption
 				if type(v) == "table" then v = v[1] end
 				if type(v) == "string" and v ~= "" then source = v end
 			end
@@ -8716,11 +8770,20 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 					end
 				end
 
-				for i, c in ipairs(cards) do
-					makeCard(c, i)
-				end
+				task.defer(function()
+					for i, c in ipairs(cards) do
+						makeCard(c, i)
+					end
+					local w = cardWidth()
+					for _, ch in ipairs(Scroll:GetChildren()) do
+						if ch:IsA("Frame") then
+							ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+						end
+					end
+				end)
 				if #cards > 0 then
 					setStatus(#cards .. " results (" .. source .. ")")
+					scrollToResults()
 				elseif errMsg then
 					setStatus(errMsg)
 				else
