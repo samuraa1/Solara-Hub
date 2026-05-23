@@ -51,15 +51,26 @@ local Luna = {
 	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))} 
 }
 
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
-local Localization = game:GetService("LocalizationService")
-local Players = game:GetService("Players")
+local function getService(serviceName)
+	local svc = game:GetService(serviceName)
+	if cloneref then
+		return cloneref(svc)
+	end
+	return svc
+end
+
+local UserInputService = getService("UserInputService")
+local TweenService = getService("TweenService")
+local HttpService = getService("HttpService")
+local RunService = getService("RunService")
+local Localization = getService("LocalizationService")
+local Players = getService("Players")
 local Player = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local CoreGui = game:GetService("CoreGui")
+local CoreGui = getService("CoreGui")
+local GuiService = getService("GuiService")
+local MarketplaceService = getService("MarketplaceService")
+local Stats = getService("Stats")
 
 local isStudio
 local website = "github.com/Nebula-Softworks"
@@ -1560,6 +1571,161 @@ local IconModule = {
 
 -- Other Variables
 local request = (syn and syn.request) or (http and http.request) or http_request or nil
+
+-- Resolve executor globals (writefile/getcustomasset live on _G / getgenv / syn, not always as locals).
+local function LunaResolveExecFn(...)
+	local names = {...}
+	for i = 1, #names do
+		local n = names[i]
+		if type(_G) == "table" and type(_G[n]) == "function" then
+			return _G[n]
+		end
+	end
+	if type(getgenv) == "function" then
+		local g = getgenv()
+		if type(g) == "table" then
+			for i = 1, #names do
+				local fn = g[names[i]]
+				if type(fn) == "function" then return fn end
+			end
+		end
+	end
+	if type(syn) == "table" then
+		for i = 1, #names do
+			local fn = syn[names[i]]
+			if type(fn) == "function" then return fn end
+		end
+	end
+	if type(fluxus) == "table" then
+		for i = 1, #names do
+			local fn = fluxus[names[i]]
+			if type(fn) == "function" then return fn end
+		end
+	end
+	if type(getfenv) == "function" then
+		local ok, env = pcall(getfenv, 0)
+		if ok and type(env) == "table" then
+			for i = 1, #names do
+				local fn = env[names[i]]
+				if type(fn) == "function" then return fn end
+			end
+		end
+	end
+	return nil
+end
+
+local LunaWriteFile = LunaResolveExecFn("writefile", "write_file")
+local LunaReadFile = LunaResolveExecFn("readfile", "read_file")
+local LunaGetCustomAsset = LunaResolveExecFn("getcustomasset", "getsynasset", "getsynasset_async")
+
+local function LunaHttpHeaders()
+	return {
+		["Accept"] = "application/json, text/plain, */*",
+		["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	}
+end
+
+-- Safe HTTP for Script Searcher / Music Player (avoids JSONDecode on HTML error pages).
+local function LunaHttpRequest(url)
+	if request then
+		local ok, res = pcall(function()
+			return request({Url = url, Method = "GET", Headers = LunaHttpHeaders()})
+		end)
+		if ok and res then
+			local body = res.Body or res.body
+			local code = res.StatusCode or res.status or res.Status
+			if body and tostring(body) ~= "" then
+				return tostring(body), code
+			end
+			return nil, code
+		end
+	end
+	local ok, body = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if ok and body and body ~= "" then
+		return body, 200
+	end
+	return nil, nil
+end
+
+local function LunaHttpGet(url)
+	local body = LunaHttpRequest(url)
+	return body
+end
+
+local function LunaHttpJSON(url)
+	local body, code = LunaHttpRequest(url)
+	if not body then
+		return nil, "Request failed (enable HTTP / use an executor with request)"
+	end
+	if code and tonumber(code) and tonumber(code) ~= 200 then
+		return nil, "HTTP " .. tostring(code)
+	end
+	body = body:gsub("^%s+", ""):gsub("^%x%x%x%x", "")
+	local first = body:sub(1, 1)
+	if first ~= "{" and first ~= "[" then
+		local snippet = body:sub(1, 120):gsub("%s+", " ")
+		return nil, "Not JSON: " .. snippet
+	end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(body)
+	end)
+	if ok then
+		return decoded
+	end
+	return nil, "JSON parse: " .. tostring(decoded)
+end
+
+local function LunaDownloadBytes(url)
+	if request then
+		local ok, res = pcall(function()
+			return request({Url = url, Method = "GET"})
+		end)
+		if ok and res then
+			local body = res.Body or res.body
+			if body and #tostring(body) > 0 then
+				return body
+			end
+		end
+	end
+	local ok, body = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if ok and body then return body end
+	return nil
+end
+
+local function LunaPlaySoundFromUrl(sound, url, cacheName)
+	cacheName = cacheName or "SolaraHub_track.mp3"
+	local writeFn = LunaWriteFile or LunaResolveExecFn("writefile", "write_file")
+	local assetFn = LunaGetCustomAsset or LunaResolveExecFn("getcustomasset", "getsynasset")
+	if not writeFn or not assetFn then
+		return false, "writefile/getcustomasset not found in executor"
+	end
+	local bytes = LunaDownloadBytes(url)
+	if not bytes then
+		return false, "Could not download audio"
+	end
+	local okW, errW = pcall(writeFn, cacheName, bytes)
+	if not okW then
+		return false, "writefile: " .. tostring(errW)
+	end
+	local okA, assetId = pcall(assetFn, cacheName)
+	if not okA or not assetId then
+		return false, "getcustomasset: " .. tostring(assetId)
+	end
+	sound.SoundId = assetId
+	sound:Play()
+	return true
+end
+
+local PIPED_API_HOSTS = {
+	"https://pipedapi.kavin.rocks",
+	"https://pipedapi.adminforge.de",
+	"https://api.piped.projectsegfau.lt",
+}
+
 local tweeninfo = TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 local PresetGradients = {
 	["Nightlight (Classic)"] = {Color3.fromRGB(147, 255, 239), Color3.fromRGB(201,211,233), Color3.fromRGB(255, 167, 227)},
@@ -1575,12 +1741,44 @@ local PresetGradients = {
 }
 
 local IconCache = {}
+
+-- Lucide loader: fetch once, cache forever (avoid hot-loop HTTP allocations)
+local LucideIconSet = nil
+local LucideTriedLoad = false
+local function GetLucideIconSet()
+    if LucideIconSet then return LucideIconSet end
+    if LucideTriedLoad then return nil end
+    LucideTriedLoad = true
+
+    if isStudio then
+        LucideIconSet = IconModule.Lucide
+        return LucideIconSet
+    end
+
+    local ok, fetched = pcall(function()
+        return game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
+    end)
+    if not ok or type(fetched) ~= "string" or #fetched == 0 then
+        return nil
+    end
+
+    local okLoad, loaded = pcall(function()
+        return loadstring(fetched)()
+    end)
+    if not okLoad or type(loaded) ~= "table" then
+        return nil
+    end
+
+    LucideIconSet = loaded
+    return LucideIconSet
+end
+
 local function GetIcon(icon, source)
     if not icon or not source then
         return nil
     end
-    
-    local cacheKey = icon .. "_" .. source
+
+    local cacheKey = tostring(icon) .. "_" .. tostring(source)
     if IconCache[cacheKey] then
         return IconCache[cacheKey]
     end
@@ -1588,18 +1786,16 @@ local function GetIcon(icon, source)
     local result
 
     if source == "Custom" then
-        result = "rbxassetid://" .. icon
+        result = "rbxassetid://" .. tostring(icon)
     elseif source == "Lucide" then
-        -- Full Credit To Latte Softworks :)
-        local iconData = not isStudio and game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
-        local icons = isStudio and IconModule.Lucide or loadstring(iconData)()
-        if not isStudio then
-            icon = string.match(string.lower(icon), "^%s*(.*)%s*$") :: string
+        -- Credit: Latte Softworks
+        local icons = GetLucideIconSet()
+        if icons then
+            local key = string.match(string.lower(tostring(icon)), "^%s*(.*)%s*$")
             local sizedicons = icons['48px']
-
-            local r = sizedicons[icon]
+            local r = sizedicons and sizedicons[key]
             if not r then
-                warn("Lucide Icons: Failed to find icon by the name of \"" .. icon .. "\"")
+                warn("Lucide Icons: Failed to find icon by the name of \"" .. tostring(icon) .. "\"")
                 return nil
             end
 
@@ -1607,16 +1803,14 @@ local function GetIcon(icon, source)
             local riro = r[3]
 
             if type(r[1]) ~= "number" or type(rirs) ~= "table" or type(riro) ~= "table" then
-                error("Lucide Icons: Internal error: Invalid auto-generated asset entry")
+                warn("Lucide Icons: Invalid asset entry for \"" .. tostring(icon) .. "\"")
+                return nil
             end
-
-            local irs = Vector2.new(rirs[1], rirs[2])
-            local iro = Vector2.new(riro[1], riro[2])
 
             result = {
                 id = r[1],
-                imageRectSize = irs,
-                imageRectOffset = iro,
+                imageRectSize = Vector2.new(rirs[1], rirs[2]),
+                imageRectOffset = Vector2.new(riro[1], riro[2]),
             }
         else
             result = "rbxassetid://10723434557"
@@ -1629,12 +1823,406 @@ local function GetIcon(icon, source)
             result = nil
         end
     end
-    
+
     if result then
         IconCache[cacheKey] = result
     end
-    
+
     return result
+end
+
+-- Applies an icon result (string id or Lucide rect table) to an ImageLabel/ImageButton
+local function ApplyIcon(imageLabel, iconData)
+    if not imageLabel or not iconData then return end
+    if type(iconData) == "table" then
+        imageLabel.Image = "rbxassetid://" .. tostring(iconData.id)
+        imageLabel.ImageRectSize = iconData.imageRectSize or Vector2.new(0, 0)
+        imageLabel.ImageRectOffset = iconData.imageRectOffset or Vector2.new(0, 0)
+    else
+        imageLabel.Image = tostring(iconData)
+        imageLabel.ImageRectSize = Vector2.new(0, 0)
+        imageLabel.ImageRectOffset = Vector2.new(0, 0)
+    end
+end
+
+-- Generates a random, generic instance name to reduce anti-cheat name-scan footprint.
+-- We avoid keywords like "ESP", "Aimbot" leaking via Instance.Name.
+local _LunaRandom = Random.new()
+local function RandomName()
+    local hex = "0123456789abcdef"
+    local out = {}
+    for i = 1, 16 do
+        local n = _LunaRandom:NextInteger(1, #hex)
+        out[i] = hex:sub(n, n)
+    end
+    return "_" .. table.concat(out)
+end
+
+-- Forward-declared at module scope so the callback-error path (which references
+-- all possible Settings tables via _LunaErrName) doesn't produce "undefined global"
+-- diagnostics. Each Create* function shadows these with its local parameter of
+-- the same name, so the actual lookup still resolves to the correct table.
+local BindSettings, ButtonSettings, SliderSettings, ToggleSettings,
+    InputSettings, DropdownSettings, ColorPickerSettings
+
+-- Returns the first non-nil Settings.Name from the provided argument list.
+-- Used by the callback-error path so that the Notification works regardless of
+-- which element (Button/Slider/Toggle/Bind/Input/Dropdown/ColorPicker) triggered it.
+local function _LunaErrName(...)
+    local n = select("#", ...)
+    for i = 1, n do
+        local s = select(i, ...)
+        if type(s) == "table" and type(s.Name) == "string" then
+            return s.Name
+        end
+    end
+    return "Unknown"
+end
+
+-- Shown on every callback failure so users know where to report bugs.
+local LUNA_CALLBACK_ERR_FOOTER = " Report this in Discord: discord.gg/DPCKQRJmdF"
+
+local function LunaCallbackErrorNotification(response, ...)
+    Luna:Notification({
+        Title = "Callback Error",
+        Content = "Luna Interface Suite | " .. _LunaErrName(...) .. " | " .. tostring(response) .. LUNA_CALLBACK_ERR_FOOTER,
+        Icon = "error",
+    })
+end
+
+-- Detect "PC-like" environment: has a keyboard AND mouse. Phones/tablets typically
+-- lack both. Laptops with a touchscreen still pass because they have keyboard+mouse.
+local function IsDesktop()
+    return UserInputService.KeyboardEnabled and UserInputService.MouseEnabled
+end
+
+-- Registers an element with the Window so SearchBar can find it. Also handles
+-- the anti-cheat instance rename so the user-supplied display name doesn't
+-- leak via Instance.Name. Safe to call multiple times for the same frame -
+-- the search index is populated only once, but the random name + attribute
+-- are refreshed on every call (useful when :Set() updates display name).
+local function RegisterElement(window, frame, displayName, elementType, tabName)
+    if not frame then return end
+    pcall(function()
+        frame.Name = RandomName()
+    end)
+    if displayName then
+        frame:SetAttribute("LunaElementName", tostring(displayName))
+    end
+    if frame:GetAttribute("LunaRegistered") then return end
+    frame:SetAttribute("LunaRegistered", true)
+    if window and window._SearchIndex then
+        table.insert(window._SearchIndex, {
+            Name = tostring(displayName or "Unknown"),
+            Type = tostring(elementType or "Element"),
+            Frame = frame,
+            Tab = tostring(tabName or ""),
+        })
+    end
+end
+
+-- ============================================================
+-- Translator (whole-UI translation)
+-- ============================================================
+-- Uses Google Translate's free unofficial endpoint via game:HttpGet (or the
+-- executor's request() if available). We snapshot every text element's
+-- original English content into an attribute on first translation, then
+-- replace it with the localised version. Switching back to "en" restores
+-- the originals from the cached attribute.
+local LunaTranslator = {
+    Target = "en",
+    Cache = {},      -- [targetCode][originalText] = translated
+    External = nil,  -- optional user-supplied translator fn(text, target) -> string
+    Watching = false,
+}
+
+-- Returns true if `obj` exposes a text property we should translate. Excludes
+-- TextBoxes (typing fields) so the user's input isn't replaced mid-keystroke,
+-- and any descendant explicitly marked LunaNoTranslate (e.g. AI chat bubbles).
+local function _isTranslatableText(obj)
+    if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+        -- Walk parents looking for the opt-out flag so a single attribute on
+        -- a container excludes the whole subtree.
+        local cur = obj
+        while cur and cur ~= game do
+            if cur:GetAttribute("LunaNoTranslate") then return false end
+            cur = cur.Parent
+        end
+        return true
+    end
+    return false
+end
+
+-- Template placeholder strings that must never be snapshotted as "originals".
+local LUNA_TEMPLATE_PLACEHOLDERS = {
+    ["button"] = true,
+    ["slider"] = true,
+    ["toggle"] = true,
+    ["bind"] = true,
+    ["input"] = true,
+    ["dropdown"] = true,
+    ["color picker"] = true,
+    ["label"] = true,
+    ["paragraph"] = true,
+    ["but with description"] = true,
+    ["but with a description"] = true,
+    ["но с описанием"] = true,
+    ["section"] = true,
+    ["tab"] = true,
+}
+
+local function _isStaleTemplateOriginal(orig, currentText)
+    if type(orig) ~= "string" or type(currentText) ~= "string" then return false end
+    if orig == currentText then return false end
+    local key = orig:gsub("%s+", ""):lower()
+    if LUNA_TEMPLATE_PLACEHOLDERS[key] then return true end
+    if orig:lower():find("lorem ipsum", 1, true) then return true end
+    return false
+end
+
+-- Should we skip translating a specific value? Numbers, single chars, URLs,
+-- whitespace and asset IDs are pointless to send through the API.
+local function _shouldTranslateValue(text)
+    if type(text) ~= "string" then return false end
+    local trimmed = text:gsub("%s+", "")
+    if #trimmed < 2 then return false end
+    if tonumber(trimmed) then return false end
+    if trimmed:match("^rbxassetid://") then return false end
+    if trimmed:match("^https?://") then return false end
+    if trimmed:match("^%a+://") then return false end
+    if LUNA_TEMPLATE_PLACEHOLDERS[trimmed:lower()] then return false end
+    return true
+end
+
+-- Writes UI text and stamps the canonical English original for the translator.
+local function LunaFindTitle(widget)
+	if not widget then return nil end
+	return widget:FindFirstChild("Title") or widget:FindFirstChild("TextLabel")
+end
+
+local function LunaFindBodyText(widget)
+	if not widget then return nil end
+	return widget:FindFirstChild("Text") or widget:FindFirstChild("InputBox")
+		or widget:FindFirstChildWhichIsA("TextBox")
+end
+
+local function LunaFindStroke(widget)
+	if not widget then return nil end
+	return widget:FindFirstChildOfClass("UIStroke")
+end
+
+local function LunaTweenStroke(widget, props)
+	local stroke = LunaFindStroke(widget)
+	if stroke then tween(stroke, props) end
+end
+
+local function LunaSetText(obj, text)
+    if not obj then return end
+    text = tostring(text or "")
+    obj.Text = text
+    if text == "" or not _shouldTranslateValue(text) then
+        obj:SetAttribute("LunaOriginalText", nil)
+        obj:SetAttribute("LunaTranslated", nil)
+    else
+        obj:SetAttribute("LunaOriginalText", text)
+        obj:SetAttribute("LunaTranslated", nil)
+    end
+end
+
+local _LunaHttpRequest = (syn and syn.request) or (http and http.request) or http_request or request
+
+-- Synchronous translation through Google Translate. Cached per-target.
+local function _googleTranslate(text, target)
+    if target == "en" then return text end
+    if not _shouldTranslateValue(text) then return text end
+    LunaTranslator.Cache[target] = LunaTranslator.Cache[target] or {}
+    local cached = LunaTranslator.Cache[target][text]
+    if cached then return cached end
+
+    local url = string.format(
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=%s&dt=t&q=%s",
+        target, HttpService:UrlEncode(text)
+    )
+
+    local body
+    if _LunaHttpRequest then
+        local ok, res = pcall(function()
+            return _LunaHttpRequest({ Url = url, Method = "GET" })
+        end)
+        if ok and res and (res.StatusCode == 200 or res.Success) then
+            body = res.Body
+        end
+    end
+    if not body then
+        local ok, res = pcall(function() return game:HttpGet(url, true) end)
+        if ok then body = res end
+    end
+    if not body then return text end
+
+    local okDec, decoded = pcall(function() return HttpService:JSONDecode(body) end)
+    if not okDec or type(decoded) ~= "table" or type(decoded[1]) ~= "table" then return text end
+
+    local parts = {}
+    for _, chunk in ipairs(decoded[1]) do
+        if type(chunk) == "table" and type(chunk[1]) == "string" then
+            table.insert(parts, chunk[1])
+        end
+    end
+    local result = table.concat(parts)
+    if result == "" then return text end
+    LunaTranslator.Cache[target][text] = result
+    return result
+end
+
+-- Public translate. Uses External fn if set (lets the host script pick a
+-- different provider) and falls back to Google Translate.
+local function LunaTranslate(text, target)
+    target = target or LunaTranslator.Target or "en"
+    if target == "en" then return text end
+    if LunaTranslator.External then
+        local ok, result = pcall(LunaTranslator.External, text, target)
+        if ok and type(result) == "string" and result ~= "" then return result end
+    end
+    return _googleTranslate(text, target)
+end
+
+-- Translate a single GUI text instance in place. Stores the original in an
+-- attribute so we can restore it without re-querying. We also track the LAST
+-- translation we wrote ("LunaTranslated"): if obj.Text differs from it AND
+-- from the original, external code has rewritten the label since we last
+-- touched it, so re-snapshot the new original. This is what makes labels
+-- created from cloned templates (where the clone briefly carries "Button"
+-- before the host script writes the real name) translate correctly.
+local function _translateOne(obj, target)
+    if not _isTranslatableText(obj) then return end
+    local orig = obj:GetAttribute("LunaOriginalText")
+    local lastTranslated = obj:GetAttribute("LunaTranslated")
+    if _isStaleTemplateOriginal(orig, obj.Text) then
+        orig = nil
+        obj:SetAttribute("LunaOriginalText", nil)
+        obj:SetAttribute("LunaTranslated", nil)
+    end
+    if orig == nil then
+        orig = obj.Text
+        if not _shouldTranslateValue(orig) then return end
+        obj:SetAttribute("LunaOriginalText", orig)
+    elseif lastTranslated and obj.Text ~= lastTranslated and obj.Text ~= orig then
+        -- External rewrite detected. Trust the new text as the real original.
+        orig = obj.Text
+        if not _shouldTranslateValue(orig) then
+            obj:SetAttribute("LunaOriginalText", nil)
+            obj:SetAttribute("LunaTranslated", nil)
+            return
+        end
+        obj:SetAttribute("LunaOriginalText", orig)
+    end
+    if target == "en" then
+        if obj.Text ~= orig then obj.Text = orig end
+        obj:SetAttribute("LunaTranslated", nil)
+        return
+    end
+    local translated = LunaTranslate(orig, target)
+    if translated and obj.Text ~= translated then
+        obj.Text = translated
+        obj:SetAttribute("LunaTranslated", translated)
+    end
+end
+
+-- Walks a root Instance and translates every descendant text element.
+-- Uses a worker pool to fire many HTTP requests in parallel; on a typical
+-- UI this brings a full retranslate from minutes to ~10-20s.
+local LunaTranslateWorkers = 14
+local function _translateTree(root, target)
+    if not root then return end
+    -- Pre-collect & dedupe queue. Objects sharing the same source text only
+    -- need the API to translate them once - the cache handles the rest.
+    local queue = {}
+    for _, descendant in ipairs(root:GetDescendants()) do
+        if _isTranslatableText(descendant) then
+            table.insert(queue, descendant)
+        end
+    end
+    if #queue == 0 then return end
+
+    -- If target is English we don't hit the network at all - just restore
+    -- originals in one synchronous sweep.
+    if target == "en" then
+        task.spawn(function()
+            for i, obj in ipairs(queue) do
+                if obj and obj.Parent then pcall(_translateOne, obj, target) end
+                if i % 80 == 0 then task.wait() end
+            end
+        end)
+        return
+    end
+
+    -- Pre-warm the cache by translating each unique English string ONCE in
+    -- parallel. This avoids 5 different copies of "Settings" each issuing
+    -- their own HTTP request.
+    local unique = {}
+    for _, obj in ipairs(queue) do
+        local orig = obj:GetAttribute("LunaOriginalText") or obj.Text
+        if _shouldTranslateValue(orig) and not unique[orig] then
+            unique[orig] = true
+        end
+    end
+    local uniqueList = {}
+    for text in pairs(unique) do table.insert(uniqueList, text) end
+
+    local idx = 0
+    local function nextText()
+        idx = idx + 1
+        return uniqueList[idx]
+    end
+
+    local doneFlag = Instance.new("BindableEvent")
+    local active = math.min(LunaTranslateWorkers, math.max(1, #uniqueList))
+    if active == 0 then doneFlag:Fire(); doneFlag:Destroy(); doneFlag = nil end
+
+    for w = 1, active do
+        task.spawn(function()
+            while true do
+                local text = nextText()
+                if not text then break end
+                pcall(LunaTranslate, text, target)
+            end
+            active = active - 1
+            if active == 0 and doneFlag then doneFlag:Fire() end
+        end)
+    end
+
+    -- Once the cache is hot, applying translations to actual instances is
+    -- effectively free (no HTTP). Stream them out in a small loop so we
+    -- still yield occasionally and don't freeze the game thread.
+    task.spawn(function()
+        if doneFlag then
+            doneFlag.Event:Wait()
+            doneFlag:Destroy()
+        end
+        for i, obj in ipairs(queue) do
+            if obj and obj.Parent then
+                pcall(_translateOne, obj, target)
+            end
+            if i % 60 == 0 then task.wait() end
+        end
+    end)
+end
+
+-- Catch newly added UI elements so they get translated too. Connected once
+-- the first time SetLanguage activates a non-English target. We wait a few
+-- frames before snapshotting so the host script's clone+Text-assignment can
+-- finish - otherwise we'd cache the template's placeholder ("Button") as the
+-- "original" and forever replace real labels with the translated placeholder.
+local function _watchNewText(rootGui)
+    if LunaTranslator.Watching then return end
+    LunaTranslator.Watching = true
+    rootGui.DescendantAdded:Connect(function(obj)
+        if LunaTranslator.Target == "en" then return end
+        if not _isTranslatableText(obj) then return end
+        task.delay(0.15, function()
+            if obj and obj.Parent then _translateOne(obj, LunaTranslator.Target) end
+        end)
+    end)
 end
 
 local function RemoveTable(tablre, value)
@@ -1667,6 +2255,51 @@ function tween(object, goal, callback, tweenin)
 	local tween = TweenService:Create(object,tweenin or tweeninfo, goal)
 	tween.Completed:Connect(callback or function() end)
 	tween:Play()
+end
+
+local function LunaTweenDropdownOption(list, optionName, props)
+	if type(optionName) ~= "string" or optionName == "" or not list then return end
+	local item = list:FindFirstChild(optionName)
+	if item then
+		tween(item, props)
+	end
+end
+
+local function LunaSanitizeDropdownCurrent(options, current, multiple)
+	local optSet = {}
+	if type(options) == "table" then
+		for _, o in pairs(options) do
+			if type(o) == "string" and o ~= "" then
+				optSet[o] = true
+			end
+		end
+	end
+	local names = {}
+	for o in pairs(optSet) do
+		table.insert(names, o)
+	end
+	table.sort(names)
+	if #names == 0 then
+		return multiple and {} or nil
+	end
+	if multiple then
+		local out = {}
+		if type(current) == "table" then
+			for _, c in ipairs(current) do
+				if type(c) == "string" and optSet[c] then
+					table.insert(out, c)
+				end
+			end
+		elseif type(current) == "string" and optSet[current] then
+			table.insert(out, current)
+		end
+		return out
+	end
+	local pick = type(current) == "table" and current[1] or current
+	if type(pick) == "string" and optSet[pick] then
+		return pick
+	end
+	return names[1]
 end
 
 -- Interface Management
@@ -1714,33 +2347,44 @@ local function Hide(Window, bind, notif)
 	Window.Visible = false
 end
 
+-- Anti-cheat: clean up any previous instance(s) of our UI before reparenting the new one.
+-- We match by the original ScreenGui name from the rbxasset ("Luna UI") because random
+-- names can't be discovered across executions.
+local OriginalUIName = LunaUI.Name
+if gethui then
+	for _, Interface in ipairs(gethui():GetChildren()) do
+		if Interface ~= LunaUI and (Interface.Name == OriginalUIName or Interface:GetAttribute("LunaUI") == true) then
+			pcall(function() Hide(Interface.SmartWindow) end)
+			Interface.Enabled = false
+			Interface.Name = RandomName()
+			pcall(function() Interface:Destroy() end)
+		end
+	end
+elseif not isStudio then
+	for _, Interface in ipairs(CoreGui:GetChildren()) do
+		if Interface ~= LunaUI and (Interface.Name == OriginalUIName or Interface:GetAttribute("LunaUI") == true) then
+			pcall(function() Hide(Interface.SmartWindow) end)
+			Interface.Enabled = false
+			Interface.Name = RandomName()
+			pcall(function() Interface:Destroy() end)
+		end
+	end
+end
+
+-- Tag the new ScreenGui with a non-string attribute (still discoverable to us, harder
+-- to spot via simple name scans) and give it a random Instance.Name.
+LunaUI:SetAttribute("LunaUI", true)
+LunaUI.Name = RandomName()
+
 if gethui then
 	LunaUI.Parent = gethui()
-elseif syn and syn.protect_gui then 
+elseif syn and syn.protect_gui then
 	syn.protect_gui(LunaUI)
 	LunaUI.Parent = CoreGui
 elseif not isStudio and CoreGui:FindFirstChild("RobloxGui") then
 	LunaUI.Parent = CoreGui:FindFirstChild("RobloxGui")
 elseif not isStudio then
 	LunaUI.Parent = CoreGui
-end
-
-if gethui then
-	for _, Interface in ipairs(gethui():GetChildren()) do
-		if Interface.Name == LunaUI.Name and Interface ~= LunaUI then
-			Hide(Interface.SmartWindow)
-			Interface.Enabled = false
-			Interface.Name = "Luna-Old"
-		end
-	end
-elseif not isStudio then
-	for _, Interface in ipairs(CoreGui:GetChildren()) do
-		if Interface.Name == LunaUI.Name and Interface ~= LunaUI then
-			Hide(Interface.SmartWindow)
-			Interface.Enabled = false
-			Interface.Name = "Luna-Old"
-		end
-	end
 end
 
 LunaUI.Enabled = false
@@ -1753,12 +2397,39 @@ local Dragger = Main.Drag
 local dragBar = LunaUI.Drag
 local dragInteract = dragBar and dragBar.Interact or nil
 local dragBarCosmetic = dragBar and dragBar.Drag or nil
+-- Keep rescue handle at ScreenGui root (sibling of SmartWindow), never inside Main.
+if dragBar and dragBar.Parent ~= LunaUI then
+	dragBar.Parent = LunaUI
+end
+
+-- Rayfield-style offset: half the window height + padding (scales on resize).
+local function getDragBarYOffset(mainFrame)
+	if not mainFrame then return 255 end
+	return math.floor(mainFrame.AbsoluteSize.Y * 0.5) + 14
+end
+
+-- Rescue handle tracks Main.Position. Only move the dragBar frame — never reposition
+-- dragInteract with parent's UDim2 (that breaks hit-testing and made the handle dead).
+local function syncDragBarPosition(mainFrame)
+	if not dragBar or not mainFrame then return end
+	local mp = mainFrame.Position
+	local yOff = getDragBarYOffset(mainFrame)
+	dragBar.AnchorPoint = Vector2.new(0.5, 0.5)
+	dragBar.Position = UDim2.new(mp.X.Scale, mp.X.Offset, mp.Y.Scale, mp.Y.Offset + yOff)
+	if dragBar.ZIndex < 100 then
+		dragBar.ZIndex = 100
+	end
+end
 local Elements = Main.Elements.Interactions
 local LoadingFrame = Main.LoadingFrame
 local Navigation = Main.Navigation
 local Tabs = Navigation.Tabs
 local Notifications = LunaUI.Notifications
 local KeySystem : Frame = Main.KeySystem
+
+-- Cached, repeatedly used in Luna:Notification hot path
+local NotificationsListLayout = Notifications:FindFirstChild("UIListLayout")
+local NotificationsPaddingOffset = (NotificationsListLayout and NotificationsListLayout.Padding.Offset) or 0
 
 --[[ local function LoadConfiguration(Configuration, autoload)
  	local Data = HttpService:JSONDecode(Configuration)
@@ -1844,71 +2515,85 @@ local KeySystem : Frame = Main.KeySystem
  	end
  end ]]
 
-local function Draggable(Bar, Window, enableTaptic, tapticOffset)
+-- Shared window drag (top bar + rescue handle). Rayfield-style: RenderStepped while
+-- LMB held, global InputEnded so release always stops the drag (no cursor stick).
+local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 	pcall(function()
-		local Dragging, DragInput, MousePos, FramePos
+		if not Bar or not Window then return end
 
-		local function connectFunctions()
-			if dragBar and enableTaptic then
-				dragBar.MouseEnter:Connect(function()
-					if not Dragging then
-						TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.5, Size = UDim2.new(0, 120, 0, 4)}):Play()
-					end
-				end)
+		local dragging = false
+		local relative = nil
+		local inset = Vector2.zero
+		local screenGui = Window:FindFirstAncestorWhichIsA("ScreenGui")
+		if screenGui and screenGui.IgnoreGuiInset then
+			inset = GuiService:GetGuiInset()
+		end
 
-				dragBar.MouseLeave:Connect(function()
-					if not Dragging then
-						TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.7, Size = UDim2.new(0, 100, 0, 4)}):Play()
-					end
-				end)
+		local function isPointerDown(input)
+			local n = input.UserInputType.Name
+			return n == "MouseButton1" or n == "Touch"
+		end
+
+		local function beginDrag()
+			dragging = true
+			relative = Window.AbsolutePosition + Window.AbsoluteSize * Window.AnchorPoint - UserInputService:GetMouseLocation()
+			if enableTaptic and dragBarCosmetic then
+				TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
 			end
 		end
 
-		connectFunctions()
+		local function endDrag()
+			if not dragging then return end
+			dragging = false
+			if enableTaptic and dragBarCosmetic then
+				TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 100, 0, 4), BackgroundTransparency = 0.7}):Play()
+				syncDragBarPosition(Window)
+			end
+		end
 
-		Bar.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-				Dragging = true
-				MousePos = Input.Position
-				FramePos = Window.Position
-
-				if enableTaptic then
-					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
+		if enableTaptic and dragBar then
+			dragBar.MouseEnter:Connect(function()
+				if not dragging and dragBarCosmetic then
+					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.5, Size = UDim2.new(0, 120, 0, 4)}):Play()
 				end
-
-				Input.Changed:Connect(function()
-					if Input.UserInputState == Enum.UserInputState.End then
-						Dragging = false
-						connectFunctions()
-
-						if enableTaptic then
-							TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 100, 0, 4), BackgroundTransparency = 0.7}):Play()
-						end
-					end
-				end)
-			end
-		end)
-
-		Bar.InputChanged:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
-				DragInput = Input
-			end
-		end)
-
-		UserInputService.InputChanged:Connect(function(Input)
-			if Input == DragInput and Dragging then
-				local Delta = Input.Position - MousePos
-
-				local newMainPosition = UDim2.new(FramePos.X.Scale, FramePos.X.Offset + Delta.X, FramePos.Y.Scale, FramePos.Y.Offset + Delta.Y)
-				TweenService:Create(Window, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Position = newMainPosition}):Play()
-
-				if dragBar then
-					local newDragBarPosition = UDim2.new(FramePos.X.Scale, FramePos.X.Offset + Delta.X, FramePos.Y.Scale, FramePos.Y.Offset + Delta.Y + 240)
-					dragBar.Position = newDragBarPosition
+			end)
+			dragBar.MouseLeave:Connect(function()
+				if not dragging and dragBarCosmetic then
+					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.7, Size = UDim2.new(0, 100, 0, 4)}):Play()
 				end
+			end)
+		end
+
+		local function hookDragTarget(gui)
+			if not gui then return end
+			gui.InputBegan:Connect(function(input)
+				if not isPointerDown(input) then return end
+				beginDrag()
+			end)
+		end
+
+		hookDragTarget(Bar)
+		if enableTaptic and dragBar and Bar ~= dragBar then
+			hookDragTarget(dragBar)
+		end
+
+		UserInputService.InputEnded:Connect(function(input)
+			if not dragging then return end
+			if isPointerDown(input) then
+				endDrag()
 			end
 		end)
 
+		local dragTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+		RunService.RenderStepped:Connect(function()
+			if not dragging then return end
+			local position = UserInputService:GetMouseLocation() + relative + inset
+			TweenService:Create(Window, dragTweenInfo, {Position = UDim2.fromOffset(position.X, position.Y)}):Play()
+			if enableTaptic and dragBar then
+				local yOff = getDragBarYOffset(Window)
+				TweenService:Create(dragBar, dragTweenInfo, {Position = UDim2.fromOffset(position.X, position.Y + yOff)}):Play()
+			end
+		end)
 	end)
 end
 
@@ -1930,8 +2615,8 @@ function Luna:Notification(data) -- Action e.g Open Messages
 
 		-- Set Data
 		newNotification.Title.Text = data.Title
-		newNotification.Description.Text = data.Content 
-		newNotification.Icon.Image = GetIcon(data.Icon, data.ImageSource)
+		newNotification.Description.Text = data.Content
+		ApplyIcon(newNotification.Icon, GetIcon(data.Icon, data.ImageSource))
 
 		-- Set initial transparency values
 		newNotification.BackgroundTransparency = 1
@@ -1945,7 +2630,7 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		task.wait()
 
 		-- Calculate textbounds and set initial values
-		newNotification.Size = UDim2.new(1, 0, 0, -Notifications:FindFirstChild("UIListLayout").Padding.Offset)
+		newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
 
 		newNotification.Icon.Size = UDim2.new(0, 28, 0, 28)
 		newNotification.Icon.Position = UDim2.new(0, 16, 0.5, -1)
@@ -1955,7 +2640,7 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		newNotification.Description.Size = UDim2.new(1, -65, 0, math.huge)
 		local bounds = newNotification.Description.TextBounds.Y + 55
 		newNotification.Description.Size = UDim2.new(1,-65,0, bounds - 35)
-		newNotification.Size = UDim2.new(1, 0, 0, -Notifications:FindFirstChild("UIListLayout").Padding.Offset)
+		newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
 		TweenService:Create(newNotification, TweenInfo.new(0.6, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, 0, 0, bounds)}):Play()
 
 		task.wait(0.15)
@@ -1985,7 +2670,7 @@ function Luna:Notification(data) -- Action e.g Open Messages
 
 		task.wait(1)
 
-		TweenService:Create(newNotification, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, -90, 0, -Notifications:FindFirstChild("UIListLayout").Padding.Offset)}):Play()
+		TweenService:Create(newNotification, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, -90, 0, -NotificationsPaddingOffset)}):Play()
 
 		newNotification.Visible = false
 		newNotification:Destroy()
@@ -1994,8 +2679,18 @@ end
 
 local function Unhide(Window, currentTab)
 	Window.Size = SizeBleh
+	-- Hide() sets Elements.Parent.Visible = false. Restore that here as well as
+	-- Elements.Visible so the panel actually re-appears after a re-open.
+	if Window.Elements and Window.Elements.Parent then
+		Window.Elements.Parent.Visible = true
+	end
 	Window.Elements.Visible = true
 	Window.Visible = true
+	-- Restore the drop-shadow that Hide() turned off. Without this the window
+	-- appears flat after re-opening with the keybind.
+	if Window.Parent and Window.Parent:FindFirstChild("ShadowHolder") then
+		Window.Parent.ShadowHolder.Visible = true
+	end
 	task.wait()
 	tween(Window, {BackgroundTransparency = 0.2})
 	tween(Window.Elements, {BackgroundTransparency = 0.08})
@@ -2015,7 +2710,10 @@ local function Unhide(Window, currentTab)
 	end
 	for _, tabbtn in ipairs(Window.Navigation.Tabs:GetChildren()) do
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "InActive Template" then
-			if tabbtn.Name == currentTab then
+			-- Anti-cheat: tabs may have randomized Instance.Name. We tag the original
+			-- display name via attribute so lookups still work after renaming.
+			local displayName = tabbtn:GetAttribute("LunaTabName") or tabbtn.Name
+			if displayName == currentTab then
 				TweenService:Create(tabbtn, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
 				TweenService:Create(tabbtn.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.41}):Play()
 			end
@@ -2027,13 +2725,29 @@ local function Unhide(Window, currentTab)
 end
 
 local MainSize
-local MinSize 
-if Camera.ViewportSize.X > 774 and Camera.ViewportSize.Y > 503 then
+local MinSize
+-- Resize constraints (PC only). Mobile keeps the existing single fixed layout.
+local ResizeMin = Vector2.new(600, 360)
+local ResizeMax
+if IsDesktop() and Camera.ViewportSize.X > 774 and Camera.ViewportSize.Y > 503 then
+	-- Slightly larger default for desktops where there's room
+	MainSize = UDim2.fromOffset(760, 478)
+	MinSize = UDim2.fromOffset(500, 42)
+	ResizeMax = Vector2.new(
+		math.max(ResizeMin.X, math.min(Camera.ViewportSize.X - 40, 1280)),
+		math.max(ResizeMin.Y, math.min(Camera.ViewportSize.Y - 40, 800))
+	)
+elseif Camera.ViewportSize.X > 774 and Camera.ViewportSize.Y > 503 then
 	MainSize = UDim2.fromOffset(675, 424)
 	MinSize = UDim2.fromOffset(500, 42)
+	ResizeMax = Vector2.new(
+		math.max(ResizeMin.X, math.min(Camera.ViewportSize.X - 40, 1024)),
+		math.max(ResizeMin.Y, math.min(Camera.ViewportSize.Y - 40, 768))
+	)
 else
 	MainSize = UDim2.fromOffset(Camera.ViewportSize.X - 100, Camera.ViewportSize.Y - 100)
 	MinSize = UDim2.fromOffset(Camera.ViewportSize.X - 275, 42)
+	ResizeMax = Vector2.new(Camera.ViewportSize.X - 40, Camera.ViewportSize.Y - 40)
 end
 
 local function Maximise(Window)
@@ -2063,7 +2777,30 @@ function Luna:CreateWindow(WindowSettings)
 		ConfigSettings = {},
 
 		KeySystem = false,
-		KeySettings = {}
+		KeySettings = {},
+
+		-- New: optional in-window search bar. When true, a search icon appears
+		-- in the top-right controls and opens a centered search modal.
+		SearchBar = false,
+
+		-- New: optional resize handle in the bottom-right (PC only). Forced
+		-- off on mobile because the existing fullscreen layout already fits.
+		Resizable = true,
+
+		-- New: if true, an AI Chat tab is auto-added (uses pollinations.ai - no
+		-- API key required). Set false to skip; the host can still create it
+		-- manually with Window:CreateAiTab().
+		AiTab = false,
+		AiSettings = nil,
+		ScriptSearcherTab = false,
+		ScriptSearcherSettings = nil,
+
+		-- Sidebar tab to open when the hub loads ("Dashboard", "Home", or any tab name).
+		StartupTab = "Dashboard",
+
+		-- New: enables Ctrl + / Ctrl - in-window zoom. Disable if the host
+		-- already remaps those shortcuts.
+		ZoomEnabled = true,
 	}, WindowSettings or {})
 
 	WindowSettings.ConfigSettings = Kwargify({
@@ -2089,7 +2826,21 @@ function Luna:CreateWindow(WindowSettings)
 
 	local Passthrough = false
 
-	local Window = { Bind = Enum.KeyCode.K, CurrentTab = nil, State = true, Size = false, Settings = nil }
+	local Window = {
+		Bind = Enum.KeyCode.K,
+		CurrentTab = nil,
+		State = true,
+		Size = false,
+		Settings = nil,
+
+		-- Search registry. Populated by Create* element helpers.
+		-- Each entry: { Name=str, Type=str, Frame=Instance, Tab=str, Activate=fn() }
+		_SearchIndex = {},
+		_Tabs = {}, -- name -> { Activate = function }
+		_TabRegistry = {}, -- name -> { Button, Page, Activate, Hidden }
+		_TabCreationOrder = {}, -- tab name -> creation sequence (for nav sorting)
+		_TabCreationCounter = 0,
+	}
 
 	Main.Title.Title.Text = WindowSettings.Name
 	Main.Title.subtitle.Text = WindowSettings.Subtitle
@@ -2121,9 +2872,17 @@ function Luna:CreateWindow(WindowSettings)
 
 	Main:GetPropertyChangedSignal("Position"):Connect(function()
 		Main.Parent.ShadowHolder.Position = Main.Position
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
 	end)
 	Main:GetPropertyChangedSignal("Size"):Connect(function()
 		Main.Parent.ShadowHolder.Size = Main.Size
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
+	end)
+	Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
+	end)
+	Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
 	end)
 
 	LoadingFrame.Visible = true
@@ -2323,6 +3082,20 @@ function Luna:CreateWindow(WindowSettings)
 	Navigation.Tabs["InActive Template"].LayoutOrder = 1000000000
 	Navigation.Tabs["InActive Template"].Visible = false
 
+	-- Do NOT mark the whole Elements.Template as LunaNoTranslate: Clone() copies
+	-- attributes onto every TabPage, which would block translation for ALL tab
+	-- content. Placeholder strings are filtered via LUNA_TEMPLATE_PLACEHOLDERS
+	-- and the deferred DescendantAdded watcher instead.
+
+	-- UIPageLayout listens to mouse-wheel input by default and swaps tabs when
+	-- the user scrolls. That's terrible for our AI tab (and any scroll-heavy
+	-- tab). Disable wheel/touch input completely; tab navigation is button-only.
+	if Elements:FindFirstChild("UIPageLayout") then
+		Elements.UIPageLayout.ScrollWheelInputEnabled = false
+		Elements.UIPageLayout.TouchInputEnabled = false
+		Elements.UIPageLayout.GamepadInputEnabled = false
+	end
+
 	local FirstTab = true
 
 function Window:CreateHomeTab(HomeTabSettings)
@@ -2337,8 +3110,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		local HomeTabButton = Navigation.Tabs.Home
 		HomeTabButton.Visible = true
+		HomeTabButton.LayoutOrder = 1
 		if HomeTabSettings.Icon == 2 then
-			HomeTabButton.ImageLabel.Image = GetIcon("dashboard", "Material")
+			ApplyIcon(HomeTabButton.ImageLabel, GetIcon("dashboard", "Material"))
 		end
 
 		local HomeTabPage = Elements.Home
@@ -2364,6 +3138,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 			Window.CurrentTab = "Home"
 		end
+
+		-- Register Home in the tab registry for search results
+		HomeTabButton:SetAttribute("LunaTabName", "Home")
+		Window._Tabs["Home"] = { Activate = function() HomeTab:Activate() end, Page = HomeTabPage }
+		Window._HomeTabButton = HomeTabButton
 
 		HomeTab:Activate()
 		FirstTab = false
@@ -2406,7 +3185,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end)
 
 		local friendsCooldown = 0
-		local function getPing() return math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
+		local function getPing() return math.clamp(Stats.Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
 
 		local function checkFriends()
 			if friendsCooldown == 0 then
@@ -2479,9 +3258,291 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end)()
 
 		-- Stolen From Sirius Stuff ends here
+
+		-- Holder for our extra dashboard cards. HomeTabPage doesn't use a
+		-- UIListLayout - its children (icon, player, detailsholder) are absolutely
+		-- positioned. So we anchor manually directly below detailsholder and keep
+		-- the position in sync whenever the dashboard resizes.
+		local ExtraCards
+		local function ensureExtraCards()
+			if ExtraCards and ExtraCards.Parent then return ExtraCards end
+			ExtraCards = Instance.new("Frame")
+			ExtraCards.Name = RandomName()
+			ExtraCards.BackgroundTransparency = 1
+			ExtraCards.BorderSizePixel = 0
+			ExtraCards.Size = UDim2.new(1, -20, 0, 0)
+			ExtraCards.Position = UDim2.new(0, 10, 0, 240) -- updated below once detailsholder lays out
+			ExtraCards.AutomaticSize = Enum.AutomaticSize.Y
+			ExtraCards.ZIndex = 1
+			ExtraCards.Parent = HomeTabPage
+
+			-- UIGridLayout lets us put 2 cards per row, wrapping cleanly.
+			local grid = Instance.new("UIGridLayout")
+			grid.SortOrder = Enum.SortOrder.LayoutOrder
+			grid.CellPadding = UDim2.fromOffset(10, 10)
+			grid.CellSize = UDim2.new(0.5, -8, 0, 76)
+			grid.FillDirectionMaxCells = 2
+			grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			grid.StartCorner = Enum.StartCorner.TopLeft
+			grid.Parent = ExtraCards
+
+			local padding = Instance.new("UIPadding")
+			padding.PaddingTop = UDim.new(0, 14)
+			padding.PaddingBottom = UDim.new(0, 14)
+			padding.Parent = ExtraCards
+
+			-- Snap our holder right under the dashboard rows (Discord / Server /
+			-- Friends / Client). HomeTabPage uses absolute positioning - its
+			-- `detailsholder` is sized to the whole page, so we can't use its
+			-- bottom or the cards land at the canvas floor. Instead we track
+			-- `detailsholder.dashboard`, the inner frame whose AbsoluteSize is
+			-- the actual content height of the dashboard cards.
+			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
+			local dashboard = detailsholder and detailsholder:FindFirstChild("dashboard")
+			if dashboard then
+				local function reposition()
+					if not dashboard or not dashboard.Parent then return end
+					-- Convert dashboard's bottom into HomeTabPage-local coords.
+					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
+					local relY = dashboard.AbsolutePosition.Y - pageAbsY + dashboard.AbsoluteSize.Y
+					if relY > 0 then
+						ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(relY) + 12)
+					end
+				end
+				reposition()
+				dashboard:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+				dashboard:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
+				HomeTabPage:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+				-- Wait a couple of frames for the asset's layouts to settle.
+				task.defer(function() task.wait(0.05); reposition() end)
+				task.delay(0.4, reposition)
+			elseif detailsholder then
+				-- Fallback to detailsholder's TOP edge (better than its bottom).
+				local function reposition()
+					if not detailsholder or not detailsholder.Parent then return end
+					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
+					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + 200
+					ExtraCards.Position = UDim2.new(0, 10, 0, math.max(120, math.floor(relY)))
+				end
+				reposition()
+				detailsholder:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+			end
+
+			return ExtraCards
+		end
+
+		-- Adds a self-contained styled card below the original dashboard cards.
+		-- We intentionally do NOT touch the existing Discord/Server/Client/Friends
+		-- cards so the home tab keeps its original behaviour.
+		function HomeTab:CreateButton(opts)
+			opts = Kwargify({
+				Name = "Button",
+				Description = "",
+				Icon = nil,
+				ImageSource = "Material",
+				Color = Color3.fromRGB(70, 60, 160),
+				Color2 = Color3.fromRGB(40, 30, 100),
+				Callback = function() end,
+			}, opts or {})
+
+			local holder = ensureExtraCards()
+
+			local card = Instance.new("Frame")
+			card.Name = RandomName()
+			card.BackgroundColor3 = opts.Color
+			card.BackgroundTransparency = 0
+			card.BorderSizePixel = 0
+			card.Size = UDim2.new(0.5, -8, 0, 76)
+			card.Parent = holder
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 10)
+			corner.Parent = card
+
+			-- Gradient gives the Discord-card vibrant look without relying on the
+			-- original asset's internal structure.
+			local gradient = Instance.new("UIGradient")
+			gradient.Rotation = 135
+			gradient.Color = ColorSequence.new(opts.Color, opts.Color2)
+			gradient.Parent = card
+
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = Color3.fromRGB(255, 255, 255)
+			stroke.Transparency = 0.85
+			stroke.Parent = card
+
+			-- Icon (optional)
+			local iconLabel
+			if opts.Icon then
+				iconLabel = Instance.new("ImageLabel")
+				iconLabel.Name = "Icon"
+				iconLabel.AnchorPoint = Vector2.new(0, 0.5)
+				iconLabel.Position = UDim2.new(0, 14, 0.5, 0)
+				iconLabel.Size = UDim2.fromOffset(28, 28)
+				iconLabel.BackgroundTransparency = 1
+				iconLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
+				iconLabel.ImageTransparency = 0.05
+				iconLabel.Parent = card
+				ApplyIcon(iconLabel, GetIcon(opts.Icon, opts.ImageSource))
+			end
+
+			local titleOffset = iconLabel and 52 or 16
+
+			local title = Instance.new("TextLabel")
+			title.Name = "Title"
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, titleOffset, 0, 12)
+			title.Size = UDim2.new(1, -titleOffset - 12, 0, 22)
+			title.Text = tostring(opts.Name)
+			title.TextColor3 = Color3.fromRGB(255, 255, 255)
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 18
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.Parent = card
+
+			local subtitle = Instance.new("TextLabel")
+			subtitle.Name = "Subtitle"
+			subtitle.BackgroundTransparency = 1
+			subtitle.Position = UDim2.new(0, titleOffset, 0, 36)
+			subtitle.Size = UDim2.new(1, -titleOffset - 12, 0, 28)
+			subtitle.Text = tostring(opts.Description)
+			subtitle.TextColor3 = Color3.fromRGB(230, 230, 240)
+			subtitle.TextTransparency = 0.15
+			subtitle.Font = Enum.Font.Gotham
+			subtitle.TextSize = 13
+			subtitle.TextXAlignment = Enum.TextXAlignment.Left
+			subtitle.TextYAlignment = Enum.TextYAlignment.Top
+			subtitle.TextWrapped = true
+			subtitle.Parent = card
+
+			local interact = Instance.new("TextButton")
+			interact.Name = "Interact"
+			interact.AutoButtonColor = false
+			interact.BackgroundTransparency = 1
+			interact.Size = UDim2.fromScale(1, 1)
+			interact.Text = ""
+			interact.Parent = card
+
+			interact.MouseEnter:Connect(function()
+				tween(stroke, {Transparency = 0.4})
+				tween(card, {BackgroundTransparency = 0.05})
+			end)
+			interact.MouseLeave:Connect(function()
+				tween(stroke, {Transparency = 0.85})
+				tween(card, {BackgroundTransparency = 0})
+			end)
+			interact.MouseButton1Click:Connect(function()
+				local ok, err = pcall(opts.Callback)
+				if not ok then
+					Luna:Notification({
+						Title = "Callback Error",
+						Content = "Luna Interface Suite | " .. tostring(opts.Name) .. " | " .. tostring(err),
+						Icon = "error",
+					})
+				end
+			end)
+
+			return card
+		end
+
+		return HomeTab
 	end
 	
-function Window:CreateTab(TabSettings)
+	-- Pin tabs at the top of the sidebar (Dashboard, AI, Script Searcher, then the rest).
+	function Window:ApplyNavTabOrder(priorityNames)
+		if type(priorityNames) ~= "table" then
+			priorityNames = {"Home", "Solara Hub AI", "Scripts"}
+		end
+
+		local pinned = {}
+		for _, name in ipairs(priorityNames) do
+			pinned[name] = true
+			if name == "Dashboard" or name == "Home" then
+				pinned.Dashboard = true
+				pinned.Home = true
+			end
+		end
+
+		local function setOrder(reg, order)
+			if reg and reg.Button then
+				reg.Button.LayoutOrder = order
+			end
+			if reg and reg.Page then
+				reg.Page.LayoutOrder = order
+			end
+		end
+
+		local order = 1
+		if self._HomeTabButton then
+			self._HomeTabButton.LayoutOrder = order
+			if Elements and Elements:FindFirstChild("Home") then
+				Elements.Home.LayoutOrder = order
+			end
+			order = order + 1
+		end
+
+		for _, name in ipairs(priorityNames) do
+			if name ~= "Home" and name ~= "Dashboard" then
+				setOrder(self._TabRegistry and self._TabRegistry[name], order)
+				if self._TabRegistry and self._TabRegistry[name] then
+					order = order + 1
+				end
+			end
+		end
+
+		local rest = {}
+		for name, reg in pairs(self._TabRegistry or {}) do
+			if not pinned[name] and reg.Button then
+				table.insert(rest, {
+					name = name,
+					reg = reg,
+					created = (self._TabCreationOrder and self._TabCreationOrder[name]) or 9999,
+				})
+			end
+		end
+		table.sort(rest, function(a, b)
+			if a.created ~= b.created then
+				return a.created < b.created
+			end
+			return a.name < b.name
+		end)
+
+		for _, item in ipairs(rest) do
+			setOrder(item.reg, order)
+			order = order + 1
+		end
+	end
+
+	function Window:SetStartupTab(tabName)
+		if tabName == nil or tabName == "" then
+			WindowSettings.StartupTab = "Dashboard"
+		else
+			WindowSettings.StartupTab = tostring(tabName)
+		end
+	end
+
+	function Window:GetStartupTab()
+		return WindowSettings.StartupTab or "Dashboard"
+	end
+
+	function Window:ActivateStartupTab(tabName)
+		tabName = tabName or WindowSettings.StartupTab or "Dashboard"
+		if tabName == "Dashboard" then
+			tabName = "Home"
+		end
+		local entry = self._Tabs and self._Tabs[tabName]
+		if entry and type(entry.Activate) == "function" then
+			pcall(entry.Activate)
+			return true
+		end
+		if self._Tabs and self._Tabs["Home"] and type(self._Tabs["Home"].Activate) == "function" then
+			pcall(self._Tabs["Home"].Activate)
+			return true
+		end
+		return false
+	end
+
+	function Window:CreateTab(TabSettings)
 
 		local Tab = {}
 
@@ -2489,20 +3550,30 @@ function Window:CreateTab(TabSettings)
 			Name = "Tab",
 			ShowTitle = true,
 			Icon = "view_in_ar",
-			ImageSource = "Material" 
+			ImageSource = "Material",
+			NavLayoutOrder = nil,
 		}, TabSettings or {})
 
 		local TabButton = Navigation.Tabs["InActive Template"]:Clone()
 
-		TabButton.Name = TabSettings.Name
+		-- Anti-cheat: use a random Instance.Name. The display name lives in TextLabel
+		-- and in the "LunaTabName" attribute used by internal lookups.
+		TabButton.Name = RandomName()
+		TabButton:SetAttribute("LunaNoTranslate", nil)
+		TabButton:SetAttribute("LunaTabName", TabSettings.Name)
 		TabButton.TextLabel.Text = TabSettings.Name
 		TabButton.Parent = Navigation.Tabs
-		TabButton.ImageLabel.Image = GetIcon(TabSettings.Icon, TabSettings.ImageSource)
+		ApplyIcon(TabButton.ImageLabel, GetIcon(TabSettings.Icon, TabSettings.ImageSource))
 
 		TabButton.Visible = true
+		if TabSettings.NavLayoutOrder ~= nil then
+			TabButton.LayoutOrder = TabSettings.NavLayoutOrder
+		end
 
 		local TabPage = Elements.Template:Clone()
-		TabPage.Name = TabSettings.Name
+		TabPage.Name = RandomName()
+		TabPage:SetAttribute("LunaNoTranslate", nil)
+		TabPage:SetAttribute("LunaTabName", TabSettings.Name)
 		TabPage.Title.Visible = TabSettings.ShowTitle
 		TabPage.Title.Text = TabSettings.Name
 		TabPage.Visible = true
@@ -2513,7 +3584,7 @@ function Window:CreateTab(TabSettings)
 			TabPage.UIPadding.PaddingTop = UDim.new(0,10)
 		end
 
-		TabPage.LayoutOrder = #Elements:GetChildren() - 3
+		TabPage.LayoutOrder = TabSettings.NavLayoutOrder or Window._TabCreationCounter
 
 		for _, TemplateElement in ipairs(TabPage:GetChildren()) do
 			if TemplateElement.ClassName == "Frame" or TemplateElement.ClassName == "TextLabel" and TemplateElement.Name ~= "Title" then
@@ -2542,6 +3613,18 @@ function Window:CreateTab(TabSettings)
 
 			Window.CurrentTab = TabSettings.Name
 		end
+
+		-- Register in search index for SearchBar (used to jump back to a tab)
+		Window._Tabs[TabSettings.Name] = { Activate = function() Tab:Activate() end, Page = TabPage }
+		Window._TabCreationCounter = (Window._TabCreationCounter or 0) + 1
+		Window._TabCreationOrder[TabSettings.Name] = Window._TabCreationCounter
+
+		Window._TabRegistry[TabSettings.Name] = {
+			Button = TabButton,
+			Page = TabPage,
+			Activate = function() Tab:Activate() end,
+			Hidden = false,
+		}
 
 		if FirstTab then
 			Tab:Activate()
@@ -2581,14 +3664,58 @@ function Window:CreateTab(TabSettings)
 				Sectiont:Destroy()
 			end
 
-			-- Divider
-			function Section:CreateDivider()
+			-- Divider (optional centered label)
+			function Section:CreateDivider(DividerSettings)
 				TabPage.Position = UDim2.new(0,0,0,28)
+				-- Backwards-compat: accept either a settings table or a plain string,
+				-- and stay valid when called with no arguments.
+				local text
+				if type(DividerSettings) == "string" then
+					text = DividerSettings
+				elseif type(DividerSettings) == "table" then
+					text = DividerSettings.Text
+				end
+
 				local b = Elements.Template.Divider:Clone()
 				b.Parent = TabPage
 				b.Size = UDim2.new(1,0,0,18)
 				b.Line.BackgroundTransparency = 1
 				tween(b.Line, {BackgroundTransparency = 0})
+
+				if text and text ~= "" then
+					local line = b.Line
+					-- Match the divider's full-width line, then split it visually by
+					-- shrinking the original and adding a mirrored line + centered label.
+					line.AnchorPoint = Vector2.new(0, 0.5)
+					line.Position = UDim2.new(0, 0, 0.5, 0)
+					line.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+
+					local rightLine = line:Clone()
+					rightLine.Name = RandomName()
+					rightLine.AnchorPoint = Vector2.new(1, 0.5)
+					rightLine.Position = UDim2.new(1, 0, 0.5, 0)
+					rightLine.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+					rightLine.Parent = b
+					rightLine.BackgroundTransparency = 1
+					tween(rightLine, {BackgroundTransparency = 0})
+
+					local label = Instance.new("TextLabel")
+					label.Name = RandomName()
+					label.BackgroundTransparency = 1
+					label.AnchorPoint = Vector2.new(0.5, 0.5)
+					label.Position = UDim2.fromScale(0.5, 0.5)
+					label.Size = UDim2.new(0, 80, 0, 18)
+					label.AutomaticSize = Enum.AutomaticSize.X
+					label.Text = tostring(text)
+					label.Font = Enum.Font.GothamMedium
+					label.TextSize = 12
+					label.TextColor3 = Color3.fromRGB(200, 200, 210)
+					label.TextTransparency = 1
+					label.Parent = b
+					tween(label, {TextTransparency = 0.15})
+				end
+
+				return b
 			end
 
 			-- Button
@@ -2609,16 +3736,14 @@ function Window:CreateTab(TabSettings)
 				}
 
 
-				local Button
-				if ButtonSettings.Description == nil and ButtonSettings.Description ~= "" then
-					Button = Elements.Template.Button:Clone()
-				else
-					Button = Elements.Template.ButtonDesc:Clone()
-				end
-				Button.Name = ButtonSettings.Name
-				Button.Title.Text = ButtonSettings.Name
-				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-					Button.Desc.Text = ButtonSettings.Description
+				local hasDesc = type(ButtonSettings.Description) == "string" and ButtonSettings.Description ~= ""
+				local Button = hasDesc and Elements.Template.ButtonDesc:Clone() or Elements.Template.Button:Clone()
+				RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
+				LunaSetText(Button.Title, ButtonSettings.Name)
+				if hasDesc and Button:FindFirstChild("Desc") then
+					LunaSetText(Button.Desc, ButtonSettings.Description)
+				elseif Button:FindFirstChild("Desc") then
+					Button.Desc.Visible = false
 				end
 				Button.Visible = true
 				Button.Parent = TabPage
@@ -2644,8 +3769,8 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Button.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
-						wait(0.5)
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
+						task.wait(0.5)
 						Button.Title.Text = ButtonSettings.Name
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
@@ -2681,7 +3806,7 @@ function Window:CreateTab(TabSettings)
 					ButtonSettings = ButtonSettings2
 					ButtonV.Settings = ButtonSettings2
 
-					Button.Name = ButtonSettings.Name
+					RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
 					Button.Title.Text = ButtonSettings.Name
 					if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
 						Button.Desc.Text = ButtonSettings.Description
@@ -2718,7 +3843,7 @@ function Window:CreateTab(TabSettings)
 					Label = Elements.Template.Warn:Clone()
 				end
 
-				Label.Text.Text = LabelSettings.Text
+				LunaSetText(Label.Text, LabelSettings.Text)
 				Label.Visible = true
 				Label.Parent = TabPage
 
@@ -2737,7 +3862,7 @@ function Window:CreateTab(TabSettings)
 				function LabelV:Set(NewLabel)
 					LabelSettings.Text = NewLabel
 					LabelV.Settings = LabelSettings
-					Label.Text.Text = NewLabel
+					LunaSetText(Label.Text, NewLabel)
 				end
 
 				function LabelV:Destroy()
@@ -2762,8 +3887,8 @@ function Window:CreateTab(TabSettings)
 				}
 
 				local Paragraph = Elements.Template.Paragraph:Clone()
-				Paragraph.Title.Text = ParagraphSettings.Title
-				Paragraph.Text.Text = ParagraphSettings.Text
+				LunaSetText(Paragraph.Title, ParagraphSettings.Title)
+				LunaSetText(Paragraph.Text, ParagraphSettings.Text)
 				Paragraph.Visible = true
 				Paragraph.Parent = TabPage
 
@@ -2792,8 +3917,8 @@ function Window:CreateTab(TabSettings)
 
 					ParagraphV.Settings = NewParagraphSettings
 
-					Paragraph.Title.Text = NewParagraphSettings.Title
-					Paragraph.Text.Text = NewParagraphSettings.Text
+					LunaSetText(Paragraph.Title, NewParagraphSettings.Title)
+					LunaSetText(Paragraph.Text, NewParagraphSettings.Text)
 
 					ParagraphV:Update()
 
@@ -2826,7 +3951,7 @@ function Window:CreateTab(TabSettings)
 
 				local SLDragging = false
 				local Slider = Elements.Template.Slider:Clone()
-				Slider.Name = SliderSettings.Name .. " - Slider"
+				RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 				Slider.Title.Text = SliderSettings.Name
 				Slider.Visible = true
 				Slider.Parent = TabPage
@@ -2908,7 +4033,7 @@ function Window:CreateTab(TabSettings)
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 									TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 									Slider.Title.Text = "Callback Error"
-									Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+									LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 									wait(0.5)
 									Slider.Title.Text = SliderSettings.Name
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -2940,7 +4065,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Slider.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Slider.Title.Text = SliderSettings.Name
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -2979,7 +4104,7 @@ function Window:CreateTab(TabSettings)
 					SliderSettings = NewSliderSettings
 					SliderV.Settings = NewSliderSettings
 
-					Slider.Name = SliderSettings.Name .. " - Slider"
+					RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 					Slider.Title.Text = SliderSettings.Name
 
 					Set()
@@ -3029,10 +4154,12 @@ function Window:CreateTab(TabSettings)
 				Toggle.Visible = true
 				Toggle.Parent = TabPage
 
-				Toggle.Name = ToggleSettings.Name .. " - Toggle"
-				Toggle.Title.Text = ToggleSettings.Name
-				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
-					Toggle.Desc.Text = ToggleSettings.Description
+				RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
+				LunaSetText(Toggle.Title, ToggleSettings.Name)
+				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle:FindFirstChild("Desc") then
+					LunaSetText(Toggle.Desc, ToggleSettings.Description)
+				elseif Toggle:FindFirstChild("Desc") then
+					Toggle.Desc.Visible = false
 				end
 
 				Toggle.UIStroke.Transparency = 1
@@ -3083,7 +4210,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3110,7 +4237,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3136,7 +4263,7 @@ function Window:CreateTab(TabSettings)
 					ToggleV.Settings = NewToggleSettings
 					ToggleSettings = NewToggleSettings
 
-					Toggle.Name = ToggleSettings.Name .. " - Toggle"
+					RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
 					Toggle.Title.Text = ToggleSettings.Name
 					if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle.Desc ~= nil then
 						Toggle.Desc.Text = ToggleSettings.Description
@@ -3154,7 +4281,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0}):Play()
 						Toggle.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3212,7 +4339,7 @@ function Window:CreateTab(TabSettings)
 				Bind.Visible = true
 				Bind.Parent = TabPage
 
-				Bind.Name = BindSettings.Name
+				RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 				Bind.Title.Text = BindSettings.Name
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 					Bind.Desc.Text = BindSettings.Description
@@ -3274,7 +4401,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Bind.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3303,7 +4430,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Bind.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3323,7 +4450,7 @@ function Window:CreateTab(TabSettings)
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 											Bind.Title.Text = "Callback Error"
-											Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+											LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3340,7 +4467,7 @@ function Window:CreateTab(TabSettings)
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 											Bind.Title.Text = "Callback Error"
-											Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+											LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3371,7 +4498,7 @@ function Window:CreateTab(TabSettings)
 					BindV.Settings = NewBindSettings
 					BindSettings = NewBindSettings
 
-					Bind.Name = BindSettings.Name
+					RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 					Bind.Title.Text = BindSettings.Name
 					if BindSettings.Description ~= nil and BindSettings.Description ~= "" and Bind.Desc ~= nil then
 						Bind.Desc.Text = BindSettings.Description
@@ -3430,9 +4557,9 @@ function Window:CreateTab(TabSettings)
 					Input = Elements.Template.Input:Clone()
 				end
 
-				Input.Name = InputSettings.Name
+				RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 				Input.Title.Text = InputSettings.Name
-				if descriptionbool then Input.Desc.Text = InputSettings.Description end
+				if descriptionbool then LunaSetText(Input.Desc, InputSettings.Description) end
 				Input.Visible = true
 				Input.Parent = TabPage
 
@@ -3468,7 +4595,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Input.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Input.Title.Text = InputSettings.Name
 								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3509,7 +4636,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Input.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3535,7 +4662,7 @@ function Window:CreateTab(TabSettings)
 					InputV.Settings = NewInputSettings
 					InputSettings = NewInputSettings
 
-					Input.Name = InputSettings.Name
+					RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 					Input.Title.Text = InputSettings.Name
 					if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 						Input.Desc.Text = InputSettings.Description
@@ -3599,9 +4726,9 @@ function Window:CreateTab(TabSettings)
 				local Dropdown
 				if descriptionbool then Dropdown = Elements.Template.DropdownDesc:Clone() else Dropdown = Elements.Template.Dropdown:Clone() end
 
-				Dropdown.Name = DropdownSettings.Name
+				RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 				Dropdown.Title.Text = DropdownSettings.Name
-				if descriptionbool then Dropdown.Desc.Text = DropdownSettings.Description end
+				if descriptionbool then LunaSetText(Dropdown.Desc, DropdownSettings.Description) end
 
 				Dropdown.Parent = TabPage
 				Dropdown.Visible = true
@@ -3626,7 +4753,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Dropdown.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Dropdown.Title.Text = DropdownSettings.Name
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -3664,7 +4791,7 @@ function Window:CreateTab(TabSettings)
 					end
 
 					Toggle()
-					tween(Dropdown.List[name], {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
+					LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
 				end
 
 				local function Refresh()
@@ -3777,15 +4904,19 @@ function Window:CreateTab(TabSettings)
 
 				Refresh()
 
-				if DropdownSettings.CurrentOption then
-					if type(DropdownSettings.CurrentOption) == "string" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-					end
-					if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-					end
+				if DropdownSettings.MultipleOptions then
+					DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						true
+					) or {}
 				else
-					DropdownSettings.CurrentOption = {}
+					local single = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						false
+					)
+					DropdownSettings.CurrentOption = single and {single} or {}
 				end
 
 				local bleh, ind = nil,0
@@ -3793,13 +4924,18 @@ function Window:CreateTab(TabSettings)
 					ind = ind + 1
 				end
 				if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-				SafeCallback(bleh)
-				if type(bleh) == "string" then 
-					tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
-				else
-					for i,v in pairs(bleh) do
-						tween(Dropdown.List[v], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+				pcall(function() SafeCallback(bleh) end)
+				for _, Option in pairs(Dropdown.List:GetChildren()) do
+					if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
+						tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 					end
+				end
+				if DropdownSettings.MultipleOptions then
+					for _, name in pairs(DropdownSettings.CurrentOption) do
+						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+					end
+				else
+					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 				end
 
 				if DropdownSettings.MultipleOptions then
@@ -3815,9 +4951,6 @@ function Window:CreateTab(TabSettings)
 						DropdownSettings.CurrentOption = {}
 						Dropdown.Selected.PlaceholderText = "None"
 					end
-					for _, name in pairs(DropdownSettings.CurrentOption) do
-						tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
-					end
 				else
 					Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
 				end
@@ -3829,7 +4962,7 @@ function Window:CreateTab(TabSettings)
 					DropdownV.Settings = NewDropdownSettings
 					DropdownSettings = NewDropdownSettings
 
-					Dropdown.Name = DropdownSettings.Name
+					RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 					Dropdown.Title.Text = DropdownSettings.Name
 					if DropdownSettings.Description ~= nil and DropdownSettings.Description ~= "" and Dropdown.Desc ~= nil then
 						Dropdown.Desc.Text = DropdownSettings.Description
@@ -3849,15 +4982,19 @@ function Window:CreateTab(TabSettings)
 
 					Refresh()
 
-					if DropdownSettings.CurrentOption then
-						if type(DropdownSettings.CurrentOption) == "string" then
-							DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-						end
-						if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-							DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-						end
+					if DropdownSettings.MultipleOptions then
+						DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+							DropdownSettings.Options,
+							DropdownSettings.CurrentOption,
+							true
+						) or {}
 					else
-						DropdownSettings.CurrentOption = {}
+						local single = LunaSanitizeDropdownCurrent(
+							DropdownSettings.Options,
+							DropdownSettings.CurrentOption,
+							false
+						)
+						DropdownSettings.CurrentOption = single and {single} or {}
 					end
 
 					local bleh, ind = nil,0
@@ -3865,13 +5002,19 @@ function Window:CreateTab(TabSettings)
 						ind = ind + 1
 					end
 					if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-					SafeCallback(bleh)
+					pcall(function() SafeCallback(bleh) end)
 					for _, Option in pairs(Dropdown.List:GetChildren()) do
-						if Option.ClassName == "TextLabel" then
+						if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
 							tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 						end
 					end
-					tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+					if DropdownSettings.MultipleOptions then
+						for _, name in pairs(DropdownSettings.CurrentOption) do
+							LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+						end
+					else
+						LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+					end
 
 					if DropdownSettings.MultipleOptions then
 						if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
@@ -3885,9 +5028,6 @@ function Window:CreateTab(TabSettings)
 						else
 							DropdownSettings.CurrentOption = {}
 							Dropdown.Selected.PlaceholderText = "None"
-						end
-						for _, name in pairs(DropdownSettings.CurrentOption) do
-							tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
 						end
 					else
 						Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
@@ -3937,7 +5077,7 @@ function Window:CreateTab(TabSettings)
 				local Main = Background.MainCP
 				local Slider = ColorPicker.ColorSlider
 
-				ColorPicker.Name = ColorPickerSettings.Name
+				RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 				ColorPicker.Title.Text = ColorPickerSettings.Name
 				ColorPicker.Visible = true
 				ColorPicker.Parent = TabPage
@@ -3961,7 +5101,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						ColorPicker.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						ColorPicker.Title.Text = ColorPickerSettings.Name
 						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4128,7 +5268,7 @@ function Window:CreateTab(TabSettings)
 					ColorPickerV.Settings = NewColorPickerSettings
 					ColorPickerSettings = NewColorPickerSettings
 
-					ColorPicker.Name = ColorPickerSettings.Name
+					RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 					ColorPicker.Title.Text = ColorPickerSettings.Name
 					ColorPicker.Visible = true
 
@@ -4160,12 +5300,52 @@ function Window:CreateTab(TabSettings)
 
 		end
 
-		-- Divider
-		function Tab:CreateDivider()
+		-- Divider (optional centered label)
+		function Tab:CreateDivider(DividerSettings)
+			local text
+			if type(DividerSettings) == "string" then
+				text = DividerSettings
+			elseif type(DividerSettings) == "table" then
+				text = DividerSettings.Text
+			end
+
 			local b = Elements.Template.Divider:Clone()
 			b.Parent = TabPage
 			b.Line.BackgroundTransparency = 1
 			tween(b.Line, {BackgroundTransparency = 0})
+
+			if text and text ~= "" then
+				local line = b.Line
+				line.AnchorPoint = Vector2.new(0, 0.5)
+				line.Position = UDim2.new(0, 0, 0.5, 0)
+				line.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+
+				local rightLine = line:Clone()
+				rightLine.Name = RandomName()
+				rightLine.AnchorPoint = Vector2.new(1, 0.5)
+				rightLine.Position = UDim2.new(1, 0, 0.5, 0)
+				rightLine.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
+				rightLine.Parent = b
+				rightLine.BackgroundTransparency = 1
+				tween(rightLine, {BackgroundTransparency = 0})
+
+				local label = Instance.new("TextLabel")
+				label.Name = RandomName()
+				label.BackgroundTransparency = 1
+				label.AnchorPoint = Vector2.new(0.5, 0.5)
+				label.Position = UDim2.fromScale(0.5, 0.5)
+				label.Size = UDim2.new(0, 80, 0, 18)
+				label.AutomaticSize = Enum.AutomaticSize.X
+				label.Text = tostring(text)
+				label.Font = Enum.Font.GothamMedium
+				label.TextSize = 12
+				label.TextColor3 = Color3.fromRGB(200, 200, 210)
+				label.TextTransparency = 1
+				label.Parent = b
+				tween(label, {TextTransparency = 0.15})
+			end
+
+			return b
 		end
 
 		-- Button
@@ -4185,31 +5365,39 @@ function Window:CreateTab(TabSettings)
 			}
 
 
-			local Button
-			if ButtonSettings.Description == nil and ButtonSettings.Description ~= "" then
-				Button = Elements.Template.Button:Clone()
-			else
-				Button = Elements.Template.ButtonDesc:Clone()
-			end
-			Button.Name = ButtonSettings.Name
-			Button.Title.Text = ButtonSettings.Name
-			if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-				Button.Desc.Text = ButtonSettings.Description
+			local hasDesc = type(ButtonSettings.Description) == "string" and ButtonSettings.Description ~= ""
+			local Button = hasDesc and Elements.Template.ButtonDesc:Clone() or Elements.Template.Button:Clone()
+			RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
+			LunaSetText(Button.Title, ButtonSettings.Name)
+			if hasDesc and Button:FindFirstChild("Desc") then
+				LunaSetText(Button.Desc, ButtonSettings.Description)
+			elseif Button:FindFirstChild("Desc") then
+				Button.Desc.Visible = false
 			end
 			Button.Visible = true
 			Button.Parent = TabPage
 
-			Button.UIStroke.Transparency = 1
-			Button.Title.TextTransparency = 1
+			local btnStroke = LunaFindStroke(Button)
+			local btnTitle = LunaFindTitle(Button)
+			if btnStroke then btnStroke.Transparency = 1 end
+			if btnTitle then btnTitle.TextTransparency = 1 end
 			if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-				Button.Desc.TextTransparency = 1
+				local btnDesc = Button:FindFirstChild("Desc")
+				if btnDesc then btnDesc.TextTransparency = 1 end
 			end
 
 			TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-			TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Button.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+			if btnStroke then
+				TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+			end
+			if btnTitle then
+				TweenService:Create(btnTitle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+			end
 			if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-				TweenService:Create(Button.Desc, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+				local btnDescTween = Button:FindFirstChild("Desc")
+				if btnDescTween then
+					TweenService:Create(btnDescTween, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+				end
 			end
 
 			Button.Interact["MouseButton1Click"]:Connect(function()
@@ -4218,33 +5406,37 @@ function Window:CreateTab(TabSettings)
 				if not Success then
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
-					TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
-					Button.Title.Text = "Callback Error"
-					Luna:Notification({Title="Callback Error", Content="Luna Interface Suite | "..tostring(BindSettings and BindSettings.Name or "Unknown").." Callback Error "..tostring(Response), Icon="error"})
+					if btnStroke then
+						TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
+					end
+					if btnTitle then btnTitle.Text = "Callback Error" end
+					LunaCallbackErrorNotification(Response, ButtonSettings, BindSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
-					Button.Title.Text = ButtonSettings.Name
+					if btnTitle then LunaSetText(btnTitle, ButtonSettings.Name) end
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
-					TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+					if btnStroke then
+						TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+					end
 				else
-					tween(Button.UIStroke, {Color = Color3.fromRGB(136, 131, 163)})
+					LunaTweenStroke(Button, {Color = Color3.fromRGB(136, 131, 163)})
 					wait(0.2)
 					if ButtonV.Hover then
-						tween(Button.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+						LunaTweenStroke(Button, {Color = Color3.fromRGB(87, 84, 104)})
 					else
-						tween(Button.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+						LunaTweenStroke(Button, {Color = Color3.fromRGB(64,61,76)})
 					end
 				end
 			end)
 
 			Button["MouseEnter"]:Connect(function()
 				ButtonV.Hover = true
-				tween(Button.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				LunaTweenStroke(Button, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
 
 			Button["MouseLeave"]:Connect(function()
 				ButtonV.Hover = false
-				tween(Button.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				LunaTweenStroke(Button, {Color = Color3.fromRGB(64,61,76)})
 			end)
 
 			function ButtonV:Set(ButtonSettings2)
@@ -4257,10 +5449,10 @@ function Window:CreateTab(TabSettings)
 				ButtonSettings = ButtonSettings2
 				ButtonV.Settings = ButtonSettings2
 
-				Button.Name = ButtonSettings.Name
-				Button.Title.Text = ButtonSettings.Name
+				RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
+				LunaSetText(Button.Title, ButtonSettings.Name)
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
-					Button.Desc.Text = ButtonSettings.Description
+					LunaSetText(Button.Desc, ButtonSettings.Description)
 				end
 			end
 
@@ -4293,7 +5485,7 @@ function Window:CreateTab(TabSettings)
 				Label = Elements.Template.Warn:Clone()
 			end
 
-			Label.Text.Text = LabelSettings.Text
+			LunaSetText(Label.Text, LabelSettings.Text)
 			Label.Visible = true
 			Label.Parent = TabPage
 
@@ -4336,25 +5528,35 @@ function Window:CreateTab(TabSettings)
 			}
 
 			local Paragraph = Elements.Template.Paragraph:Clone()
-			Paragraph.Title.Text = ParagraphSettings.Title
-			Paragraph.Text.Text = ParagraphSettings.Text
+			local ParaTitle = LunaFindTitle(Paragraph)
+			local ParaText = LunaFindBodyText(Paragraph)
+			if ParaTitle then LunaSetText(ParaTitle, ParagraphSettings.Title) end
+			if ParaText then LunaSetText(ParaText, ParagraphSettings.Text) end
 			Paragraph.Visible = true
 			Paragraph.Parent = TabPage
 
 			Paragraph.BackgroundTransparency = 1
-			Paragraph.UIStroke.Transparency = 1
-			Paragraph.Title.TextTransparency = 1
-			Paragraph.Text.TextTransparency = 1
+			local paraStroke = LunaFindStroke(Paragraph)
+			if paraStroke then paraStroke.Transparency = 1 end
+			if ParaTitle then ParaTitle.TextTransparency = 1 end
+			if ParaText then ParaText.TextTransparency = 1 end
 
 			TweenService:Create(Paragraph, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
-			TweenService:Create(Paragraph.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Paragraph.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-			TweenService:Create(Paragraph.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+			if paraStroke then
+				TweenService:Create(paraStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
+			end
+			if ParaTitle then
+				TweenService:Create(ParaTitle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+			end
+			if ParaText then
+				TweenService:Create(ParaText, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+			end
 
 			function ParagraphV:Update()
-				Paragraph.Text.Size = UDim2.new(Paragraph.Text.Size.X.Scale, Paragraph.Text.Size.X.Offset, 0, math.huge)
-				Paragraph.Text.Size = UDim2.new(Paragraph.Text.Size.X.Scale, Paragraph.Text.Size.X.Offset, 0, Paragraph.Text.TextBounds.Y)
-				tween(Paragraph, {Size = UDim2.new(Paragraph.Size.X.Scale, Paragraph.Size.X.Offset, 0, Paragraph.Text.TextBounds.Y + 40)})
+				if not ParaText then return end
+				ParaText.Size = UDim2.new(ParaText.Size.X.Scale, ParaText.Size.X.Offset, 0, math.huge)
+				ParaText.Size = UDim2.new(ParaText.Size.X.Scale, ParaText.Size.X.Offset, 0, ParaText.TextBounds.Y)
+				tween(Paragraph, {Size = UDim2.new(Paragraph.Size.X.Scale, Paragraph.Size.X.Offset, 0, ParaText.TextBounds.Y + 40)})
 			end
 
 			function ParagraphV:Set(NewParagraphSettings)
@@ -4366,8 +5568,12 @@ function Window:CreateTab(TabSettings)
 
 				ParagraphV.Settings = NewParagraphSettings
 
-				Paragraph.Title.Text = NewParagraphSettings.Title
-				Paragraph.Text.Text = NewParagraphSettings.Text
+				if ParaTitle and NewParagraphSettings.Title then
+					LunaSetText(ParaTitle, NewParagraphSettings.Title)
+				end
+				if ParaText and NewParagraphSettings.Text ~= nil then
+					LunaSetText(ParaText, NewParagraphSettings.Text)
+				end
 
 				ParagraphV:Update()
 
@@ -4399,7 +5605,7 @@ function Window:CreateTab(TabSettings)
 
 			local SLDragging = false
 			local Slider = Elements.Template.Slider:Clone()
-			Slider.Name = SliderSettings.Name .. " - Slider"
+			RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 			Slider.Title.Text = SliderSettings.Name
 			Slider.Visible = true
 			Slider.Parent = TabPage
@@ -4481,7 +5687,7 @@ function Window:CreateTab(TabSettings)
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 								TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 								Slider.Title.Text = "Callback Error"
-								Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+								LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 								wait(0.5)
 								Slider.Title.Text = SliderSettings.Name
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4513,7 +5719,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Slider.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Slider.Title.Text = SliderSettings.Name
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4552,7 +5758,7 @@ function Window:CreateTab(TabSettings)
 				SliderSettings = NewSliderSettings
 				SliderV.Settings = NewSliderSettings
 
-				Slider.Name = SliderSettings.Name .. " - Slider"
+				RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 				Slider.Title.Text = SliderSettings.Name
 
 				Set()
@@ -4601,10 +5807,12 @@ function Window:CreateTab(TabSettings)
 			Toggle.Visible = true
 			Toggle.Parent = TabPage
 
-			Toggle.Name = ToggleSettings.Name .. " - Toggle"
-			Toggle.Title.Text = ToggleSettings.Name
-			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
-				Toggle.Desc.Text = ToggleSettings.Description
+			RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
+			LunaSetText(Toggle.Title, ToggleSettings.Name)
+			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle:FindFirstChild("Desc") then
+				LunaSetText(Toggle.Desc, ToggleSettings.Description)
+			elseif Toggle:FindFirstChild("Desc") then
+				Toggle.Desc.Visible = false
 			end
 
 			Toggle.UIStroke.Transparency = 1
@@ -4655,7 +5863,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4682,7 +5890,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4708,7 +5916,7 @@ function Window:CreateTab(TabSettings)
 				ToggleV.Settings = NewToggleSettings
 				ToggleSettings = NewToggleSettings
 
-				Toggle.Name = ToggleSettings.Name .. " - Toggle"
+				RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
 				Toggle.Title.Text = ToggleSettings.Name
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle.Desc ~= nil then
 					Toggle.Desc.Text = ToggleSettings.Description
@@ -4726,7 +5934,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0}):Play()
 					Toggle.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4783,7 +5991,7 @@ function Window:CreateTab(TabSettings)
 			Bind.Visible = true
 			Bind.Parent = TabPage
 
-			Bind.Name = BindSettings.Name
+			RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 			Bind.Title.Text = BindSettings.Name
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind.Desc.Text = BindSettings.Description
@@ -4845,7 +6053,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4874,7 +6082,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4894,7 +6102,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4911,7 +6119,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -4942,7 +6150,7 @@ function Window:CreateTab(TabSettings)
 				BindV.Settings = NewBindSettings
 				BindSettings = NewBindSettings
 
-				Bind.Name = BindSettings.Name
+				RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 				Bind.Title.Text = BindSettings.Name
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" and Bind.Desc ~= nil then
 					Bind.Desc.Text = BindSettings.Description
@@ -4993,7 +6201,7 @@ function Window:CreateTab(TabSettings)
 			Bind.Visible = true
 			Bind.Parent = TabPage
 
-			Bind.Name = BindSettings.Name
+			RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 			Bind.Title.Text = BindSettings.Name
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind.Desc.Text = BindSettings.Description
@@ -5068,7 +6276,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Bind.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5088,7 +6296,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5105,7 +6313,7 @@ function Window:CreateTab(TabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 										Bind.Title.Text = "Callback Error"
-										Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+										LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5136,7 +6344,7 @@ function Window:CreateTab(TabSettings)
 				BindV.Settings = NewBindSettings
 				BindSettings = NewBindSettings
 
-				Bind.Name = BindSettings.Name
+				RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 				Bind.Title.Text = BindSettings.Name
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" and Bind.Desc ~= nil then
 					Bind.Desc.Text = BindSettings.Description
@@ -5188,9 +6396,9 @@ function Window:CreateTab(TabSettings)
 				Input = Elements.Template.Input:Clone()
 			end
 
-			Input.Name = InputSettings.Name
+			RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 			Input.Title.Text = InputSettings.Name
-			if descriptionbool then Input.Desc.Text = InputSettings.Description end
+			if descriptionbool then LunaSetText(Input.Desc, InputSettings.Description) end
 			Input.Visible = true
 			Input.Parent = TabPage
 
@@ -5226,7 +6434,7 @@ function Window:CreateTab(TabSettings)
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 							Input.Title.Text = "Callback Error"
-							Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+							LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5267,7 +6475,7 @@ function Window:CreateTab(TabSettings)
 						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 						TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 						Input.Title.Text = "Callback Error"
-						Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+						LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 						wait(0.5)
 						Input.Title.Text = InputSettings.Name
 						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5293,7 +6501,7 @@ function Window:CreateTab(TabSettings)
 				InputV.Settings = NewInputSettings
 				InputSettings = NewInputSettings
 
-				Input.Name = InputSettings.Name
+				RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 				Input.Title.Text = InputSettings.Name
 				if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 					Input.Desc.Text = InputSettings.Description
@@ -5356,9 +6564,9 @@ function Window:CreateTab(TabSettings)
 			local Dropdown
 			if descriptionbool then Dropdown = Elements.Template.DropdownDesc:Clone() else Dropdown = Elements.Template.Dropdown:Clone() end
 
-			Dropdown.Name = DropdownSettings.Name
+			RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 			Dropdown.Title.Text = DropdownSettings.Name
-			if descriptionbool then Dropdown.Desc.Text = DropdownSettings.Description end
+			if descriptionbool then LunaSetText(Dropdown.Desc, DropdownSettings.Description) end
 
 			Dropdown.Parent = TabPage
 			Dropdown.Visible = true
@@ -5383,7 +6591,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					Dropdown.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					Dropdown.Title.Text = DropdownSettings.Name
 					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5422,7 +6630,7 @@ function Window:CreateTab(TabSettings)
 				end
 
 				Toggle()
-				tween(Dropdown.List[name], {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
+				LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
 			end
 
 			local function Refresh()
@@ -5535,15 +6743,19 @@ function Window:CreateTab(TabSettings)
 
 			Refresh()
 
-			if DropdownSettings.CurrentOption then
-				if type(DropdownSettings.CurrentOption) == "string" then
-					DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-				end
-				if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-					DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-				end
+			if DropdownSettings.MultipleOptions then
+				DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+					DropdownSettings.Options,
+					DropdownSettings.CurrentOption,
+					true
+				) or {}
 			else
-				DropdownSettings.CurrentOption = {}
+				local single = LunaSanitizeDropdownCurrent(
+					DropdownSettings.Options,
+					DropdownSettings.CurrentOption,
+					false
+				)
+				DropdownSettings.CurrentOption = single and {single} or {}
 			end
 
 			local bleh, ind = nil,0
@@ -5551,13 +6763,18 @@ function Window:CreateTab(TabSettings)
 				ind = ind + 1
 			end
 			if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-			SafeCallback(bleh)
-			if type(bleh) == "string" then 
-				tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
-			else
-				for i,v in pairs(bleh) do
-					tween(Dropdown.List[v], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+			pcall(function() SafeCallback(bleh) end)
+			for _, Option in pairs(Dropdown.List:GetChildren()) do
+				if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
+					tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 				end
+			end
+			if DropdownSettings.MultipleOptions then
+				for _, name in pairs(DropdownSettings.CurrentOption) do
+					LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+				end
+			else
+				LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 			end
 
 			if DropdownSettings.MultipleOptions then
@@ -5573,9 +6790,6 @@ function Window:CreateTab(TabSettings)
 					DropdownSettings.CurrentOption = {}
 					Dropdown.Selected.PlaceholderText = "None"
 				end
-				for _, name in pairs(DropdownSettings.CurrentOption) do
-					tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
-				end
 			else
 				Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
 			end
@@ -5587,7 +6801,7 @@ function Window:CreateTab(TabSettings)
 				DropdownV.Settings = NewDropdownSettings
 				DropdownSettings = NewDropdownSettings
 
-				Dropdown.Name = DropdownSettings.Name
+				RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 				Dropdown.Title.Text = DropdownSettings.Name
 				if DropdownSettings.Description ~= nil and DropdownSettings.Description ~= "" and Dropdown.Desc ~= nil then
 					Dropdown.Desc.Text = DropdownSettings.Description
@@ -5607,15 +6821,19 @@ function Window:CreateTab(TabSettings)
 
 				Refresh()
 
-				if DropdownSettings.CurrentOption then
-					if type(DropdownSettings.CurrentOption) == "string" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption}
-					end
-					if not DropdownSettings.MultipleOptions and type(DropdownSettings.CurrentOption) == "table" then
-						DropdownSettings.CurrentOption = {DropdownSettings.CurrentOption[1]}
-					end
+				if DropdownSettings.MultipleOptions then
+					DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						true
+					) or {}
 				else
-					DropdownSettings.CurrentOption = {}
+					local single = LunaSanitizeDropdownCurrent(
+						DropdownSettings.Options,
+						DropdownSettings.CurrentOption,
+						false
+					)
+					DropdownSettings.CurrentOption = single and {single} or {}
 				end
 
 				local bleh, ind = nil,0
@@ -5623,13 +6841,19 @@ function Window:CreateTab(TabSettings)
 					ind = ind + 1
 				end
 				if ind == 1 then bleh = DropdownSettings.CurrentOption[1] else bleh = DropdownSettings.CurrentOption end
-				SafeCallback(bleh)
+				pcall(function() SafeCallback(bleh) end)
 				for _, Option in pairs(Dropdown.List:GetChildren()) do
-					if Option.ClassName == "TextLabel" then
+					if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
 						tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
 					end
 				end
-				tween(Dropdown.List[bleh], {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+				if DropdownSettings.MultipleOptions then
+					for _, name in pairs(DropdownSettings.CurrentOption) do
+						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+					end
+				else
+					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+				end
 
 				if DropdownSettings.MultipleOptions then
 					if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
@@ -5643,9 +6867,6 @@ function Window:CreateTab(TabSettings)
 					else
 						DropdownSettings.CurrentOption = {}
 						Dropdown.Selected.PlaceholderText = "None"
-					end
-					for _, name in pairs(DropdownSettings.CurrentOption) do
-						tween(Dropdown.List[name], {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
 					end
 				else
 					Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
@@ -5694,7 +6915,7 @@ function Window:CreateTab(TabSettings)
 			local Main = Background.MainCP
 			local Slider = ColorPicker.ColorSlider
 
-			ColorPicker.Name = ColorPickerSettings.Name
+			RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 			ColorPicker.Title.Text = ColorPickerSettings.Name
 			ColorPicker.Visible = true
 			ColorPicker.Parent = TabPage
@@ -5718,7 +6939,7 @@ function Window:CreateTab(TabSettings)
 					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
 					TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 					ColorPicker.Title.Text = "Callback Error"
-					Luna:Notification({Title = "Callback Error", Content = "Luna Interface Suite | "..BindSettings.Name.." Callback Error "..tostring(Response), Icon = "error"})
+					LunaCallbackErrorNotification(Response, BindSettings, ButtonSettings, SliderSettings, ToggleSettings, InputSettings, DropdownSettings, ColorPickerSettings)
 					wait(0.5)
 					ColorPicker.Title.Text = ColorPickerSettings.Name
 					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
@@ -5885,7 +7106,7 @@ function Window:CreateTab(TabSettings)
 				ColorPickerV.Settings = NewColorPickerSettings
 				ColorPickerSettings = NewColorPickerSettings
 
-				ColorPicker.Name = ColorPickerSettings.Name
+				RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 				ColorPicker.Title.Text = ColorPickerSettings.Name
 				ColorPicker.Visible = true
 
@@ -6395,6 +7616,1342 @@ function Window:CreateTab(TabSettings)
 		return Tab
 	end
 
+	-- ============================================================
+	-- AI Chat tab (powered by pollinations.ai, no API key required)
+	-- ============================================================
+	-- Creates a new tab with a chat UI: a scrollable message history, an input
+	-- bar, and an animated "thinking..." indicator while the request is in
+	-- flight. Returns a table with helper methods (:Send, :Clear, etc).
+	function Window:CreateAiTab(opts)
+		opts = Kwargify({
+			Name = "Solara Hub AI",
+			Icon = "bot",
+			ImageSource = "Material",
+			SystemPrompt = nil,         -- if set, replaces the default Solara-aware prompt
+			Knowledge = nil,            -- extra context block injected into the system prompt
+			Model = "openai",
+			ShowTitle = true,
+			Endpoint = "https://text.pollinations.ai/openai",
+			Webhook = nil,              -- Discord webhook URL for "Send script request" flow
+			SaveFile = "LunaAI_chat.json", -- where to persist chat history
+			AutoSave = true,
+		}, opts or {})
+
+		local hostTab = self:CreateTab({
+			Name = opts.Name,
+			Icon = opts.Icon,
+			ImageSource = opts.ImageSource,
+			ShowTitle = false, -- our own header looks cleaner
+		})
+
+		local Page = hostTab.Page
+
+		-- The chat fills the whole page; remove the standard UIListLayout for this
+		-- tab so absolute positioning works as expected, and clear residual padding.
+		local existingList = Page:FindFirstChildOfClass("UIListLayout")
+		if existingList then existingList:Destroy() end
+		local existingPadding = Page:FindFirstChildOfClass("UIPadding")
+		if existingPadding then existingPadding:Destroy() end
+		-- Also kill any auto canvas so our absolute layout decides the size.
+		if Page:IsA("ScrollingFrame") then
+			Page.CanvasSize = UDim2.new(0, 0, 0, 0)
+			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
+			Page.ScrollingEnabled = false
+		end
+
+		-- Default system prompt - rich enough that the model picks up tone/format
+		-- expectations and the Solara Hub context without callers having to repeat it.
+		local function buildSystemPrompt()
+			-- NOTE: level-2 long string `[==[ ... ]==]` so the `[[SCRIPT_REQUEST: ...]]`
+			-- marker inside this prompt doesn't close the literal early.
+			local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — a general-purpose Luau/Roblox scripting assistant built into Solara Hub. You help with Solara Hub itself AND with writing/fixing/explaining exploit scripts. Always reply in the same language the user writes in (Russian → Russian, English → English, etc.).
+
+## What you can do
+1. **Solara Hub help** — games supported, which tab to open, settings (SearchBar, Language, Zoom, theme), executors, how to load scripts from the hub.
+2. **Write Luau scripts** — ESP, aimbot, autofarm, GUIs, remotes, hooks, file IO, etc. Put runnable code in ```lua ... ``` fences (the UI adds Copy / Execute under blocks).
+3. **Debug & improve code** — explain errors, suggest fixes, optimize, add feature checks.
+4. **Executor APIs** — use functions from the "Executor API" section below when relevant. Always guard: `if typeof(fn) == "function" then` or `pcall` — never assume every executor has Potassium-only APIs.
+
+## Anti-hallucination (strict)
+- Do NOT invent Solara Hub buttons, tabs, or features not listed under "Solara Hub UI facts".
+- Do NOT invent game support: use only the "Supported games" list from host context when present.
+- Do NOT invent executor functions: only suggest APIs from the reference below or standard Roblox (`game`, `Players`, `RunService`, etc.).
+- Do NOT claim you ran code, opened UI, or sent Discord messages — the host UI does that.
+- If unsure, say you are unsure and offer the script-request flow.
+
+## Solara Hub UI facts (only these exist)
+- Maintainer: **Samuraa1**. Discord: **discord.gg/DPCKQRJmdF**
+- Tabs: **Home** (dashboard), **Universal Scripts** (sections below), **FE Scripts**, **Executors UI**, per-game tab when supported, **Hub Settings And More**
+- Universal sections: Main Scripts, Aimbots + Silent Aim, ESP, Animations, Automization, Tools and Utilities, Trolling, Performance, DEV Tools, Admin, Visual, Backdoor Scanners
+- Settings: Auto Execute, Destroy Hub, interface bind, SearchBar (Ctrl+F), Language, Zoom (Ctrl+/−/0), Interface Accent, Feedback, FPS slider, Credits
+- Window: draggable, resizable (PC), search icon, minimize/close, white rescue drag bar below window when off-screen, notifications, this AI tab
+
+## Script-request flow (missing hub scripts only)
+- If the user wants a script the hub likely lacks, ask once if they want to forward to developers.
+- If they confirm on the **next** message, append exactly one line:
+  [[SCRIPT_REQUEST: short summary]]
+- Never fake delivery; the UI shows a Send button.
+
+## Coding standards for Luau you output
+- Prefer `task.wait` over `wait`; use `game:GetService("ServiceName")`.
+- LocalPlayer: `game.Players.LocalPlayer` — check it exists.
+- For exploit-only calls, wrap in `pcall` or existence checks; mention if a feature needs a specific executor (e.g. Potassium).
+- Keep scripts focused; comment only non-obvious logic.
+- Never use `loadstring` on untrusted URLs unless the user explicitly asked.
+
+## Executor API reference (guard every call)
+**Closures:** checkcaller, clonefunction, hookfunction, restorefunction, newcclosure, loadstring, isexecutorclosure, islclosure, iscclosure
+**Debug:** debug.getupvalue(s), debug.setupvalue, debug.getconstant(s), debug.setconstant, debug.getproto(s), debug.getstack, debug.getinfo
+**Environment:** getgenv, getrenv, getsenv(script), getgc, filtergc, getreg
+**Filesystem:** readfile, writefile, appendfile, isfile, isfolder, makefolder, listfiles, delfile, loadfile, getcustomasset
+**Instances:** gethui, cloneref, getinstances, getnilinstances, fireclickdetector, fireproximityprompt, firetouchinterest, getcallbackvalue
+**Metatable:** getrawmetatable, setrawmetatable, hookmetamethod, getnamecallmethod, setnamecallmethod (Potassium), setreadonly
+**Reflection:** gethiddenproperty, sethiddenproperty, setscriptable, isscriptable, getthreadidentity, setthreadidentity
+**Scripts:** getscripts, getloadedmodules, getscriptclosure, getscriptbytecode, decompile (Potassium)
+**Signals:** getconnections, firesignal, replicatesignal
+**HTTP / misc:** request({Url, Method, Headers, Body}), identifyexecutor, HttpService (game service), setclipboard, getfpscap, setfpscap, queueonteleport
+**Drawing (Potassium):** Drawing.new("Line"|"Text"|...), cleardrawcache, isrenderobj
+**WebSocket:** WebSocket.connect(url)
+**Crypt (Potassium):** crypt.hash, crypt.encrypt, crypt.decrypt, base64encode/decode via crypt or global aliases
+
+Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may be missing on Solara/Xeno/Wave — always note that and offer a fallback using Roblox services.
+
+## Formatting
+- **bold**, *italic*, `inline code`, bullet lists, short ### headers when needed.
+- Default length: under 280 words unless the user wants a full script or deep explanation.
+- Be friendly and practical, not overly formal.
+]==]
+			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
+				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
+			end
+			return base
+		end
+
+		-- ---------- header ----------
+		local Header = Instance.new("Frame")
+		Header.Name = RandomName()
+		Header.BackgroundTransparency = 1
+		Header.BorderSizePixel = 0
+		Header.Position = UDim2.new(0, 12, 0, 6)
+		Header.Size = UDim2.new(1, -24, 0, 28)
+		Header.Parent = Page
+
+		local headerTitle = Instance.new("TextLabel")
+		headerTitle.BackgroundTransparency = 1
+		headerTitle.Size = UDim2.new(1, -120, 1, 0)
+		headerTitle.Position = UDim2.new(0, 0, 0, 0)
+		headerTitle.Text = "Solara Hub AI"
+		headerTitle.TextColor3 = Color3.fromRGB(245, 240, 255)
+		headerTitle.Font = Enum.Font.GothamBold
+		headerTitle.TextSize = 16
+		headerTitle.TextXAlignment = Enum.TextXAlignment.Left
+		headerTitle.TextYAlignment = Enum.TextYAlignment.Center
+		headerTitle:SetAttribute("LunaNoTranslate", true)
+		headerTitle.Parent = Header
+
+		local function makeHeaderBtn(parent, iconName, tooltip, xOffset)
+			local btn = Instance.new("ImageButton")
+			btn.Name = RandomName()
+			btn.AnchorPoint = Vector2.new(1, 0.5)
+			btn.Position = UDim2.new(1, xOffset, 0.5, 0)
+			btn.Size = UDim2.fromOffset(26, 22)
+			btn.BackgroundColor3 = Color3.fromRGB(45, 40, 60)
+			btn.BackgroundTransparency = 0.2
+			btn.ImageColor3 = Color3.fromRGB(225, 220, 240)
+			btn.AutoButtonColor = false
+			btn.Parent = parent
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = btn
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 110, 170); s.Transparency = 0.55; s.Parent = btn
+			ApplyIcon(btn, GetIcon(iconName, "Material"))
+			btn.MouseEnter:Connect(function() tween(btn, {BackgroundTransparency = 0.05}) end)
+			btn.MouseLeave:Connect(function() tween(btn, {BackgroundTransparency = 0.2}) end)
+			return btn
+		end
+
+		local SaveBtn  = makeHeaderBtn(Header, "save",          "Save chat",  -0)
+		local LoadBtn  = makeHeaderBtn(Header, "folder_open",   "Load chat",  -32)
+		local ClearBtn = makeHeaderBtn(Header, "delete",        "Clear chat", -64)
+
+		-- ---------- chat container ----------
+		local Container = Instance.new("Frame")
+		Container.Name = RandomName()
+		Container.BackgroundTransparency = 1
+		Container.BorderSizePixel = 0
+		Container.AnchorPoint = Vector2.new(0, 0)
+		Container.Position = UDim2.new(0, 8, 0, 40)
+		Container.Size = UDim2.new(1, -16, 1, -48)
+		Container.Parent = Page
+
+		-- Messages history (scrollable). Marked non-translatable so user/AI
+		-- conversation text isn't sent through Google Translate.
+		local Messages = Instance.new("ScrollingFrame")
+		Messages.Name = RandomName()
+		Messages.BackgroundTransparency = 1
+		Messages.BorderSizePixel = 0
+		Messages.Position = UDim2.new(0, 0, 0, 0)
+		Messages.Size = UDim2.new(1, 0, 1, -56)
+		Messages.ScrollBarThickness = 3
+		Messages.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
+		Messages.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		Messages.ScrollingDirection = Enum.ScrollingDirection.Y
+		Messages:SetAttribute("LunaNoTranslate", true)
+		Messages.Parent = Container
+
+		local msgList = Instance.new("UIListLayout")
+		msgList.SortOrder = Enum.SortOrder.LayoutOrder
+		msgList.Padding = UDim.new(0, 10)
+		msgList.Parent = Messages
+
+		local msgPad = Instance.new("UIPadding")
+		msgPad.PaddingLeft = UDim.new(0, 4)
+		msgPad.PaddingRight = UDim.new(0, 4)
+		msgPad.PaddingBottom = UDim.new(0, 4)
+		msgPad.Parent = Messages
+
+		-- ---------- input area ----------
+		local InputBar = Instance.new("Frame")
+		InputBar.Name = RandomName()
+		InputBar.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
+		InputBar.BackgroundTransparency = 0.2
+		InputBar.BorderSizePixel = 0
+		InputBar.AnchorPoint = Vector2.new(0, 1)
+		InputBar.Position = UDim2.new(0, 0, 1, 0)
+		InputBar.Size = UDim2.new(1, 0, 0, 46)
+		InputBar.Parent = Container
+
+		local inputCorner = Instance.new("UICorner"); inputCorner.CornerRadius = UDim.new(0, 12); inputCorner.Parent = InputBar
+		local inputStroke = Instance.new("UIStroke"); inputStroke.Color = Color3.fromRGB(130, 120, 170); inputStroke.Transparency = 0.55; inputStroke.Parent = InputBar
+		local inputGradient = Instance.new("UIGradient"); inputGradient.Rotation = 90; inputGradient.Transparency = NumberSequence.new(0.1, 0.35); inputGradient.Parent = InputBar
+
+		local InputBox = Instance.new("TextBox")
+		InputBox.Name = RandomName()
+		InputBox.BackgroundTransparency = 1
+		InputBox.Position = UDim2.new(0, 14, 0, 0)
+		InputBox.Size = UDim2.new(1, -64, 1, 0)
+		InputBox.PlaceholderText = "Ask anything..."
+		InputBox.PlaceholderColor3 = Color3.fromRGB(170, 165, 195)
+		InputBox.Text = ""
+		InputBox.TextColor3 = Color3.fromRGB(245, 245, 250)
+		InputBox.Font = Enum.Font.GothamMedium
+		InputBox.TextSize = 15
+		InputBox.TextXAlignment = Enum.TextXAlignment.Left
+		InputBox.TextYAlignment = Enum.TextYAlignment.Center
+		InputBox.ClearTextOnFocus = false
+		InputBox.MultiLine = false
+		InputBox.Parent = InputBar
+
+		local SendButton = Instance.new("ImageButton")
+		SendButton.Name = RandomName()
+		SendButton.AnchorPoint = Vector2.new(1, 0.5)
+		SendButton.Position = UDim2.new(1, -8, 0.5, 0)
+		SendButton.Size = UDim2.fromOffset(40, 30)
+		SendButton.BackgroundColor3 = Color3.fromRGB(110, 90, 220)
+		SendButton.BackgroundTransparency = 0.05
+		SendButton.AutoButtonColor = false
+		SendButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		SendButton.Parent = InputBar
+		ApplyIcon(SendButton, GetIcon("send", "Material"))
+		local sendCorner = Instance.new("UICorner"); sendCorner.CornerRadius = UDim.new(0, 8); sendCorner.Parent = SendButton
+
+		-- Conversation state. Includes the system prompt to keep replies on-topic.
+		local conversation = {}
+		table.insert(conversation, { role = "system", content = buildSystemPrompt() })
+
+		-- ---------- markdown / rich text ----------
+		-- Returns a list of segments: {kind="text"|"code", lang?, content}
+		local function splitCodeBlocks(text)
+			local segments = {}
+			local cursor = 1
+			while cursor <= #text do
+				local s, e, lang, code = string.find(text, "```([%w_+%-]*)%s*\n?(.-)```", cursor)
+				if not s then
+					table.insert(segments, { kind = "text", content = text:sub(cursor) })
+					break
+				end
+				if s > cursor then
+					table.insert(segments, { kind = "text", content = text:sub(cursor, s - 1) })
+				end
+				table.insert(segments, { kind = "code", lang = (lang ~= "" and lang) or nil, content = code or "" })
+				cursor = e + 1
+			end
+			if #segments == 0 then segments[1] = { kind = "text", content = text } end
+			return segments
+		end
+
+		-- Light markdown -> RichText. Handles headers (#/##/###), bullets (- *),
+		-- numbered lists (intact), inline bold/italic/strike/code, quotes (>).
+		-- Inline code spans are extracted first so their contents survive the
+		-- header / bullet / italic passes.
+		local function richText(t)
+			if type(t) ~= "string" then return tostring(t) end
+			local placeholders = {}
+			local function stash(s)
+				table.insert(placeholders, s)
+				return "\0CODE" .. #placeholders .. "\0"
+			end
+			-- Pull inline code FIRST so its content isn't mangled.
+			t = t:gsub("`([^`\n]+)`", function(c) return stash("<font color=\"rgb(255,180,140)\">" .. c .. "</font>") end)
+			-- HTML-escape what's left.
+			t = t:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+			-- Per-line transforms (headers, bullets, quotes).
+			local lines = {}
+			for raw in (t .. "\n"):gmatch("([^\n]*)\n") do
+				local line = raw
+				local h3 = line:match("^###%s+(.+)$")
+				local h2 = not h3 and line:match("^##%s+(.+)$")
+				local h1 = not h3 and not h2 and line:match("^#%s+(.+)$")
+				local bullet = not (h1 or h2 or h3) and line:match("^[%-%*]%s+(.+)$")
+				local quote = not (h1 or h2 or h3 or bullet) and line:match("^&gt;%s+(.+)$")
+				if h1 then
+					line = "<b><font size=\"22\">" .. h1 .. "</font></b>"
+				elseif h2 then
+					line = "<b><font size=\"19\">" .. h2 .. "</font></b>"
+				elseif h3 then
+					line = "<b><font size=\"16\">" .. h3 .. "</font></b>"
+				elseif bullet then
+					line = "  • " .. bullet
+				elseif quote then
+					line = "<i><font color=\"rgb(180,180,200)\">  " .. quote .. "</font></i>"
+				end
+				table.insert(lines, line)
+			end
+			t = table.concat(lines, "\n")
+			-- Inline emphasis (after headers so we don't conflict with bullets).
+			t = t:gsub("%*%*([^%*\n]+)%*%*", "<b>%1</b>")
+			t = t:gsub("__([^_\n]+)__", "<b>%1</b>")
+			t = t:gsub("%*([^%*\n]+)%*", "<i>%1</i>")
+			t = t:gsub("~~([^~\n]+)~~", "<s>%1</s>")
+			-- Restore code spans.
+			t = t:gsub("\0CODE(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
+			return t
+		end
+
+		-- ---------- HTTP helpers ----------
+		local function getHttpFn()
+			return (syn and syn.request) or (http and http.request) or http_request or request
+		end
+
+		-- ---------- copying & clipboard ----------
+		local function copyToClipboard(text)
+			local ok = pcall(function()
+				if setclipboard then setclipboard(text) end
+				if toclipboard then toclipboard(text) end
+			end)
+			return ok
+		end
+
+		-- ---------- bubble / code-block builders ----------
+		local function bubbleFor(role, parent)
+			local Bubble = Instance.new("Frame")
+			Bubble.Name = RandomName()
+			Bubble.BorderSizePixel = 0
+			Bubble.Size = UDim2.new(1, 0, 0, 0)
+			Bubble.AutomaticSize = Enum.AutomaticSize.Y
+			Bubble.BackgroundTransparency = 0.15
+			if role == "user" then
+				Bubble.BackgroundColor3 = Color3.fromRGB(95, 75, 200)
+			else
+				Bubble.BackgroundColor3 = Color3.fromRGB(38, 34, 52)
+			end
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = Bubble
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255, 255, 255); s.Transparency = 0.88; s.Parent = Bubble
+			local pad = Instance.new("UIPadding")
+			pad.PaddingTop = UDim.new(0, 10); pad.PaddingBottom = UDim.new(0, 10)
+			pad.PaddingLeft = UDim.new(0, 14); pad.PaddingRight = UDim.new(0, 14)
+			pad.Parent = Bubble
+			Bubble.Parent = parent
+			return Bubble
+		end
+
+		local function bubbleTextLabel(parent, text)
+			local Label = Instance.new("TextLabel")
+			Label.Name = "Text"
+			Label.BackgroundTransparency = 1
+			Label.Size = UDim2.new(1, 0, 0, 0)
+			Label.AutomaticSize = Enum.AutomaticSize.Y
+			Label.RichText = true
+			Label.Text = richText(text)
+			Label.TextColor3 = Color3.fromRGB(245, 245, 250)
+			Label.TextSize = 14
+			Label.Font = Enum.Font.GothamMedium
+			Label.TextXAlignment = Enum.TextXAlignment.Left
+			Label.TextYAlignment = Enum.TextYAlignment.Top
+			Label.TextWrapped = true
+			Label:SetAttribute("LunaNoTranslate", true)
+			Label.Parent = parent
+			return Label
+		end
+
+		-- Renders a fenced ```lua ... ``` block as its own card with copy + execute buttons.
+		local function makeCodeBlock(parent, code, lang)
+			local Block = Instance.new("Frame")
+			Block.Name = RandomName()
+			Block.BackgroundColor3 = Color3.fromRGB(18, 16, 26)
+			Block.BackgroundTransparency = 0
+			Block.BorderSizePixel = 0
+			Block.Size = UDim2.new(1, 0, 0, 0)
+			Block.AutomaticSize = Enum.AutomaticSize.Y
+			Block.Parent = parent
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = Block
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(110, 95, 180); s.Transparency = 0.6; s.Parent = Block
+
+			local TitleBar = Instance.new("Frame")
+			TitleBar.BackgroundTransparency = 1
+			TitleBar.Size = UDim2.new(1, 0, 0, 26)
+			TitleBar.Parent = Block
+
+			local langLabel = Instance.new("TextLabel")
+			langLabel.BackgroundTransparency = 1
+			langLabel.Position = UDim2.new(0, 12, 0, 0)
+			langLabel.Size = UDim2.new(1, -120, 1, 0)
+			langLabel.Text = (lang or "code"):lower()
+			langLabel.Font = Enum.Font.GothamMedium
+			langLabel.TextSize = 12
+			langLabel.TextColor3 = Color3.fromRGB(180, 170, 220)
+			langLabel.TextXAlignment = Enum.TextXAlignment.Left
+			langLabel.TextYAlignment = Enum.TextYAlignment.Center
+			langLabel:SetAttribute("LunaNoTranslate", true)
+			langLabel.Parent = TitleBar
+
+			local function smallBtn(text, xOffset)
+				local b = Instance.new("TextButton")
+				b.AnchorPoint = Vector2.new(1, 0.5)
+				b.Position = UDim2.new(1, xOffset, 0.5, 0)
+				b.Size = UDim2.fromOffset(54, 20)
+				b.BackgroundColor3 = Color3.fromRGB(70, 60, 130)
+				b.BackgroundTransparency = 0.1
+				b.Text = text
+				b.Font = Enum.Font.GothamSemibold
+				b.TextSize = 11
+				b.TextColor3 = Color3.fromRGB(240, 235, 255)
+				b.AutoButtonColor = false
+				b:SetAttribute("LunaNoTranslate", true)
+				b.Parent = TitleBar
+				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 5); bc.Parent = b
+				local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(160, 145, 230); bs.Transparency = 0.5; bs.Parent = b
+				b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0}) end)
+				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.1}) end)
+				return b
+			end
+
+			local copyBtn = smallBtn("Copy", -8)
+			local execBtn = smallBtn("Execute", -68)
+
+			local code_pad = Instance.new("UIPadding")
+			code_pad.PaddingLeft = UDim.new(0, 12)
+			code_pad.PaddingRight = UDim.new(0, 12)
+			code_pad.PaddingBottom = UDim.new(0, 10)
+			code_pad.PaddingTop = UDim.new(0, 30) -- below TitleBar
+			code_pad.Parent = Block
+
+			local codeLabel = Instance.new("TextLabel")
+			codeLabel.BackgroundTransparency = 1
+			codeLabel.Size = UDim2.new(1, 0, 0, 0)
+			codeLabel.AutomaticSize = Enum.AutomaticSize.Y
+			codeLabel.Text = code
+			codeLabel.Font = Enum.Font.Code
+			codeLabel.TextSize = 13
+			codeLabel.TextColor3 = Color3.fromRGB(220, 215, 240)
+			codeLabel.TextXAlignment = Enum.TextXAlignment.Left
+			codeLabel.TextYAlignment = Enum.TextYAlignment.Top
+			codeLabel.TextWrapped = true
+			codeLabel:SetAttribute("LunaNoTranslate", true)
+			codeLabel.Parent = Block
+
+			copyBtn.MouseButton1Click:Connect(function()
+				if copyToClipboard(code) then
+					copyBtn.Text = "Copied!"
+					task.delay(1.2, function() if copyBtn and copyBtn.Parent then copyBtn.Text = "Copy" end end)
+				end
+			end)
+			execBtn.MouseButton1Click:Connect(function()
+				local ok, err = pcall(function()
+					local fn, perr = loadstring(code)
+					if not fn then error(perr or "loadstring failed", 0) end
+					task.spawn(fn)
+				end)
+				if ok then
+					execBtn.Text = "Running"
+					task.delay(1.6, function() if execBtn and execBtn.Parent then execBtn.Text = "Execute" end end)
+				else
+					Luna:Notification({ Title = "Execute failed", Content = tostring(err), Icon = "error", ImageSource = "Material", Duration = 6 })
+				end
+			end)
+			return Block
+		end
+
+		-- ---------- assemble a single chat row ----------
+		-- We build BOTH the row layout (left/right alignment) AND populate the
+		-- bubble with text/code segments. Returns helpers for in-place editing
+		-- (used by the streaming "thinking" indicator).
+		local function appendMessage(role, text)
+			local Row = Instance.new("Frame")
+			Row.Name = RandomName()
+			Row.BackgroundTransparency = 1
+			Row.BorderSizePixel = 0
+			Row.Size = UDim2.new(1, 0, 0, 0)
+			Row.AutomaticSize = Enum.AutomaticSize.Y
+			Row.LayoutOrder = #Messages:GetChildren()
+			Row.Parent = Messages
+
+			-- Per-row layout. UIListLayout keeps the bubble + meta-row stacked.
+			local rowList = Instance.new("UIListLayout")
+			rowList.SortOrder = Enum.SortOrder.LayoutOrder
+			rowList.Padding = UDim.new(0, 4)
+			rowList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
+			rowList.Parent = Row
+
+			-- Width-limited holder so user / AI bubbles get a hard maximum that
+			-- TextWrapped can use. UISizeConstraint MaxSize.X = ~75% of container.
+			local Holder = Instance.new("Frame")
+			Holder.Name = "Holder"
+			Holder.BackgroundTransparency = 1
+			Holder.BorderSizePixel = 0
+			Holder.Size = UDim2.new(0, 0, 0, 0)
+			Holder.AutomaticSize = Enum.AutomaticSize.XY
+			Holder.LayoutOrder = 1
+			Holder.Parent = Row
+
+			local function refreshMax()
+				local maxX = math.max(160, math.floor(Messages.AbsoluteSize.X * 0.85) - 12)
+				Holder:FindFirstChildOfClass("UISizeConstraint").MaxSize = Vector2.new(maxX, math.huge)
+			end
+			local sc = Instance.new("UISizeConstraint")
+			sc.MaxSize = Vector2.new(360, math.huge)
+			sc.Parent = Holder
+			task.defer(refreshMax)
+			Messages:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshMax)
+
+			-- Inner list so the bubble + any code blocks stack vertically inside Holder.
+			local innerList = Instance.new("UIListLayout")
+			innerList.SortOrder = Enum.SortOrder.LayoutOrder
+			innerList.Padding = UDim.new(0, 6)
+			innerList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
+			innerList.Parent = Holder
+
+			-- Main bubble holds the prose. Code blocks render OUTSIDE the bubble
+			-- below it (full Holder width) so monospaced text never wraps weird.
+			local Bubble = bubbleFor(role, Holder)
+
+			local Label = bubbleTextLabel(Bubble, "")
+
+			-- Tiny meta row with Copy button (AI bubbles only - copying our own
+			-- messages back to ourselves is silly).
+			local metaRow
+			if role == "assistant" then
+				metaRow = Instance.new("Frame")
+				metaRow.BackgroundTransparency = 1
+				metaRow.Size = UDim2.new(0, 60, 0, 16)
+				metaRow.LayoutOrder = 999
+				metaRow.Parent = Holder
+
+				local cpy = Instance.new("TextButton")
+				cpy.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
+				cpy.BackgroundTransparency = 0.25
+				cpy.Size = UDim2.new(1, 0, 1, 0)
+				cpy.Text = "Copy"
+				cpy.Font = Enum.Font.GothamMedium
+				cpy.TextSize = 11
+				cpy.TextColor3 = Color3.fromRGB(220, 215, 240)
+				cpy.AutoButtonColor = false
+				cpy:SetAttribute("LunaNoTranslate", true)
+				cpy.Parent = metaRow
+				local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 5); cc.Parent = cpy
+				cpy.MouseEnter:Connect(function() tween(cpy, {BackgroundTransparency = 0.05}) end)
+				cpy.MouseLeave:Connect(function() tween(cpy, {BackgroundTransparency = 0.25}) end)
+				cpy.MouseButton1Click:Connect(function()
+					-- Copy the raw, unrendered text so it pastes nicely elsewhere.
+					if copyToClipboard(Label:GetAttribute("LunaRawText") or text or "") then
+						cpy.Text = "Copied!"
+						task.delay(1.2, function() if cpy and cpy.Parent then cpy.Text = "Copy" end end)
+					end
+				end)
+			end
+
+			-- Replace the bubble + code blocks with the given raw text. Used both
+			-- by streaming (think bubble update) and the initial draw.
+			local function setContent(raw)
+				Label:SetAttribute("LunaRawText", raw)
+				-- Tear down any prior code blocks (keep Bubble + metaRow).
+				for _, child in ipairs(Holder:GetChildren()) do
+					if child:IsA("Frame") and child ~= Bubble and child ~= metaRow then
+						child:Destroy()
+					end
+				end
+				local segments = splitCodeBlocks(raw)
+				-- Text segments are merged into the bubble; code segments become cards.
+				local proseChunks = {}
+				local order = 2
+				for _, seg in ipairs(segments) do
+					if seg.kind == "text" then
+						table.insert(proseChunks, seg.content)
+					else
+						-- Flush any accumulated prose first so order is correct.
+						Label.Text = richText(table.concat(proseChunks, ""))
+						proseChunks = {}
+						local codeBlock = makeCodeBlock(Holder, seg.content, seg.lang)
+						codeBlock.LayoutOrder = order
+						order = order + 1
+						-- Add a fresh empty bubble for any text AFTER this code block.
+						local follow = bubbleFor(role, Holder)
+						follow.LayoutOrder = order
+						order = order + 1
+						local newLabel = bubbleTextLabel(follow, "")
+						Label = newLabel
+					end
+				end
+				if #proseChunks > 0 then
+					Label.Text = richText(table.concat(proseChunks, ""))
+				end
+				-- Hide empty trailing bubbles (happens when the message ENDS with a code block).
+				if Label.Text == "" then
+					Label.Parent.Visible = false
+				end
+				-- Auto-scroll to the latest message.
+				task.defer(function()
+					task.wait()
+					Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+				end)
+			end
+
+			setContent(text or "")
+
+			-- Soft fade-in.
+			Bubble.BackgroundTransparency = 1
+			Label.TextTransparency = 1
+			TweenService:Create(Bubble, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
+			TweenService:Create(Label, TweenInfo.new(0.25), {TextTransparency = 0}):Play()
+
+			return Row, Bubble, Label, setContent
+		end
+
+		-- ---------- script request flow ----------
+		-- Adds a "Send request to developers" card below the AI's bubble. Pressing
+		-- it fires the webhook with userinfo + a short description; the card then
+		-- collapses into a small confirmation pill.
+		local function addScriptRequestCard(holder, description)
+			local Card = Instance.new("Frame")
+			Card.Name = RandomName()
+			Card.BackgroundColor3 = Color3.fromRGB(30, 90, 50)
+			Card.BackgroundTransparency = 0.1
+			Card.Size = UDim2.new(1, 0, 0, 64)
+			Card.LayoutOrder = 998
+			Card.Parent = holder
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = Card
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 220, 150); s.Transparency = 0.5; s.Parent = Card
+
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 14, 0, 6)
+			title.Size = UDim2.new(1, -28, 0, 18)
+			title.Text = "Send script request to developers?"
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 13
+			title.TextColor3 = Color3.fromRGB(245, 250, 240)
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title:SetAttribute("LunaNoTranslate", true)
+			title.Parent = Card
+
+			local desc = Instance.new("TextLabel")
+			desc.BackgroundTransparency = 1
+			desc.Position = UDim2.new(0, 14, 0, 24)
+			desc.Size = UDim2.new(1, -110, 0, 18)
+			desc.Text = description
+			desc.Font = Enum.Font.GothamMedium
+			desc.TextSize = 12
+			desc.TextColor3 = Color3.fromRGB(220, 235, 220)
+			desc.TextXAlignment = Enum.TextXAlignment.Left
+			desc.TextWrapped = true
+			desc:SetAttribute("LunaNoTranslate", true)
+			desc.Parent = Card
+
+			local sendBtn = Instance.new("TextButton")
+			sendBtn.AnchorPoint = Vector2.new(1, 0.5)
+			sendBtn.Position = UDim2.new(1, -8, 0.5, 0)
+			sendBtn.Size = UDim2.fromOffset(86, 30)
+			sendBtn.BackgroundColor3 = Color3.fromRGB(60, 170, 90)
+			sendBtn.BackgroundTransparency = 0.1
+			sendBtn.Text = "Send"
+			sendBtn.Font = Enum.Font.GothamBold
+			sendBtn.TextSize = 13
+			sendBtn.TextColor3 = Color3.fromRGB(245, 255, 240)
+			sendBtn.AutoButtonColor = false
+			sendBtn:SetAttribute("LunaNoTranslate", true)
+			sendBtn.Parent = Card
+			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = sendBtn
+
+			sendBtn.MouseButton1Click:Connect(function()
+				if not opts.Webhook or opts.Webhook == "" then
+					Luna:Notification({ Title = "No webhook", Content = "Host script didn't configure AiSettings.Webhook.", Icon = "warning", ImageSource = "Material", Duration = 5 })
+					return
+				end
+				sendBtn.Text = "Sending..."
+				sendBtn.AutoButtonColor = false
+				task.spawn(function()
+					local user = Players.LocalPlayer
+					local gameName = "Unknown"
+					pcall(function()
+						local info = MarketplaceService:GetProductInfo(game.PlaceId)
+						if info and info.Name then gameName = info.Name end
+					end)
+					local payload = HttpService:JSONEncode({
+						username = "Solara Hub AI",
+						embeds = { {
+							title = "Script Request",
+							description = description,
+							color = 6906105,
+							fields = {
+								{ name = "User",  value = string.format("%s (@%s, id=%d)", user.DisplayName, user.Name, user.UserId), inline = true },
+								{ name = "Game",  value = string.format("%s (placeId=%d)", gameName, game.PlaceId), inline = true },
+								{ name = "Time",  value = os.date("!%Y-%m-%d %H:%M:%S UTC"), inline = false },
+							},
+						} },
+					})
+					local fn = getHttpFn()
+					local ok = false
+					if fn then
+						local res
+						ok, res = pcall(fn, { Url = opts.Webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = payload })
+						if ok and res and type(res) == "table" and res.StatusCode and res.StatusCode >= 400 then ok = false end
+					end
+					if ok then
+						sendBtn.Text = "Sent ✓"
+						sendBtn.BackgroundColor3 = Color3.fromRGB(45, 130, 70)
+						Luna:Notification({ Title = "Request sent", Content = "Devs will see your request soon.", Icon = "check_circle", ImageSource = "Material", Duration = 4 })
+					else
+						sendBtn.Text = "Failed"
+						sendBtn.BackgroundColor3 = Color3.fromRGB(140, 60, 60)
+						Luna:Notification({ Title = "Send failed", Content = "Webhook didn't accept the request.", Icon = "error", ImageSource = "Material", Duration = 5 })
+					end
+				end)
+			end)
+		end
+
+		-- Strips the [[SCRIPT_REQUEST: ...]] marker (case-insensitive) and returns
+		-- (cleaned_text, description_or_nil). The marker survives across newlines.
+		local function extractScriptRequest(text)
+			local desc = text:match("%[%[SCRIPT_REQUEST:%s*(.-)%]%]")
+			if not desc then desc = text:match("%[%[script_request:%s*(.-)%]%]") end
+			if not desc then return text, nil end
+			local cleaned = text:gsub("%[%[SCRIPT_REQUEST:.-%]%]", ""):gsub("%[%[script_request:.-%]%]", "")
+			cleaned = (cleaned:gsub("%s+$", ""))
+			return cleaned, desc:gsub("^%s+", ""):gsub("%s+$", "")
+		end
+
+		-- ---------- main API ----------
+		local AiTab = { Messages = Messages, Conversation = conversation }
+		local isGenerating = false
+
+		local function setSendEnabled(enabled)
+			SendButton.AutoButtonColor = enabled
+			SendButton.BackgroundColor3 = enabled and Color3.fromRGB(110, 90, 220) or Color3.fromRGB(60, 55, 80)
+		end
+
+		local function saveChat()
+			if not opts.AutoSave or not writefile then return end
+			pcall(function()
+				writefile(opts.SaveFile, HttpService:JSONEncode({
+					system = conversation[1] and conversation[1].content or "",
+					conv   = conversation,
+				}))
+			end)
+		end
+
+		function AiTab:Send(prompt)
+			prompt = tostring(prompt or "")
+			if prompt == "" or isGenerating then return end
+			isGenerating = true
+			setSendEnabled(false)
+
+			table.insert(conversation, { role = "user", content = prompt })
+			appendMessage("user", prompt)
+
+			-- Thinking bubble with an animated ellipsis until the response arrives.
+			local _, thinkBubble, thinkLabel, thinkSet = appendMessage("assistant", "Thinking")
+			task.spawn(function()
+				local dots = 0
+				while isGenerating and thinkBubble.Parent do
+					dots = (dots % 3) + 1
+					thinkLabel.Text = richText("*Thinking" .. string.rep(".", dots) .. "*")
+					task.wait(0.35)
+				end
+			end)
+
+			task.spawn(function()
+				local payload = HttpService:JSONEncode({ messages = conversation, model = opts.Model })
+				local fn = getHttpFn()
+				local replyText
+
+				if fn then
+					local ok, res = pcall(fn, {
+						Url = opts.Endpoint,
+						Method = "POST",
+						Headers = { ["Content-Type"] = "application/json" },
+						Body = payload,
+					})
+					if ok and res and res.Body then
+						local okDec, decoded = pcall(function() return HttpService:JSONDecode(res.Body) end)
+						if okDec and decoded and decoded.choices and decoded.choices[1] then
+							replyText = decoded.choices[1].message and decoded.choices[1].message.content
+						end
+					end
+				end
+
+				if not replyText then
+					replyText = "_(Unable to reach the AI service. Make sure your executor supports HTTP POST.)_"
+				end
+
+				isGenerating = false
+				setSendEnabled(true)
+
+				table.insert(conversation, { role = "assistant", content = replyText })
+				saveChat()
+
+				-- Pull out the [[SCRIPT_REQUEST: ...]] marker if present.
+				local visibleText, reqDescription = extractScriptRequest(replyText)
+
+				-- Replace the thinking bubble with the actual reply (with markdown / code blocks).
+				if thinkSet and thinkLabel and thinkLabel.Parent then
+					thinkSet(visibleText)
+				else
+					appendMessage("assistant", visibleText)
+				end
+
+				if reqDescription then
+					-- The Holder for the assistant bubble is the parent of thinkBubble.
+					local holder = thinkBubble and thinkBubble.Parent
+					if holder then addScriptRequestCard(holder, reqDescription) end
+				end
+
+				task.defer(function()
+					task.wait()
+					Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+				end)
+			end)
+		end
+
+		function AiTab:Clear()
+			for _, child in ipairs(Messages:GetChildren()) do
+				if child:IsA("Frame") then child:Destroy() end
+			end
+			conversation = {}
+			table.insert(conversation, { role = "system", content = buildSystemPrompt() })
+			AiTab.Conversation = conversation
+			saveChat()
+		end
+
+		function AiTab:Save()
+			saveChat()
+			Luna:Notification({ Title = "Chat saved", Content = opts.SaveFile, Icon = "check_circle", ImageSource = "Material", Duration = 3 })
+		end
+
+		function AiTab:Load()
+			if not isfile or not readfile then return end
+			if not isfile(opts.SaveFile) then
+				Luna:Notification({ Title = "No saved chat", Content = "Nothing to load yet.", Icon = "info", ImageSource = "Material", Duration = 3 })
+				return
+			end
+			local ok, data = pcall(function() return HttpService:JSONDecode(readfile(opts.SaveFile)) end)
+			if not ok or not data or not data.conv then
+				Luna:Notification({ Title = "Load failed", Content = "Could not read saved chat.", Icon = "error", ImageSource = "Material", Duration = 4 })
+				return
+			end
+			AiTab:Clear()
+			conversation = {}
+			for _, m in ipairs(data.conv) do
+				table.insert(conversation, m)
+				if m.role == "user" or m.role == "assistant" then
+					appendMessage(m.role, m.content)
+				end
+			end
+			AiTab.Conversation = conversation
+			Luna:Notification({ Title = "Chat loaded", Content = "Restored " .. (#conversation - 1) .. " messages.", Icon = "check_circle", ImageSource = "Material", Duration = 3 })
+		end
+
+		InputBox.FocusLost:Connect(function(enterPressed)
+			if enterPressed then
+				local t = InputBox.Text
+				InputBox.Text = ""
+				AiTab:Send(t)
+			end
+		end)
+		SendButton.MouseButton1Click:Connect(function()
+			local t = InputBox.Text
+			InputBox.Text = ""
+			AiTab:Send(t)
+		end)
+		SaveBtn.MouseButton1Click:Connect(function() AiTab:Save() end)
+		LoadBtn.MouseButton1Click:Connect(function() AiTab:Load() end)
+		ClearBtn.MouseButton1Click:Connect(function() AiTab:Clear() end)
+
+		-- Subtle hover for the send button
+		SendButton.MouseEnter:Connect(function() tween(SendButton, {BackgroundTransparency = -0.05}) end)
+		SendButton.MouseLeave:Connect(function() tween(SendButton, {BackgroundTransparency = 0.05}) end)
+
+		-- Friendly opening line so the tab doesn't feel empty.
+		task.defer(function()
+			appendMessage("assistant", "Hey! I'm **Solara Hub AI**. I can help with **Solara Hub**, write/fix **Luau scripts**, explain **executor APIs**, and answer Roblox questions. Paste code or describe what you need — I'll use ```lua blocks with *Copy* / *Execute* buttons.")
+		end)
+
+		Window._AiTab = AiTab
+		return AiTab
+	end
+
+	function Window:CreateScriptSearcherTab(opts)
+		opts = Kwargify({
+			Name = "Scripts",
+			Icon = "search",
+			ImageSource = "Lucide",
+			ShowTitle = false,
+		}, opts or {})
+
+		local hostTab = self:CreateTab({
+			Name = opts.Name,
+			Icon = opts.Icon,
+			ImageSource = opts.ImageSource,
+			ShowTitle = false,
+		})
+		local Page = hostTab.Page
+
+		local source = "ScriptBlox"
+		local pageNum = 1
+		local loading = false
+		local filters = {
+			verifiedOnly = false,
+			notPaid = false,
+			unpatched = false,
+			noKeySystem = false,
+			key = false,
+			universal = false,
+			verified = false,
+			patched = false,
+		}
+
+		local statusLabel
+		local runSearch
+
+		local function setStatus(msg)
+			if statusLabel then statusLabel:Set(tostring(msg)) end
+		end
+
+		local searchSec = hostTab:CreateSection("Search")
+		local queryInput = searchSec:CreateInput({
+			Name = "Query",
+			PlaceholderText = "e.g. infinite yield, arsenal, universal",
+			Enter = true,
+			Flag = "SS_Query",
+			Callback = function()
+				runSearch()
+			end,
+		})
+		local sourceDropdown = searchSec:CreateDropdown({
+			Name = "API Source",
+			Options = {"ScriptBlox", "RScripts"},
+			CurrentOption = "ScriptBlox",
+			Flag = "SS_Source",
+			Callback = function(opt)
+				local v = opt
+				if type(v) == "table" then v = v[1] end
+				if type(v) == "string" and v ~= "" then source = v end
+				setStatus("Source: " .. source)
+			end,
+		})
+		searchSec:CreateButton({
+			Name = "Search",
+			Description = "ScriptBlox / RScripts APIs",
+			Callback = function()
+				runSearch()
+			end,
+		})
+
+		statusLabel = searchSec:CreateLabel({
+			Text = "Enter a query and press Search (needs HttpService / request).",
+			Style = 2,
+		})
+
+		local resultsHost = Instance.new("Frame")
+		resultsHost.Name = "ScriptSearcherResults"
+		resultsHost.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
+		resultsHost.BackgroundTransparency = 0.15
+		resultsHost.BorderSizePixel = 0
+		resultsHost.Size = UDim2.new(1, 0, 0, 340)
+		resultsHost.LayoutOrder = 4
+		resultsHost.Parent = Page
+		local hostCorner = Instance.new("UICorner")
+		hostCorner.CornerRadius = UDim.new(0, 8)
+		hostCorner.Parent = resultsHost
+		local hostStroke = Instance.new("UIStroke")
+		hostStroke.Color = Color3.fromRGB(70, 68, 85)
+		hostStroke.Transparency = 0.6
+		hostStroke.Parent = resultsHost
+
+		local Scroll = Instance.new("ScrollingFrame")
+		Scroll.Name = "ResultsScroll"
+		Scroll.BackgroundTransparency = 1
+		Scroll.BorderSizePixel = 0
+		Scroll.Size = UDim2.new(1, -8, 1, -8)
+		Scroll.Position = UDim2.new(0, 4, 0, 4)
+		Scroll.ScrollBarThickness = 5
+		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		Scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+		Scroll.Parent = resultsHost
+		local listLayout = Instance.new("UIListLayout")
+		listLayout.Padding = UDim.new(0, 6)
+		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		listLayout.Parent = Scroll
+		local scrollPad = Instance.new("UIPadding")
+		scrollPad.PaddingTop = UDim.new(0, 4)
+		scrollPad.PaddingBottom = UDim.new(0, 8)
+		scrollPad.PaddingLeft = UDim.new(0, 4)
+		scrollPad.PaddingRight = UDim.new(0, 4)
+		scrollPad.Parent = Scroll
+
+		local function cardWidth()
+			return math.max(Scroll.AbsoluteSize.X - 12, 220)
+		end
+
+		local function scrollToResults()
+			if not Page:IsA("ScrollingFrame") then return end
+			task.defer(function()
+				task.wait(0.15)
+				local pageY = Page.AbsolutePosition.Y
+				local hostY = resultsHost.AbsolutePosition.Y
+				local target = hostY - pageY + Page.CanvasPosition.Y - 12
+				Page.CanvasPosition = Vector2.new(0, math.max(0, target))
+			end)
+		end
+
+		local sbSec = hostTab:CreateSection("ScriptBlox filters")
+		local function sbToggle(name, key)
+			sbSec:CreateToggle({
+				Name = name,
+				CurrentValue = false,
+				Callback = function(v) filters[key] = v end,
+			})
+		end
+		sbToggle("Key system", "key")
+		sbToggle("Universal", "universal")
+		sbToggle("Verified", "verified")
+		sbToggle("Patched", "patched")
+
+		local rsSec = hostTab:CreateSection("RScripts filters")
+		local function rsToggle(name, key)
+			rsSec:CreateToggle({
+				Name = name,
+				CurrentValue = false,
+				Callback = function(v) filters[key] = v end,
+			})
+		end
+		rsToggle("Verified only", "verifiedOnly")
+		rsToggle("Free only", "notPaid")
+		rsToggle("Unpatched", "unpatched")
+		rsToggle("No key system", "noKeySystem")
+
+		local function setSectionLayoutOrder(sectionTitle, order)
+			for _, ch in ipairs(Page:GetChildren()) do
+				if ch:IsA("TextLabel") and ch.Text == sectionTitle then
+					ch.LayoutOrder = order
+					break
+				end
+			end
+		end
+		setSectionLayoutOrder("Search", 1)
+		setSectionLayoutOrder("ScriptBlox filters", 20)
+		setSectionLayoutOrder("RScripts filters", 21)
+
+		local function clearResults()
+			for _, ch in ipairs(Scroll:GetChildren()) do
+				if ch:IsA("Frame") then ch:Destroy() end
+			end
+		end
+
+		local function notifyCopy(text)
+			Luna:Notification({Title = "Script Searcher", Content = text, Icon = "content_copy"})
+		end
+
+		local function makeCard(data, order)
+			local card = Instance.new("Frame")
+			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
+			card.BackgroundTransparency = 0.05
+			card.Size = UDim2.fromOffset(cardWidth(), 88)
+			card.LayoutOrder = order
+			card.ZIndex = 2
+			card.Parent = Scroll
+			local cCorner = Instance.new("UICorner")
+			cCorner.CornerRadius = UDim.new(0, 10)
+			cCorner.Parent = card
+			local cStroke = Instance.new("UIStroke")
+			cStroke.Color = Color3.fromRGB(70, 68, 85)
+			cStroke.Transparency = 0.75
+			cStroke.Parent = card
+
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 10, 0, 8)
+			title.Size = UDim2.new(1, -20, 0, 36)
+			title.Font = Enum.Font.GothamSemibold
+			title.TextSize = 13
+			title.TextColor3 = Color3.fromRGB(245, 245, 250)
+			title.TextWrapped = true
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.TextYAlignment = Enum.TextYAlignment.Top
+			title.Text = data.title or "Untitled"
+			title.Parent = card
+
+			local meta = Instance.new("TextLabel")
+			meta.BackgroundTransparency = 1
+			meta.Position = UDim2.new(0, 10, 0, 44)
+			meta.Size = UDim2.new(1, -20, 0, 32)
+			meta.Font = Enum.Font.Gotham
+			meta.TextSize = 11
+			meta.TextColor3 = Color3.fromRGB(160, 160, 170)
+			meta.TextWrapped = true
+			meta.TextXAlignment = Enum.TextXAlignment.Left
+			meta.TextYAlignment = Enum.TextYAlignment.Top
+			meta.Text = (data.game or "Unknown") .. "\n" .. (data.author or data.owner or "—")
+			meta.Parent = card
+
+			local btnRow = Instance.new("Frame")
+			btnRow.BackgroundTransparency = 1
+			btnRow.Position = UDim2.new(0, 8, 1, -34)
+			btnRow.Size = UDim2.new(1, -16, 0, 26)
+			btnRow.Parent = card
+			local btnLayout = Instance.new("UIListLayout")
+			btnLayout.FillDirection = Enum.FillDirection.Horizontal
+			btnLayout.Padding = UDim.new(0, 6)
+			btnLayout.Parent = btnRow
+
+			local function miniBtn(text, orderB, cb)
+				local b = Instance.new("TextButton")
+				b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+				b.Size = UDim2.new(0.5, -3, 1, 0)
+				b.Font = Enum.Font.GothamSemibold
+				b.TextSize = 11
+				b.TextColor3 = Color3.new(1, 1, 1)
+				b.Text = text
+				b.LayoutOrder = orderB
+				b.AutoButtonColor = false
+				b.Parent = btnRow
+				local bc = Instance.new("UICorner")
+				bc.CornerRadius = UDim.new(0, 6)
+				bc.Parent = b
+				b.MouseButton1Click:Connect(cb)
+				b.Activated:Connect(cb)
+				return b
+			end
+
+			miniBtn("Execute", 1, function()
+				if data.raw and data.raw ~= "" then
+					local ok, err = pcall(function() loadstring(data.raw)() end)
+					if not ok then
+						Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
+					end
+				elseif data.fetchUrl then
+					task.spawn(function()
+						local body = LunaHttpGet(data.fetchUrl)
+						if body then
+							local ok2, err = pcall(function() loadstring(body)() end)
+							if not ok2 then
+								Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
+							end
+						else
+							Luna:Notification({Title = "Script Searcher", Content = "Could not fetch script.", Icon = "error"})
+						end
+					end)
+				end
+			end)
+			miniBtn("Copy", 2, function()
+				if setclipboard and data.link then
+					setclipboard(data.link)
+					notifyCopy("Link copied.")
+				elseif setclipboard and data.raw and data.raw ~= "" then
+					setclipboard(data.raw)
+					notifyCopy("Script copied.")
+				elseif setclipboard and data.fetchUrl then
+					setclipboard(data.fetchUrl)
+					notifyCopy("URL copied.")
+				end
+			end)
+
+			card.MouseEnter:Connect(function() tween(cStroke, {Transparency = 0.35}) end)
+			card.MouseLeave:Connect(function() tween(cStroke, {Transparency = 0.75}) end)
+		end
+
+		local function getQuery()
+			if queryInput and queryInput.CurrentValue then
+				local t = tostring(queryInput.CurrentValue)
+				t = t:gsub("^%s+", ""):gsub("%s+$", "")
+				if t ~= "" then return t end
+			end
+			local opt = Luna.Options and Luna.Options["SS_Query"]
+			if opt and opt.CurrentValue then
+				return tostring(opt.CurrentValue):gsub("^%s+", ""):gsub("%s+$", "")
+			end
+			return ""
+		end
+
+		Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			local w = cardWidth()
+			for _, ch in ipairs(Scroll:GetChildren()) do
+				if ch:IsA("Frame") then
+					ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+				end
+			end
+		end)
+
+		local function syncSource()
+			if sourceDropdown and sourceDropdown.CurrentOption then
+				local v = sourceDropdown.CurrentOption
+				if type(v) == "table" then v = v[1] end
+				if type(v) == "string" and v ~= "" then
+					source = v
+					return
+				end
+			end
+			local opt = Luna.Options and Luna.Options["SS_Source"]
+			if opt and opt.CurrentOption then
+				local v = opt.CurrentOption
+				if type(v) == "table" then v = v[1] end
+				if type(v) == "string" and v ~= "" then source = v end
+			end
+		end
+
+		local function buildRScriptsUrl(q)
+			local params = {
+				page = tostring(pageNum),
+				q = q,
+				orderBy = "date",
+				sort = "desc",
+			}
+			if filters.verifiedOnly then params.verifiedOnly = "true" end
+			if filters.notPaid then params.notPaid = "true" end
+			if filters.unpatched then params.unpatched = "true" end
+			if filters.noKeySystem then params.noKeySystem = "true" end
+			local parts = {}
+			for k, v in pairs(params) do
+				if v and v ~= "" then
+					table.insert(parts, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(tostring(v)))
+				end
+			end
+			return "https://rscripts.net/api/v2/scripts?" .. table.concat(parts, "&")
+		end
+
+		local function buildScriptBloxUrl(q)
+			local url = "https://scriptblox.com/api/script/search?q=" .. HttpService:UrlEncode(q)
+				.. "&mode=free&page=" .. tostring(pageNum) .. "&max=20"
+			if filters.key then url = url .. "&key=1" end
+			if filters.universal then url = url .. "&universal=1" end
+			if filters.verified then url = url .. "&verified=1" end
+			if filters.patched then url = url .. "&patched=1" end
+			return url
+		end
+
+		local function parseRScripts(data)
+			if not data then return {} end
+			local list = data.scripts or (data.data and data.data.scripts)
+			if type(list) ~= "table" then return {} end
+			local cards = {}
+			for _, s in ipairs(list) do
+				local id = s._id or s.slug or s.id
+				table.insert(cards, {
+					title = s.title or "Untitled",
+					game = s.game and (s.game.title or s.game.name) or "Universal",
+					author = s.user and s.user.username or "—",
+					link = id and ("https://rscripts.net/script/" .. tostring(id)) or nil,
+					fetchUrl = s.rawScript,
+					raw = nil,
+				})
+			end
+			return cards
+		end
+
+		local function parseScriptBlox(data)
+			if not data then return {} end
+			local list = data.result and data.result.scripts
+			if type(list) ~= "table" then return {} end
+			local cards = {}
+			for _, s in ipairs(list) do
+				local slug = s.slug or s._id
+				table.insert(cards, {
+					title = s.title or "Untitled",
+					game = s.game and (s.game.name or s.game.title) or "Universal",
+					author = tostring(s.views or 0) .. " views",
+					link = slug and ("https://scriptblox.com/script/" .. tostring(slug)) or nil,
+					fetchUrl = nil,
+					raw = s.script,
+				})
+			end
+			return cards
+		end
+
+		runSearch = function()
+			if loading then return end
+			syncSource()
+			local query = getQuery()
+			if query == "" then
+				setStatus("Enter a search term.")
+				return
+			end
+			loading = true
+			pageNum = 1
+			setStatus("Searching " .. source .. "...")
+			clearResults()
+
+			task.spawn(function()
+				local cards = {}
+				local errMsg = nil
+				if source == "RScripts" then
+					local data, err = LunaHttpJSON(buildRScriptsUrl(query))
+					errMsg = err
+					if data then
+						cards = parseRScripts(data)
+						if #cards == 0 and data.message then
+							errMsg = tostring(data.message)
+						end
+					end
+				else
+					task.wait(1.05)
+					local data, err = LunaHttpJSON(buildScriptBloxUrl(query))
+					errMsg = err
+					if data then
+						cards = parseScriptBlox(data)
+						if #cards == 0 and data.message then
+							errMsg = tostring(data.message)
+						end
+					end
+				end
+
+				task.defer(function()
+					for i, c in ipairs(cards) do
+						makeCard(c, i)
+					end
+					local w = cardWidth()
+					for _, ch in ipairs(Scroll:GetChildren()) do
+						if ch:IsA("Frame") then
+							ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+						end
+					end
+				end)
+				if #cards > 0 then
+					setStatus(#cards .. " results (" .. source .. ")")
+					scrollToResults()
+				elseif errMsg then
+					setStatus(errMsg)
+				else
+					setStatus("No scripts found.")
+				end
+				loading = false
+			end)
+		end
+
+		setStatus("Ready — use Search or press Enter in Query.")
+
+		Window._ScriptSearcherTab = hostTab
+		return hostTab
+	end
 
 	Elements.Parent.Visible = true
 	tween(Elements.Parent, {BackgroundTransparency = 0.1})
@@ -6414,6 +8971,7 @@ function Window:CreateTab(TabSettings)
 		Hide(Main, Window.Bind, true)
 		dragBar.Visible = false
 		Window.State = false
+		if Window._ResizeHandle then Window._ResizeHandle.Visible = false end
 		if UserInputService.KeyboardEnabled == false then
 			LunaUI.MobileSupport.Visible = true
 		end
@@ -6432,7 +8990,11 @@ function Window:CreateTab(TabSettings)
 			Unhide(Main, Window.CurrentTab)
 			LunaUI.MobileSupport.Visible = false
 			dragBar.Visible = true
+			task.defer(function() syncDragBarPosition(Main) end)
 			Window.State = true
+			if Window._ResizeHandle and Window.Size == false then
+				Window._ResizeHandle.Visible = true
+			end
 		end
 	end)
 
@@ -6451,9 +9013,12 @@ function Window:CreateTab(TabSettings)
 		if Window.Size then
 			Minimize(Main)
 			dragBar.Visible = false
+			if Window._ResizeHandle then Window._ResizeHandle.Visible = false end
 		else
 			Maximise(Main)
 			dragBar.Visible = true
+			task.defer(function() syncDragBarPosition(Main) end)
+			if Window._ResizeHandle then Window._ResizeHandle.Visible = true end
 		end
 	end)
 	Main.Controls.ToggleSize["MouseEnter"]:Connect(function()
@@ -6480,9 +9045,963 @@ function Window:CreateTab(TabSettings)
 	LunaUI.MobileSupport.Interact.MouseButton1Click:Connect(function()
 		Unhide(Main, Window.CurrentTab)
 		dragBar.Visible = true
+		task.defer(function() syncDragBarPosition(Main) end)
 		Window.State = true
+		if Window._ResizeHandle and Window.Size == false then
+			Window._ResizeHandle.Visible = true
+		end
 		LunaUI.MobileSupport.Visible = false
 	end)
+
+	if dragBar then
+		dragBar.Active = true
+		if dragInteract then
+			dragInteract.Active = true
+		end
+		task.defer(function()
+			task.wait(0.1)
+			if dragBar.Visible then syncDragBarPosition(Main) end
+		end)
+	end
+
+	-- ============================================================
+	-- SearchBar feature (opt-in via WindowSettings.SearchBar)
+	-- ============================================================
+	if WindowSettings.SearchBar then
+		-- Search icon in the top-right controls: clone Close's frame to match style.
+		local SearchControl = Main.Controls.Close:Clone()
+		SearchControl.Name = RandomName()
+		SearchControl.Parent = Main.Controls
+		ApplyIcon(SearchControl.ImageLabel, GetIcon("search", "Material"))
+
+		-- Position the search slot next to ToggleSize (minimize). We support two layouts:
+		--   1) UIListLayout-managed Controls -> set LayoutOrder so it sorts just before ToggleSize
+		--   2) Absolutely positioned Controls -> compute a position one slot to the left of ToggleSize
+		local listLayout = Main.Controls:FindFirstChildOfClass("UIListLayout")
+		if listLayout then
+			SearchControl.LayoutOrder = (Main.Controls.ToggleSize.LayoutOrder or 0) - 1
+		else
+			local slotWidth = SearchControl.AbsoluteSize.X
+			if slotWidth <= 0 then slotWidth = 28 end
+			local toggleSize = Main.Controls.ToggleSize
+			SearchControl.AnchorPoint = toggleSize.AnchorPoint
+			SearchControl.Position = UDim2.new(
+				toggleSize.Position.X.Scale,
+				toggleSize.Position.X.Offset - slotWidth - 4,
+				toggleSize.Position.Y.Scale,
+				toggleSize.Position.Y.Offset
+			)
+		end
+
+		-- The modal lives at the LunaUI (ScreenGui) root so it overlays the SmartWindow,
+		-- dragBar, and every other UI element. We use a backdrop frame for click-outside
+		-- close + a dim effect, with the actual panel anchored to the window's bounds.
+		local SearchLayer = Instance.new("Frame")
+		SearchLayer.Name = RandomName()
+		SearchLayer.AnchorPoint = Vector2.new(0, 0)
+		SearchLayer.Position = UDim2.fromScale(0, 0)
+		SearchLayer.Size = UDim2.fromScale(1, 1)
+		SearchLayer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		SearchLayer.BackgroundTransparency = 1
+		SearchLayer.BorderSizePixel = 0
+		SearchLayer.Visible = false
+		SearchLayer.ZIndex = 5000
+		SearchLayer.Parent = LunaUI
+
+		-- Dim backdrop: dark with a faint vignette gradient instead of solid white.
+		local Backdrop = Instance.new("TextButton")
+		Backdrop.Name = RandomName()
+		Backdrop.AutoButtonColor = false
+		Backdrop.Text = ""
+		Backdrop.Size = UDim2.fromScale(1, 1)
+		Backdrop.BackgroundColor3 = Color3.fromRGB(8, 8, 14)
+		Backdrop.BackgroundTransparency = 1
+		Backdrop.BorderSizePixel = 0
+		Backdrop.ZIndex = 5000
+		Backdrop.Parent = SearchLayer
+
+		-- Subtle radial-ish vignette so the modal pops without making the bg solid.
+		local backdropGradient = Instance.new("UIGradient")
+		backdropGradient.Rotation = 90
+		backdropGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.15),
+			NumberSequenceKeypoint.new(0.5, 0.05),
+			NumberSequenceKeypoint.new(1, 0.15),
+		})
+		backdropGradient.Parent = Backdrop
+
+		local SearchModal = Instance.new("Frame")
+		SearchModal.Name = RandomName()
+		SearchModal.AnchorPoint = Vector2.new(0.5, 0.5)
+		-- Slight cool tint behind the glass.
+		SearchModal.BackgroundColor3 = Color3.fromRGB(28, 26, 38)
+		SearchModal.BackgroundTransparency = 0.08
+		SearchModal.BorderSizePixel = 0
+		SearchModal.ZIndex = 5010
+		SearchModal.Parent = SearchLayer
+
+		-- Liquid-glass: layered diagonal gradient gives the milky highlight.
+		local modalGradient = Instance.new("UIGradient")
+		modalGradient.Rotation = 135
+		modalGradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 56, 82)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(28, 26, 38)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 18, 28)),
+		})
+		modalGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.15),
+			NumberSequenceKeypoint.new(1, 0.05),
+		})
+		modalGradient.Parent = SearchModal
+
+		-- Re-anchor the modal to Main so it tracks the window (position + size).
+		local function repositionModal()
+			local pos = Main.AbsolutePosition
+			local sz = Main.AbsoluteSize
+			SearchModal.Position = UDim2.fromOffset(pos.X + sz.X * 0.5, pos.Y + sz.Y * 0.5)
+			SearchModal.Size = UDim2.fromOffset(math.min(sz.X * 0.72, 560), math.min(sz.Y * 0.72, 420))
+		end
+		repositionModal()
+		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(repositionModal)
+		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionModal)
+
+		local modalCorner = Instance.new("UICorner")
+		modalCorner.CornerRadius = UDim.new(0, 14)
+		modalCorner.Parent = SearchModal
+
+		local modalStroke = Instance.new("UIStroke")
+		modalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		modalStroke.Color = Color3.fromRGB(120, 110, 160)
+		modalStroke.Thickness = 1.2
+		modalStroke.Transparency = 0.4
+		modalStroke.Parent = SearchModal
+
+		-- A second, faint inner highlight stroke - completes the glass look.
+		local highlightStroke = Instance.new("UIStroke")
+		highlightStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		highlightStroke.Color = Color3.fromRGB(255, 255, 255)
+		highlightStroke.Thickness = 1
+		highlightStroke.Transparency = 0.9
+		highlightStroke.Parent = SearchModal
+
+		local modalPadding = Instance.new("UIPadding")
+		modalPadding.PaddingTop = UDim.new(0, 14)
+		modalPadding.PaddingBottom = UDim.new(0, 14)
+		modalPadding.PaddingLeft = UDim.new(0, 16)
+		modalPadding.PaddingRight = UDim.new(0, 16)
+		modalPadding.Parent = SearchModal
+
+		-- ============================================================
+		-- Header row: search icon + input
+		-- ============================================================
+		local InputRow = Instance.new("Frame")
+		InputRow.Name = RandomName()
+		InputRow.Size = UDim2.new(1, 0, 0, 42)
+		InputRow.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
+		InputRow.BackgroundTransparency = 0.25
+		InputRow.BorderSizePixel = 0
+		InputRow.ZIndex = 5011
+		InputRow.Parent = SearchModal
+
+		local rowCornerHdr = Instance.new("UICorner")
+		rowCornerHdr.CornerRadius = UDim.new(0, 10)
+		rowCornerHdr.Parent = InputRow
+
+		local inputRowGradient = Instance.new("UIGradient")
+		inputRowGradient.Rotation = 90
+		inputRowGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.1),
+			NumberSequenceKeypoint.new(1, 0.3),
+		})
+		inputRowGradient.Parent = InputRow
+
+		local SearchIconLeft = Instance.new("ImageLabel")
+		SearchIconLeft.Name = RandomName()
+		SearchIconLeft.AnchorPoint = Vector2.new(0, 0.5)
+		SearchIconLeft.Position = UDim2.new(0, 12, 0.5, 0)
+		SearchIconLeft.Size = UDim2.fromOffset(18, 18)
+		SearchIconLeft.BackgroundTransparency = 1
+		SearchIconLeft.ImageColor3 = Color3.fromRGB(190, 185, 210)
+		SearchIconLeft.ImageTransparency = 0.2
+		SearchIconLeft.ZIndex = 5012
+		SearchIconLeft.Parent = InputRow
+		ApplyIcon(SearchIconLeft, GetIcon("search", "Material"))
+
+		local SearchInput = Instance.new("TextBox")
+		SearchInput.Name = RandomName()
+		SearchInput.AnchorPoint = Vector2.new(0, 0.5)
+		SearchInput.Position = UDim2.new(0, 38, 0.5, 0)
+		SearchInput.Size = UDim2.new(1, -50, 1, -8)
+		SearchInput.BackgroundTransparency = 1
+		SearchInput.BorderSizePixel = 0
+		SearchInput.PlaceholderText = "Search here..."
+		SearchInput.PlaceholderColor3 = Color3.fromRGB(170, 165, 195)
+		SearchInput.Text = ""
+		SearchInput.TextColor3 = Color3.fromRGB(245, 245, 250)
+		SearchInput.Font = Enum.Font.GothamMedium
+		SearchInput.TextSize = 16
+		SearchInput.TextXAlignment = Enum.TextXAlignment.Left
+		SearchInput.ClearTextOnFocus = false
+		SearchInput.ZIndex = 5012
+		SearchInput.Parent = InputRow
+
+		local inputStroke = Instance.new("UIStroke")
+		inputStroke.Color = Color3.fromRGB(130, 120, 170)
+		inputStroke.Transparency = 0.6
+		inputStroke.Parent = InputRow
+
+		local Results = Instance.new("ScrollingFrame")
+		Results.Name = RandomName()
+		Results.Position = UDim2.new(0, 0, 0, 54)
+		Results.Size = UDim2.new(1, 0, 1, -54)
+		Results.BackgroundTransparency = 1
+		Results.BorderSizePixel = 0
+		Results.ScrollBarThickness = 3
+		Results.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		Results.CanvasSize = UDim2.new(0, 0, 0, 0)
+		Results.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		Results.ZIndex = 5011
+		Results.Parent = SearchModal
+
+		local resultsList = Instance.new("UIListLayout")
+		resultsList.SortOrder = Enum.SortOrder.LayoutOrder
+		resultsList.Padding = UDim.new(0, 6)
+		resultsList.Parent = Results
+
+		local EmptyLabel = Instance.new("TextLabel")
+		EmptyLabel.Name = RandomName()
+		EmptyLabel.Size = UDim2.new(1, 0, 0, 36)
+		EmptyLabel.BackgroundTransparency = 1
+		EmptyLabel.Text = "Start typing to search elements..."
+		EmptyLabel.TextColor3 = Color3.fromRGB(170, 165, 195)
+		EmptyLabel.Font = Enum.Font.Gotham
+		EmptyLabel.TextSize = 13
+		EmptyLabel.TextTransparency = 0.2
+		EmptyLabel.ZIndex = 5011
+		EmptyLabel.Parent = Results
+
+		-- Cache to avoid rebuilding the result rows for identical queries.
+		local lastQuery = nil
+
+		local function clearResults()
+			for _, child in ipairs(Results:GetChildren()) do
+				if child:IsA("TextButton") then
+					child:Destroy()
+				end
+			end
+		end
+
+		local function createResultRow(entry, layoutOrder)
+			local Row = Instance.new("TextButton")
+			Row.Name = RandomName()
+			Row.AutoButtonColor = false
+			Row.Size = UDim2.new(1, -4, 0, 42)
+			Row.BackgroundColor3 = Color3.fromRGB(48, 42, 64)
+			Row.BackgroundTransparency = 0.35
+			Row.BorderSizePixel = 0
+			Row.Text = ""
+			Row.LayoutOrder = layoutOrder
+			Row.ZIndex = 5012
+			Row.Parent = Results
+
+			local rowCorner = Instance.new("UICorner")
+			rowCorner.CornerRadius = UDim.new(0, 8)
+			rowCorner.Parent = Row
+
+			local rowGradient = Instance.new("UIGradient")
+			rowGradient.Rotation = 90
+			rowGradient.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.15),
+				NumberSequenceKeypoint.new(1, 0.4),
+			})
+			rowGradient.Parent = Row
+
+			local rowStroke = Instance.new("UIStroke")
+			rowStroke.Color = Color3.fromRGB(150, 140, 200)
+			rowStroke.Transparency = 0.7
+			rowStroke.Parent = Row
+
+			local title = Instance.new("TextLabel")
+			title.Name = "Title"
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 12, 0, 5)
+			title.Size = UDim2.new(1, -24, 0, 18)
+			title.Text = entry.Name
+			title.TextColor3 = Color3.fromRGB(245, 245, 250)
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.Font = Enum.Font.GothamMedium
+			title.TextSize = 14
+			title.ZIndex = 5013
+			title.Parent = Row
+
+			local sub = Instance.new("TextLabel")
+			sub.Name = "Sub"
+			sub.BackgroundTransparency = 1
+			sub.Position = UDim2.new(0, 12, 0, 23)
+			sub.Size = UDim2.new(1, -24, 0, 14)
+			sub.Text = entry.Type .. (entry.Tab ~= "" and (" • " .. entry.Tab) or "")
+			sub.TextColor3 = Color3.fromRGB(180, 175, 205)
+			sub.TextXAlignment = Enum.TextXAlignment.Left
+			sub.Font = Enum.Font.Gotham
+			sub.TextSize = 11
+			sub.ZIndex = 5013
+			sub.Parent = Row
+
+			Row.MouseEnter:Connect(function()
+				tween(rowStroke, {Transparency = 0.25})
+				tween(Row, {BackgroundTransparency = 0.15})
+			end)
+			Row.MouseLeave:Connect(function()
+				tween(rowStroke, {Transparency = 0.7})
+				tween(Row, {BackgroundTransparency = 0.35})
+			end)
+
+			Row.MouseButton1Click:Connect(function()
+				local tabRef = Window._Tabs[entry.Tab]
+				if tabRef and tabRef.Activate then
+					tabRef.Activate()
+				end
+
+				Window.CloseSearch()
+
+				-- Highlight the target element briefly
+				local frame = entry.Frame
+				if frame and frame.Parent then
+					local origStroke = frame:FindFirstChild("UIStroke")
+					local origColor = origStroke and origStroke.Color or nil
+					if origStroke then
+						origStroke.Color = Color3.fromRGB(180, 170, 220)
+					end
+					task.delay(1.2, function()
+						if origStroke and origColor then
+							origStroke.Color = origColor
+						end
+					end)
+
+					-- Scroll the containing ScrollingFrame to make the element visible.
+					local container = frame.Parent
+					local guard = 0
+					while container and not container:IsA("ScrollingFrame") and container.Parent and guard < 8 do
+						container = container.Parent
+						guard += 1
+					end
+					if container and container:IsA("ScrollingFrame") then
+						local relY = frame.AbsolutePosition.Y - container.AbsolutePosition.Y + container.CanvasPosition.Y
+						local target = math.max(0, relY - 30)
+						pcall(function()
+							TweenService:Create(container, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CanvasPosition = Vector2.new(0, target)}):Play()
+						end)
+					end
+				end
+			end)
+		end
+
+		local function refreshResults()
+			local query = (SearchInput.Text or ""):lower()
+			if query == lastQuery then return end
+			lastQuery = query
+
+			clearResults()
+
+			if query == "" then
+				EmptyLabel.Text = "Start typing to search elements..."
+				EmptyLabel.Visible = true
+				return
+			end
+
+			local matches = 0
+			for _, entry in ipairs(Window._SearchIndex) do
+				if entry.Frame and entry.Frame.Parent then
+					if string.find(string.lower(entry.Name), query, 1, true) then
+						matches += 1
+						createResultRow(entry, matches)
+						if matches >= 60 then break end -- cap rendering cost
+					end
+				end
+			end
+
+			EmptyLabel.Visible = matches == 0
+			if matches == 0 then
+				EmptyLabel.Text = "No results for \"" .. SearchInput.Text .. "\""
+			end
+		end
+
+		SearchInput:GetPropertyChangedSignal("Text"):Connect(refreshResults)
+
+		-- Smooth, slightly springy open / quick fade close.
+		local OPEN_INFO = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		local OPEN_FADE = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+		-- Scale-from-0 pop in. Done via a child UIScale we add on first open.
+		local modalScale = Instance.new("UIScale")
+		modalScale.Scale = 0.85
+		modalScale.Parent = SearchModal
+
+		local function applyVisible(open)
+			if open then
+				SearchLayer.Visible = true
+				Backdrop.BackgroundTransparency = 1
+				SearchModal.BackgroundTransparency = 1
+				InputRow.BackgroundTransparency = 1
+				SearchInput.TextTransparency = 1
+				modalStroke.Transparency = 1
+				highlightStroke.Transparency = 1
+				inputStroke.Transparency = 1
+				EmptyLabel.TextTransparency = 1
+				SearchIconLeft.ImageTransparency = 1
+				modalScale.Scale = 0.92
+
+				TweenService:Create(Backdrop, OPEN_FADE, {BackgroundTransparency = 0.5}):Play()
+				TweenService:Create(SearchModal, OPEN_FADE, {BackgroundTransparency = 0.08}):Play()
+				TweenService:Create(InputRow, OPEN_FADE, {BackgroundTransparency = 0.25}):Play()
+				TweenService:Create(SearchInput, OPEN_FADE, {TextTransparency = 0}):Play()
+				TweenService:Create(modalStroke, OPEN_FADE, {Transparency = 0.4}):Play()
+				TweenService:Create(highlightStroke, OPEN_FADE, {Transparency = 0.85}):Play()
+				TweenService:Create(inputStroke, OPEN_FADE, {Transparency = 0.6}):Play()
+				TweenService:Create(EmptyLabel, OPEN_FADE, {TextTransparency = 0.2}):Play()
+				TweenService:Create(SearchIconLeft, OPEN_FADE, {ImageTransparency = 0.2}):Play()
+				TweenService:Create(modalScale, OPEN_INFO, {Scale = 1}):Play()
+			else
+				TweenService:Create(Backdrop, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
+				TweenService:Create(SearchModal, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
+				TweenService:Create(InputRow, CLOSE_INFO, {BackgroundTransparency = 1}):Play()
+				TweenService:Create(SearchInput, CLOSE_INFO, {TextTransparency = 1}):Play()
+				TweenService:Create(modalStroke, CLOSE_INFO, {Transparency = 1}):Play()
+				TweenService:Create(highlightStroke, CLOSE_INFO, {Transparency = 1}):Play()
+				TweenService:Create(inputStroke, CLOSE_INFO, {Transparency = 1}):Play()
+				TweenService:Create(EmptyLabel, CLOSE_INFO, {TextTransparency = 1}):Play()
+				TweenService:Create(SearchIconLeft, CLOSE_INFO, {ImageTransparency = 1}):Play()
+				TweenService:Create(modalScale, CLOSE_INFO, {Scale = 0.94}):Play()
+				task.delay(0.2, function()
+					-- Don't hide if user reopened in the meantime
+					if not Window._SearchOpen then
+						SearchLayer.Visible = false
+					end
+				end)
+			end
+		end
+
+		Window._SearchOpen = false
+		Window._SearchEnabled = true
+
+		local function setOpen(open)
+			if not Window._SearchEnabled then open = false end
+			if Window._SearchOpen == open then return end
+			Window._SearchOpen = open
+
+			if open then
+				-- If minimized, expand first so the modal lines up visibly with the window.
+				if Window.Size then
+					Maximise(Main)
+					Window.Size = false
+					if dragBar then dragBar.Visible = true end
+				end
+				-- If hidden by keybind, restore first.
+				if not Window.State then
+					Unhide(Main, Window.CurrentTab)
+					Window.State = true
+				end
+				repositionModal()
+				applyVisible(true)
+				SearchInput.Text = ""
+				lastQuery = nil
+				refreshResults()
+				task.defer(function()
+					pcall(function() SearchInput:CaptureFocus() end)
+				end)
+			else
+				applyVisible(false)
+				SearchInput:ReleaseFocus()
+			end
+		end
+
+		SearchControl.ImageLabel.MouseButton1Click:Connect(function()
+			setOpen(not Window._SearchOpen)
+		end)
+		SearchControl["MouseEnter"]:Connect(function()
+			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.new(1,1,1)})
+		end)
+		SearchControl["MouseLeave"]:Connect(function()
+			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
+		end)
+
+		-- Click outside (backdrop) closes the modal.
+		Backdrop.MouseButton1Click:Connect(function()
+			setOpen(false)
+		end)
+
+		-- Default keybind: configurable, defaults to Ctrl+F. Esc closes regardless.
+		Window._SearchKeybind = WindowSettings.SearchKeybind or Enum.KeyCode.F
+		Window._SearchKeybindRequiresCtrl = WindowSettings.SearchKeybindRequiresCtrl ~= false
+
+		-- IMPORTANT: We must accept Esc even when `gpe` is true, because while typing
+		-- in the SearchInput TextBox, all key events get marked as game-processed.
+		-- Without this branch the modal cannot be closed with Escape while focused.
+		UserInputService.InputBegan:Connect(function(input, gpe)
+			if input.KeyCode == Enum.KeyCode.Escape and Window._SearchOpen then
+				setOpen(false)
+				return
+			end
+			if gpe then return end
+			if not Window._SearchEnabled then return end
+			if input.KeyCode == Window._SearchKeybind then
+				if Window._SearchKeybindRequiresCtrl then
+					if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+						return
+					end
+				end
+				setOpen(not Window._SearchOpen)
+			end
+		end)
+
+
+		Window._SearchControl = SearchControl
+		Window._SearchLayer = SearchLayer
+		Window._SearchModal = SearchModal
+
+		Window.OpenSearch = function() setOpen(true) end
+		Window.CloseSearch = function() setOpen(false) end
+		Window.IsSearchOpen = function() return Window._SearchOpen end
+
+		-- Runtime control: toggle SearchBar on/off without rebuilding the window.
+		Window.SetSearchEnabled = function(enabled)
+			Window._SearchEnabled = enabled and true or false
+			if not Window._SearchEnabled and Window._SearchOpen then
+				setOpen(false)
+			end
+			if SearchControl then
+				SearchControl.Visible = Window._SearchEnabled
+			end
+		end
+
+		-- Runtime control: change the keybind. Accepts an Enum.KeyCode or a single
+		-- uppercase letter string (e.g. "F"). `requireCtrl` is a boolean (default true).
+		Window.SetSearchKeybind = function(key, requireCtrl)
+			if typeof(key) == "EnumItem" then
+				Window._SearchKeybind = key
+			elseif type(key) == "string" then
+				local kc = Enum.KeyCode[key:upper()]
+				if kc then Window._SearchKeybind = kc end
+			end
+			if requireCtrl ~= nil then
+				Window._SearchKeybindRequiresCtrl = requireCtrl and true or false
+			end
+		end
+	end
+
+	-- ============================================================
+	-- Resize handle (PC only, opt-in via WindowSettings.Resizable)
+	-- ============================================================
+	if WindowSettings.Resizable and IsDesktop() then
+		-- Small backing chip so the icon stays visible against any background.
+		local HandleBack = Instance.new("Frame")
+		HandleBack.Name = RandomName()
+		HandleBack.AnchorPoint = Vector2.new(1, 1)
+		HandleBack.Position = UDim2.new(1, -8, 1, -8)
+		HandleBack.Size = UDim2.fromOffset(24, 24)
+		HandleBack.BackgroundColor3 = Color3.fromRGB(32, 30, 38)
+		HandleBack.BackgroundTransparency = 0.3
+		HandleBack.BorderSizePixel = 0
+		HandleBack.ZIndex = 30
+		HandleBack.Parent = Main
+
+		local backCorner = Instance.new("UICorner")
+		backCorner.CornerRadius = UDim.new(0, 6)
+		backCorner.Parent = HandleBack
+
+		local backStroke = Instance.new("UIStroke")
+		backStroke.Color = Color3.fromRGB(120, 117, 140)
+		backStroke.Transparency = 0.5
+		backStroke.Parent = HandleBack
+
+		local Handle = Instance.new("ImageButton")
+		Handle.Name = RandomName()
+		Handle.AnchorPoint = Vector2.new(0.5, 0.5)
+		Handle.Position = UDim2.fromScale(0.5, 0.5)
+		Handle.Size = UDim2.fromOffset(16, 16)
+		Handle.BackgroundTransparency = 1
+		-- Material "open_in_full" - diagonal expansion arrows
+		ApplyIcon(Handle, GetIcon("open_in_full", "Material"))
+		Handle.ImageColor3 = Color3.fromRGB(235, 235, 245)
+		Handle.ImageTransparency = 0
+		Handle.AutoButtonColor = false
+		Handle.ZIndex = 31
+		Handle.Parent = HandleBack
+
+		HandleBack.MouseEnter:Connect(function()
+			tween(HandleBack, {BackgroundTransparency = 0.05})
+			tween(backStroke, {Transparency = 0.1})
+		end)
+		HandleBack.MouseLeave:Connect(function()
+			tween(HandleBack, {BackgroundTransparency = 0.3})
+			tween(backStroke, {Transparency = 0.5})
+		end)
+
+		local resizing = false
+		local startMouse, startSize
+
+		Handle.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			resizing = true
+			startMouse = UserInputService:GetMouseLocation()
+			startSize = Main.AbsoluteSize
+		end)
+
+		UserInputService.InputChanged:Connect(function(input)
+			if not resizing then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			local cur = UserInputService:GetMouseLocation()
+			local delta = cur - startMouse
+			local nx = math.clamp(startSize.X + delta.X, ResizeMin.X, ResizeMax.X)
+			local ny = math.clamp(startSize.Y + delta.Y, ResizeMin.Y, ResizeMax.Y)
+			Main.Size = UDim2.fromOffset(nx, ny)
+			MainSize = Main.Size
+			syncDragBarPosition(Main)
+		end)
+
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				resizing = false
+			end
+		end)
+
+		-- Re-sync on every Main size/position change too so toggling minimize,
+		-- maximise, or restoring from a hide always keeps the dragBar in line.
+		Window._ResizeHandle = HandleBack
+
+		-- Hide the resize handle when the window is minimized or hidden, restore otherwise.
+		local function syncHandleVisibility()
+			HandleBack.Visible = (Window.Size == false) and Window.State
+		end
+		-- Mirror visibility on size/state changes by observing Main visually.
+		Main:GetPropertyChangedSignal("Size"):Connect(function()
+			-- Heuristic: if Main is in the minimized state we shrink the height below 60px.
+			if Main.AbsoluteSize.Y < 60 then
+				HandleBack.Visible = false
+			else
+				syncHandleVisibility()
+			end
+		end)
+		Main:GetPropertyChangedSignal("Visible"):Connect(function()
+			if not Main.Visible then HandleBack.Visible = false end
+		end)
+	end
+
+	-- ============================================================
+	-- UI Zoom (Ctrl + / Ctrl - / Ctrl 0)
+	-- ============================================================
+	-- A UIScale on the main SmartWindow lets us scale the whole UI without
+	-- breaking the asset's internal layout. Bound to standard browser-style
+	-- shortcuts; opt-out via WindowSettings.ZoomEnabled = false.
+	do
+		local mainScale = Main:FindFirstChildOfClass("UIScale")
+		if not mainScale then
+			mainScale = Instance.new("UIScale")
+			mainScale.Scale = 1
+			mainScale.Parent = Main
+		end
+		-- ShadowHolder is a sibling of Main (not a descendant), so it doesn't
+		-- inherit Main's UIScale. Mirror it manually so the drop-shadow grows
+		-- and shrinks together with the window when the user zooms.
+		local shadowScale
+		if Main.Parent and Main.Parent:FindFirstChild("ShadowHolder") then
+			shadowScale = Main.Parent.ShadowHolder:FindFirstChildOfClass("UIScale")
+			if not shadowScale then
+				shadowScale = Instance.new("UIScale")
+				shadowScale.Scale = mainScale.Scale
+				shadowScale.Parent = Main.Parent.ShadowHolder
+			end
+		end
+		Window._UIScale = mainScale
+		Window._ShadowScale = shadowScale
+		Window._ZoomEnabled = WindowSettings.ZoomEnabled ~= false
+		Window._ZoomMin = 0.6
+		Window._ZoomMax = 1.6
+		Window._ZoomStep = 0.1
+
+		Window.SetZoom = function(scale)
+			scale = math.clamp(tonumber(scale) or 1, Window._ZoomMin, Window._ZoomMax)
+			local info = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(mainScale, info, {Scale = scale}):Play()
+			if shadowScale then
+				TweenService:Create(shadowScale, info, {Scale = scale}):Play()
+			end
+		end
+		Window.SetZoomEnabled = function(enabled)
+			Window._ZoomEnabled = enabled and true or false
+		end
+		Window.ZoomIn = function()
+			if not Window._ZoomEnabled then return end
+			Window.SetZoom(mainScale.Scale + Window._ZoomStep)
+		end
+		Window.ZoomOut = function()
+			if not Window._ZoomEnabled then return end
+			Window.SetZoom(mainScale.Scale - Window._ZoomStep)
+		end
+		Window.ZoomReset = function()
+			if not Window._ZoomEnabled then return end
+			Window.SetZoom(1)
+		end
+
+		UserInputService.InputBegan:Connect(function(input, gpe)
+			-- gpe matters less here because the keys aren't typing-related, but we
+			-- still honour it to play nice with focused TextBoxes.
+			if gpe then return end
+			if not Window._ZoomEnabled then return end
+			if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+				return
+			end
+			-- "=" share key with "+" on most keyboards; KeypadPlus is the numpad variant.
+			if input.KeyCode == Enum.KeyCode.Equals or input.KeyCode == Enum.KeyCode.Plus or input.KeyCode == Enum.KeyCode.KeypadPlus then
+				Window.ZoomIn()
+			elseif input.KeyCode == Enum.KeyCode.Minus or input.KeyCode == Enum.KeyCode.KeypadMinus then
+				Window.ZoomOut()
+			elseif input.KeyCode == Enum.KeyCode.Zero or input.KeyCode == Enum.KeyCode.KeypadZero then
+				Window.ZoomReset()
+			end
+		end)
+	end
+
+	-- ============================================================
+	-- Auto-create optional tabs + startup tab focus (after host script finishes)
+	-- ============================================================
+	task.defer(function()
+		local aiName = (WindowSettings.AiSettings and WindowSettings.AiSettings.Name) or "Solara Hub AI"
+		local ssName = (WindowSettings.ScriptSearcherSettings and WindowSettings.ScriptSearcherSettings.Name) or "Scripts"
+		if WindowSettings.AiTab then
+			pcall(function() Window:CreateAiTab(WindowSettings.AiSettings) end)
+		end
+		if WindowSettings.ScriptSearcherTab then
+			pcall(function() Window:CreateScriptSearcherTab(WindowSettings.ScriptSearcherSettings) end)
+		end
+		if WindowSettings.AiTab or WindowSettings.ScriptSearcherTab then
+			pcall(function()
+				local navOrder = WindowSettings.NavTabOrder
+				if type(navOrder) ~= "table" then
+					navOrder = {"Home", aiName, ssName}
+				end
+				Window:ApplyNavTabOrder(navOrder)
+			end)
+		end
+		local function focusStartup()
+			Window:ActivateStartupTab(WindowSettings.StartupTab)
+		end
+		pcall(focusStartup)
+		task.delay(0.2, function() pcall(focusStartup) end)
+		task.delay(0.65, function() pcall(focusStartup) end)
+		task.defer(function()
+			task.wait(0.05)
+			Window:NotifyTabsChanged()
+		end)
+	end)
+
+	-- ============================================================
+	-- Theme API (recolour the whole UI from the host script)
+	-- ============================================================
+	-- We expose a couple of small helpers that re-skin the UI at runtime. They
+	-- walk LunaUI once per call and only touch strokes / specific frames, so
+	-- they're cheap enough to wire to a colour-picker callback.
+	do
+		Window._Theme = {
+			Accent = Color3.fromRGB(110, 102, 153),
+			Background = nil, -- nil = keep the original frame colour
+		}
+		Window._StrokeOriginals = {}
+
+		-- Returns true if a UIStroke / Frame is part of the "chrome" we want to
+		-- recolour. We deliberately skip the AI chat code-blocks, the search
+		-- modal accent (it has its own picker) and anything explicitly opted out
+		-- via the LunaNoTheme attribute.
+		local function shouldRecolour(obj)
+			local cur = obj
+			while cur and cur ~= game do
+				if cur:GetAttribute("LunaNoTheme") then return false end
+				cur = cur.Parent
+			end
+			return true
+		end
+
+		local function cacheStrokeColor(stroke)
+			if not Window._StrokeOriginals[stroke] then
+				Window._StrokeOriginals[stroke] = stroke.Color
+			end
+		end
+
+		local function forEachThemeStroke(callback)
+			local roots = {LunaUI, Main, dragBar}
+			for _, root in ipairs(roots) do
+				if root and root.Parent then
+					for _, d in ipairs(root:GetDescendants()) do
+						if d:IsA("UIStroke") and shouldRecolour(d) and d.Transparency < 0.9 then
+							callback(d)
+						end
+					end
+					if root:IsA("GuiObject") then
+						local direct = root:FindFirstChildOfClass("UIStroke")
+						if direct and shouldRecolour(direct) and direct.Transparency < 0.9 then
+							callback(direct)
+						end
+					end
+				end
+			end
+		end
+
+		Window.SetThemeAccent = function(color)
+			if typeof(color) ~= "Color3" then return end
+			Window._Theme.Accent = color
+			task.spawn(function()
+				forEachThemeStroke(function(stroke)
+					cacheStrokeColor(stroke)
+					stroke.Color = color
+				end)
+			end)
+		end
+
+		Window.ClearThemeAccent = function()
+			for stroke, original in pairs(Window._StrokeOriginals) do
+				if stroke.Parent then
+					stroke.Color = original
+				end
+			end
+		end
+
+		Window.SetThemeBackground = function(color)
+			if typeof(color) ~= "Color3" then return end
+			Window._Theme.Background = color
+			-- Apply to the few "big" backgrounds users would expect to recolour.
+			pcall(function() Main.BackgroundColor3 = color end)
+			pcall(function() Elements.Parent.BackgroundColor3 = color end)
+			pcall(function() Navigation.BackgroundColor3 = color end)
+		end
+
+		Window.GetTheme = function() return Window._Theme end
+
+		Window.ResetTheme = function()
+			Window.ClearThemeAccent()
+			Window._Theme.Accent = Color3.fromRGB(110, 102, 153)
+		end
+
+		Window.SetThemeGradient = function(c1, c2, c3)
+			if typeof(c1) == "ColorSequence" then
+				Luna.ThemeGradient = c1
+			elseif typeof(c1) == "Color3" and typeof(c2) == "Color3" and typeof(c3) == "Color3" then
+				Luna.ThemeGradient = ColorSequence.new{
+					ColorSequenceKeypoint.new(0, c1),
+					ColorSequenceKeypoint.new(0.5, c2),
+					ColorSequenceKeypoint.new(1, c3),
+				}
+			end
+			pcall(function() LunaUI.ThemeRemote.Value = not LunaUI.ThemeRemote.Value end)
+		end
+
+		Window.ApplyGradientPreset = function(presetName)
+			local preset = PresetGradients[presetName]
+			if preset then
+				Window.SetThemeGradient(preset[1], preset[2], preset[3])
+			end
+		end
+
+		Window.GetGradientPresets = function()
+			local names = {}
+			for name in pairs(PresetGradients) do
+				table.insert(names, name)
+			end
+			table.sort(names)
+			return names
+		end
+
+		Window.GetTabNames = function()
+			local entries = {}
+			local seen = {}
+
+			local function addEntry(name, order)
+				if not name or name == "" or seen[name] then return end
+				if name == "Home" then
+					name = "Dashboard"
+				end
+				seen[name] = true
+				table.insert(entries, {
+					name = name,
+					order = order or 9999,
+				})
+			end
+
+			if Window._HomeTabButton then
+				addEntry("Dashboard", Window._HomeTabButton.LayoutOrder or 1)
+			end
+
+			if Navigation and Navigation.Tabs then
+				for _, child in ipairs(Navigation.Tabs:GetChildren()) do
+					if child.ClassName == "Frame" and child.Name ~= "InActive Template" then
+						local tabName = child:GetAttribute("LunaTabName")
+						if tabName and tabName ~= "" then
+							addEntry(tabName, child.LayoutOrder)
+						end
+					end
+				end
+			end
+
+			for name, reg in pairs(Window._TabRegistry or {}) do
+				if reg.Button then
+					addEntry(name, reg.Button.LayoutOrder or (Window._TabCreationOrder and Window._TabCreationOrder[name]) or 9999)
+				end
+			end
+
+			table.sort(entries, function(a, b)
+				if a.order ~= b.order then
+					return a.order < b.order
+				end
+				return a.name < b.name
+			end)
+
+			local names = {}
+			for _, entry in ipairs(entries) do
+				table.insert(names, entry.name)
+			end
+			if #names == 0 then
+				names = {"Dashboard"}
+			end
+			return names
+		end
+
+		Window.NotifyTabsChanged = function()
+			if Window._TabListRefreshHook then
+				pcall(Window._TabListRefreshHook)
+			end
+		end
+
+		local function setDashboardVisible(visible)
+			local btn = Window._HomeTabButton
+			if btn then btn.Visible = visible end
+		end
+
+		Window.SetTabVisible = function(tabName, visible)
+			if tabName == "Dashboard" or tabName == "Home" then
+				setDashboardVisible(visible)
+				return
+			end
+			local entry = Window._TabRegistry and Window._TabRegistry[tabName]
+			if not entry or not entry.Button then return end
+			entry.Hidden = not visible
+			entry.Button.Visible = visible
+		end
+
+		Window.ApplyHiddenTabs = function(hiddenList)
+			if type(hiddenList) ~= "table" then return end
+			local hideSet = {}
+			for _, n in ipairs(hiddenList) do hideSet[n] = true end
+			local hideDash = hideSet["Dashboard"] == true or hideSet["Home"] == true
+			setDashboardVisible(not hideDash)
+			for name, entry in pairs(Window._TabRegistry or {}) do
+				if name ~= "Home" then
+					local hide = hideSet[name] == true
+					entry.Hidden = hide
+					if entry.Button then entry.Button.Visible = not hide end
+				end
+			end
+		end
+	end
 
 	return Window
 end
@@ -6498,6 +10017,52 @@ function Luna:Destroy()
 	LunaUI:Destroy()
 end
 
+-- ============================================================
+-- Translator public API
+-- ============================================================
+-- Sets the UI language. `targetCode` is an ISO code such as "ru", "fr",
+-- "pt", "es", "en". Pass "en" to restore originals. Optionally pass a
+-- custom translator function `(text, target) -> string`; if provided it
+-- replaces the built-in Google Translate fetcher. Translation is async
+-- and won't block; expect a brief delay while strings stream in.
+function Luna:SetLanguage(targetCode, customTranslator)
+	targetCode = tostring(targetCode or "en"):lower()
+	LunaTranslator.Target = targetCode
+	if customTranslator ~= nil then
+		LunaTranslator.External = customTranslator
+	end
+	if targetCode ~= "en" then
+		_watchNewText(LunaUI)
+	end
+	_translateTree(LunaUI, targetCode)
+	-- Second pass clears stale template originals (e.g. "But with description", lorem ipsum)
+	-- that were snapshotted before host scripts finished assigning real text.
+	if targetCode ~= "en" then
+		task.delay(0.4, function()
+			for _, obj in ipairs(LunaUI:GetDescendants()) do
+				if _isTranslatableText(obj) then
+					local orig = obj:GetAttribute("LunaOriginalText")
+					if _isStaleTemplateOriginal(orig, obj.Text) then
+						obj:SetAttribute("LunaOriginalText", nil)
+						obj:SetAttribute("LunaTranslated", nil)
+					end
+				end
+			end
+			_translateTree(LunaUI, targetCode)
+		end)
+	end
+end
+
+-- Direct translate-a-string helper (sync; will yield while waiting for HTTP).
+function Luna:Translate(text, target)
+	return LunaTranslate(text, target or LunaTranslator.Target)
+end
+
+-- Returns the active language code, default "en".
+function Luna:GetLanguage()
+	return LunaTranslator.Target or "en"
+end
+
 if isStudio then
 	local Window = Luna:CreateWindow({
 		Name = "Nebula Client - Luna Hub | Blade Ball",
@@ -6506,6 +10071,10 @@ if isStudio then
 		LoadingEnabled = true,
 		LoadingTitle = "Nebula Client (Luna Hub)",
 		LoadingSubtitle = "Loading script for Blade Ball",
+		SearchBar = true,
+		Resizable = true,
+		AiTab = true,
+		ZoomEnabled = true,
 		KeySystem = true,
 		KeySettings = {
 			Title = "Nebula Client | Key System",
