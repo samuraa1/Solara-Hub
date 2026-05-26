@@ -10155,6 +10155,11 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 	end
 
+	Window._Main = Main
+	Window.GetMain = function()
+		return Main
+	end
+
 	return Window
 end
 
