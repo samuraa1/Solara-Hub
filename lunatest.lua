@@ -9993,10 +9993,12 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local function getAnonymousIcon()
 			return GetIcon("venetian-mask", "Lucide")
-				or GetIcon("incognito", "Material")
-				or GetIcon("glasses", "Lucide")
-				or GetIcon("masks", "Material")
 		end
+
+		Window.GetAnonymousIcon = getAnonymousIcon
+		task.defer(function()
+			pcall(getAnonymousIcon)
+		end)
 
 		local function snapshotImageLabel(label)
 			if not label then return nil end
@@ -10072,28 +10074,37 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			if not refs then
 				return false
 			end
-			if Window._AnonymousMode == enabled and Window._AnonymousApplied == enabled then
-				return true
-			end
 			Window:CaptureProfileOriginals()
 
 			local o = Window._ProfileOriginals
 			Window._AnonymousMode = enabled
-			Window._AnonymousApplied = enabled
 
 			if enabled then
 				local anonIcon = getAnonymousIcon()
 				Window._AnonIconData = anonIcon
-				if anonIcon then
+				if anonIcon and refs.NavIcon then
 					pcall(function() ApplyIcon(refs.NavIcon, anonIcon) end)
+				end
+				if anonIcon and refs.HomeIcon then
 					pcall(function() ApplyIcon(refs.HomeIcon, anonIcon) end)
 				end
-				pcall(function() if refs.ServerRegion then refs.ServerRegion.Text = "Hidden" end end)
-				setRegionNoTranslate(refs.ServerRegion, true)
+				if refs.ServerRegion then
+					refs.ServerRegion.Text = "Hidden"
+					setRegionNoTranslate(refs.ServerRegion, true)
+				end
 			else
-				pcall(function() restoreImageLabel(refs.NavIcon, o.navIcon) end)
-				pcall(function() restoreImageLabel(refs.HomeIcon, o.homeIcon) end)
-				setRegionNoTranslate(refs.ServerRegion, false)
+				if refs.NavIcon and o.navIcon then
+					pcall(function() restoreImageLabel(refs.NavIcon, o.navIcon) end)
+				end
+				if refs.HomeIcon and o.homeIcon then
+					pcall(function() restoreImageLabel(refs.HomeIcon, o.homeIcon) end)
+				end
+				if refs.ServerRegion then
+					if o.serverRegion and o.serverRegion ~= "" then
+						refs.ServerRegion.Text = o.serverRegion
+					end
+					setRegionNoTranslate(refs.ServerRegion, false)
+				end
 			end
 			return true
 		end
