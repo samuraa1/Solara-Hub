@@ -1399,6 +1399,7 @@ local IconModule = {
 		["outdoor_grill"] = "http://www.roblox.com/asset/?id=6034304900";
 		["sentiment_very_dissatisfied"] = "http://www.roblox.com/asset/?id=6034230659";
 		["masks"] = "http://www.roblox.com/asset/?id=6034295710";
+		["incognito"] = "http://www.roblox.com/asset/?id=6034311165";
 		["luggage"] = "http://www.roblox.com/asset/?id=6034295708";
 		["sports_motorsports"] = "http://www.roblox.com/asset/?id=6034227071";
 		["sports_esports"] = "http://www.roblox.com/asset/?id=6034227061";
@@ -3265,16 +3266,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 				dash.Server.Players.Value.Text = #Players:GetPlayers().." playing"
 				dash.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
 				dash.Server.Time.Value.Text = convertToHMS(time())
+				dash.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
 
 				if Window._AnonymousMode then
 					dash.Server.Region.Value.Text = "Hidden"
-					dash.Server.Latency.Value.Text = "—"
-					dash.Friends.All.Value.Text = "—"
-					dash.Friends.Offline.Value.Text = "—"
-					dash.Friends.Online.Value.Text = "—"
-					dash.Friends.InGame.Value.Text = "—"
 				else
-					dash.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
 					dash.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
 					checkFriends()
 				end
@@ -9995,9 +9991,12 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end
 		end
 
-		local ANON_ICON = "masks"
-		local ANON_DISPLAY = "Anonymous"
-		local ANON_USER = "hidden_user"
+		local function getAnonymousIcon()
+			return GetIcon("venetian-mask", "Lucide")
+				or GetIcon("incognito", "Material")
+				or GetIcon("glasses", "Lucide")
+				or GetIcon("masks", "Material")
+		end
 
 		local function snapshotImageLabel(label)
 			if not label then return nil end
@@ -10018,14 +10017,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		Window.CaptureProfileOriginals = function()
 			if Window._ProfileOriginals or not Window._ProfileRefs then return end
 			local refs = Window._ProfileRefs
-			local lp = Players.LocalPlayer
 			Window._ProfileOriginals = {
 				navIcon = snapshotImageLabel(refs.NavIcon),
 				homeIcon = snapshotImageLabel(refs.HomeIcon),
-				navDisplay = refs.NavDisplay and refs.NavDisplay.Text or ANON_DISPLAY,
-				navUser = refs.NavUser and refs.NavUser.Text or ANON_USER,
-				homeGreeting = refs.HomeGreeting and refs.HomeGreeting.Text or ("Hello, " .. lp.DisplayName),
-				homeUserLine = refs.HomeUserLine and refs.HomeUserLine.Text or (lp.Name .. " - " .. WindowSettings.Name),
+				serverRegion = refs.ServerRegion and refs.ServerRegion.Text or "",
 			}
 		end
 
@@ -10062,20 +10057,12 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return Window._ProfileRefs
 		end
 
-		local function setProfileNoTranslate(refs, enabled)
-			local labels = {
-				refs.NavDisplay, refs.NavUser, refs.HomeGreeting, refs.HomeUserLine,
-				refs.FriendsAll, refs.FriendsOffline, refs.FriendsOnline, refs.FriendsInGame,
-				refs.ServerRegion, refs.ServerLatency,
-			}
-			for _, label in ipairs(labels) do
-				if label then
-					if enabled then
-						label:SetAttribute("LunaNoTranslate", true)
-					else
-						label:SetAttribute("LunaNoTranslate", nil)
-					end
-				end
+		local function setRegionNoTranslate(regionLabel, enabled)
+			if not regionLabel then return end
+			if enabled then
+				regionLabel:SetAttribute("LunaNoTranslate", true)
+			else
+				regionLabel:SetAttribute("LunaNoTranslate", nil)
 			end
 		end
 
@@ -10095,30 +10082,18 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Window._AnonymousApplied = enabled
 
 			if enabled then
-				local maskIcon = GetIcon(ANON_ICON, "Material")
-				if maskIcon then
-					pcall(function() ApplyIcon(refs.NavIcon, maskIcon) end)
-					pcall(function() ApplyIcon(refs.HomeIcon, maskIcon) end)
+				local anonIcon = getAnonymousIcon()
+				Window._AnonIconData = anonIcon
+				if anonIcon then
+					pcall(function() ApplyIcon(refs.NavIcon, anonIcon) end)
+					pcall(function() ApplyIcon(refs.HomeIcon, anonIcon) end)
 				end
-				pcall(function() if refs.NavDisplay then refs.NavDisplay.Text = ANON_DISPLAY end end)
-				pcall(function() if refs.NavUser then refs.NavUser.Text = ANON_USER end end)
-				pcall(function() if refs.HomeGreeting then refs.HomeGreeting.Text = "Hello, " .. ANON_DISPLAY end end)
-				pcall(function() if refs.HomeUserLine then refs.HomeUserLine.Text = ANON_USER .. " - " .. WindowSettings.Name end end)
-				pcall(function() if refs.FriendsAll then refs.FriendsAll.Text = "—" end end)
-				pcall(function() if refs.FriendsOffline then refs.FriendsOffline.Text = "—" end end)
-				pcall(function() if refs.FriendsOnline then refs.FriendsOnline.Text = "—" end end)
-				pcall(function() if refs.FriendsInGame then refs.FriendsInGame.Text = "—" end end)
 				pcall(function() if refs.ServerRegion then refs.ServerRegion.Text = "Hidden" end end)
-				pcall(function() if refs.ServerLatency then refs.ServerLatency.Text = "—" end end)
-				setProfileNoTranslate(refs, true)
+				setRegionNoTranslate(refs.ServerRegion, true)
 			else
 				pcall(function() restoreImageLabel(refs.NavIcon, o.navIcon) end)
 				pcall(function() restoreImageLabel(refs.HomeIcon, o.homeIcon) end)
-				pcall(function() if refs.NavDisplay then refs.NavDisplay.Text = o.navDisplay end end)
-				pcall(function() if refs.NavUser then refs.NavUser.Text = o.navUser end end)
-				pcall(function() if refs.HomeGreeting then refs.HomeGreeting.Text = o.homeGreeting end end)
-				pcall(function() if refs.HomeUserLine then refs.HomeUserLine.Text = o.homeUserLine end end)
-				setProfileNoTranslate(refs, false)
+				setRegionNoTranslate(refs.ServerRegion, false)
 			end
 			return true
 		end
