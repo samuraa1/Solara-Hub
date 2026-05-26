@@ -10033,40 +10033,94 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return Window._AnonymousMode == true
 		end
 
+		local function ensureProfileRefs()
+			if Window._ProfileRefs then return Window._ProfileRefs end
+			local ok, refs = pcall(function()
+				local home = Elements and Elements:FindFirstChild("Home")
+				local dash = home and home:FindFirstChild("detailsholder") and home.detailsholder:FindFirstChild("dashboard")
+				if not Navigation or not Navigation:FindFirstChild("Player") or not home or not dash then
+					return nil
+				end
+				return {
+					NavIcon = Navigation.Player.icon.ImageLabel,
+					NavDisplay = Navigation.Player.Namez,
+					NavUser = Navigation.Player.TextLabel,
+					HomeIcon = home.icon.ImageLabel,
+					HomeGreeting = home.player.Text,
+					HomeUserLine = home.player.user,
+					FriendsAll = dash.Friends.All.Value,
+					FriendsOffline = dash.Friends.Offline.Value,
+					FriendsOnline = dash.Friends.Online.Value,
+					FriendsInGame = dash.Friends.InGame.Value,
+					ServerRegion = dash.Server.Region.Value,
+					ServerLatency = dash.Server.Latency.Value,
+				}
+			end)
+			if ok and refs then
+				Window._ProfileRefs = refs
+			end
+			return Window._ProfileRefs
+		end
+
+		local function setProfileNoTranslate(refs, enabled)
+			local labels = {
+				refs.NavDisplay, refs.NavUser, refs.HomeGreeting, refs.HomeUserLine,
+				refs.FriendsAll, refs.FriendsOffline, refs.FriendsOnline, refs.FriendsInGame,
+				refs.ServerRegion, refs.ServerLatency,
+			}
+			for _, label in ipairs(labels) do
+				if label then
+					if enabled then
+						label:SetAttribute("LunaNoTranslate", true)
+					else
+						label:SetAttribute("LunaNoTranslate", nil)
+					end
+				end
+			end
+		end
+
 		Window.SetAnonymousMode = function(enabled)
 			enabled = enabled == true
-			if Window._AnonymousMode == enabled then return end
-			if not Window._ProfileRefs then return end
+			local refs = ensureProfileRefs()
+			if not refs then
+				return false
+			end
+			if Window._AnonymousMode == enabled and Window._AnonymousApplied == enabled then
+				return true
+			end
 			Window:CaptureProfileOriginals()
 
-			local refs = Window._ProfileRefs
 			local o = Window._ProfileOriginals
 			Window._AnonymousMode = enabled
+			Window._AnonymousApplied = enabled
 
 			if enabled then
 				local maskIcon = GetIcon(ANON_ICON, "Material")
 				if maskIcon then
-					ApplyIcon(refs.NavIcon, maskIcon)
-					ApplyIcon(refs.HomeIcon, maskIcon)
+					pcall(function() ApplyIcon(refs.NavIcon, maskIcon) end)
+					pcall(function() ApplyIcon(refs.HomeIcon, maskIcon) end)
 				end
-				if refs.NavDisplay then refs.NavDisplay.Text = ANON_DISPLAY end
-				if refs.NavUser then refs.NavUser.Text = ANON_USER end
-				if refs.HomeGreeting then refs.HomeGreeting.Text = "Hello, " .. ANON_DISPLAY end
-				if refs.HomeUserLine then refs.HomeUserLine.Text = ANON_USER .. " - " .. WindowSettings.Name end
-				if refs.FriendsAll then refs.FriendsAll.Text = "—" end
-				if refs.FriendsOffline then refs.FriendsOffline.Text = "—" end
-				if refs.FriendsOnline then refs.FriendsOnline.Text = "—" end
-				if refs.FriendsInGame then refs.FriendsInGame.Text = "—" end
-				if refs.ServerRegion then refs.ServerRegion.Text = "Hidden" end
-				if refs.ServerLatency then refs.ServerLatency.Text = "—" end
+				pcall(function() if refs.NavDisplay then refs.NavDisplay.Text = ANON_DISPLAY end end)
+				pcall(function() if refs.NavUser then refs.NavUser.Text = ANON_USER end end)
+				pcall(function() if refs.HomeGreeting then refs.HomeGreeting.Text = "Hello, " .. ANON_DISPLAY end end)
+				pcall(function() if refs.HomeUserLine then refs.HomeUserLine.Text = ANON_USER .. " - " .. WindowSettings.Name end end)
+				pcall(function() if refs.FriendsAll then refs.FriendsAll.Text = "—" end end)
+				pcall(function() if refs.FriendsOffline then refs.FriendsOffline.Text = "—" end end)
+				pcall(function() if refs.FriendsOnline then refs.FriendsOnline.Text = "—" end end)
+				pcall(function() if refs.FriendsInGame then refs.FriendsInGame.Text = "—" end end)
+				pcall(function() if refs.ServerRegion then refs.ServerRegion.Text = "Hidden" end end)
+				pcall(function() if refs.ServerLatency then refs.ServerLatency.Text = "—" end end)
+				setProfileNoTranslate(refs, true)
 			else
-				restoreImageLabel(refs.NavIcon, o.navIcon)
-				restoreImageLabel(refs.HomeIcon, o.homeIcon)
-				if refs.NavDisplay then refs.NavDisplay.Text = o.navDisplay end
-				if refs.NavUser then refs.NavUser.Text = o.navUser end
-				if refs.HomeGreeting then refs.HomeGreeting.Text = o.homeGreeting end
-				if refs.HomeUserLine then refs.HomeUserLine.Text = o.homeUserLine end
+				pcall(function() restoreImageLabel(refs.NavIcon, o.navIcon) end)
+				pcall(function() restoreImageLabel(refs.HomeIcon, o.homeIcon) end)
+				pcall(function() if refs.NavDisplay then refs.NavDisplay.Text = o.navDisplay end end)
+				pcall(function() if refs.NavUser then refs.NavUser.Text = o.navUser end end)
+				pcall(function() if refs.HomeGreeting then refs.HomeGreeting.Text = o.homeGreeting end end)
+				pcall(function() if refs.HomeUserLine then refs.HomeUserLine.Text = o.homeUserLine end end)
+				setProfileNoTranslate(refs, false)
 			end
+			return true
 		end
 
 		local function setDashboardVisible(visible)
