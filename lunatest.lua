@@ -10016,12 +10016,35 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			label.ImageRectOffset = snap.ImageRectOffset
 		end
 
+		local ANON_DISPLAY = "Anonymous"
+		local ANON_USER = "hidden_user"
+
+		local function setAnonLabelsNoTranslate(refs, enabled)
+			local labels = {
+				refs.NavDisplay, refs.NavUser, refs.HomeGreeting, refs.HomeUserLine, refs.ServerRegion,
+			}
+			for _, label in ipairs(labels) do
+				if label then
+					if enabled then
+						label:SetAttribute("LunaNoTranslate", true)
+					else
+						label:SetAttribute("LunaNoTranslate", nil)
+					end
+				end
+			end
+		end
+
 		Window.CaptureProfileOriginals = function()
 			if Window._ProfileOriginals or not Window._ProfileRefs then return end
 			local refs = Window._ProfileRefs
+			local lp = Players.LocalPlayer
 			Window._ProfileOriginals = {
 				navIcon = snapshotImageLabel(refs.NavIcon),
 				homeIcon = snapshotImageLabel(refs.HomeIcon),
+				navDisplay = refs.NavDisplay and refs.NavDisplay.Text or lp.DisplayName,
+				navUser = refs.NavUser and refs.NavUser.Text or lp.Name,
+				homeGreeting = refs.HomeGreeting and refs.HomeGreeting.Text or ("Hello, " .. lp.DisplayName),
+				homeUserLine = refs.HomeUserLine and refs.HomeUserLine.Text or (lp.Name .. " - " .. WindowSettings.Name),
 				serverRegion = refs.ServerRegion and refs.ServerRegion.Text or "",
 			}
 		end
@@ -10059,15 +10082,6 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return Window._ProfileRefs
 		end
 
-		local function setRegionNoTranslate(regionLabel, enabled)
-			if not regionLabel then return end
-			if enabled then
-				regionLabel:SetAttribute("LunaNoTranslate", true)
-			else
-				regionLabel:SetAttribute("LunaNoTranslate", nil)
-			end
-		end
-
 		Window.SetAnonymousMode = function(enabled)
 			enabled = enabled == true
 			local refs = ensureProfileRefs()
@@ -10088,10 +10102,12 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				if anonIcon and refs.HomeIcon then
 					pcall(function() ApplyIcon(refs.HomeIcon, anonIcon) end)
 				end
-				if refs.ServerRegion then
-					refs.ServerRegion.Text = "Hidden"
-					setRegionNoTranslate(refs.ServerRegion, true)
-				end
+				if refs.NavDisplay then refs.NavDisplay.Text = ANON_DISPLAY end
+				if refs.NavUser then refs.NavUser.Text = ANON_USER end
+				if refs.HomeGreeting then refs.HomeGreeting.Text = "Hello, " .. ANON_DISPLAY end
+				if refs.HomeUserLine then refs.HomeUserLine.Text = ANON_USER .. " - " .. WindowSettings.Name end
+				if refs.ServerRegion then refs.ServerRegion.Text = "Hidden" end
+				setAnonLabelsNoTranslate(refs, true)
 			else
 				if refs.NavIcon and o.navIcon then
 					pcall(function() restoreImageLabel(refs.NavIcon, o.navIcon) end)
@@ -10099,12 +10115,14 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				if refs.HomeIcon and o.homeIcon then
 					pcall(function() restoreImageLabel(refs.HomeIcon, o.homeIcon) end)
 				end
-				if refs.ServerRegion then
-					if o.serverRegion and o.serverRegion ~= "" then
-						refs.ServerRegion.Text = o.serverRegion
-					end
-					setRegionNoTranslate(refs.ServerRegion, false)
+				if refs.NavDisplay then refs.NavDisplay.Text = o.navDisplay end
+				if refs.NavUser then refs.NavUser.Text = o.navUser end
+				if refs.HomeGreeting then refs.HomeGreeting.Text = o.homeGreeting end
+				if refs.HomeUserLine then refs.HomeUserLine.Text = o.homeUserLine end
+				if refs.ServerRegion and o.serverRegion and o.serverRegion ~= "" then
+					refs.ServerRegion.Text = o.serverRegion
 				end
+				setAnonLabelsNoTranslate(refs, false)
 			end
 			return true
 		end
