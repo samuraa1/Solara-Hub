@@ -10038,15 +10038,23 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			if Window._ProfileOriginals or not Window._ProfileRefs then return end
 			local refs = Window._ProfileRefs
 			local lp = Players.LocalPlayer
+			local regionName = ""
+			pcall(function()
+				regionName = Localization:GetCountryRegionForPlayerAsync(lp)
+			end)
 			Window._ProfileOriginals = {
 				navIcon = snapshotImageLabel(refs.NavIcon),
 				homeIcon = snapshotImageLabel(refs.HomeIcon),
-				navDisplay = refs.NavDisplay and refs.NavDisplay.Text or lp.DisplayName,
-				navUser = refs.NavUser and refs.NavUser.Text or lp.Name,
-				homeGreeting = refs.HomeGreeting and refs.HomeGreeting.Text or ("Hello, " .. lp.DisplayName),
-				homeUserLine = refs.HomeUserLine and refs.HomeUserLine.Text or (lp.Name .. " - " .. WindowSettings.Name),
-				serverRegion = refs.ServerRegion and refs.ServerRegion.Text or "",
+				navDisplay = lp.DisplayName,
+				navUser = lp.Name,
+				homeGreeting = "Hello, " .. lp.DisplayName,
+				homeUserLine = lp.Name .. " - " .. WindowSettings.Name,
+				serverRegion = regionName,
 			}
+		end
+
+		Window.ResetProfileOriginals = function()
+			Window._ProfileOriginals = nil
 		end
 
 		Window.GetAnonymousMode = function()
@@ -10088,6 +10096,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			if not refs then
 				return false
 			end
+			if not enabled then
+				Window:ResetProfileOriginals()
+			end
 			Window:CaptureProfileOriginals()
 
 			local o = Window._ProfileOriginals
@@ -10119,8 +10130,14 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				if refs.NavUser then refs.NavUser.Text = o.navUser end
 				if refs.HomeGreeting then refs.HomeGreeting.Text = o.homeGreeting end
 				if refs.HomeUserLine then refs.HomeUserLine.Text = o.homeUserLine end
-				if refs.ServerRegion and o.serverRegion and o.serverRegion ~= "" then
-					refs.ServerRegion.Text = o.serverRegion
+				if refs.ServerRegion then
+					local regionText = o.serverRegion
+					if regionText == "" or regionText == "Hidden" then
+						pcall(function()
+							regionText = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
+						end)
+					end
+					refs.ServerRegion.Text = regionText
 				end
 				setAnonLabelsNoTranslate(refs, false)
 			end
