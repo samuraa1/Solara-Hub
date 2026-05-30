@@ -1399,6 +1399,7 @@ local IconModule = {
 		["outdoor_grill"] = "http://www.roblox.com/asset/?id=6034304900";
 		["sentiment_very_dissatisfied"] = "http://www.roblox.com/asset/?id=6034230659";
 		["masks"] = "http://www.roblox.com/asset/?id=6034295710";
+		["incognito"] = "http://www.roblox.com/asset/?id=6034311165";
 		["luggage"] = "http://www.roblox.com/asset/?id=6034295708";
 		["sports_motorsports"] = "http://www.roblox.com/asset/?id=6034227071";
 		["sports_esports"] = "http://www.roblox.com/asset/?id=6034227061";
@@ -3154,6 +3155,23 @@ function Window:CreateHomeTab(HomeTabSettings)
 		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
 		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
 
+		local dashRoot = HomeTabPage.detailsholder.dashboard
+		Window._ProfileRefs = {
+			NavIcon = Navigation.Player.icon.ImageLabel,
+			NavDisplay = Navigation.Player.Namez,
+			NavUser = Navigation.Player.TextLabel,
+			HomeIcon = HomeTabPage.icon.ImageLabel,
+			HomeGreeting = HomeTabPage.player.Text,
+			HomeUserLine = HomeTabPage.player.user,
+			FriendsAll = dashRoot.Friends.All.Value,
+			FriendsOffline = dashRoot.Friends.Offline.Value,
+			FriendsOnline = dashRoot.Friends.Online.Value,
+			FriendsInGame = dashRoot.Friends.InGame.Value,
+			ServerRegion = dashRoot.Server.Region.Value,
+			ServerLatency = dashRoot.Server.Latency.Value,
+		}
+		Window._AnonymousMode = false
+
 		HomeTabPage.detailsholder.dashboard.Client.Title.Text = (isStudio and "Debugging (Studio)" or identifyexecutor()) or "Your Executor Does Not Support identifyexecutor."
         for i,v in pairs(HomeTabSettings.SupportedExecutors) do
                 if isStudio then HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Luna Interface Suite - Debugging Mode" break end
@@ -3244,16 +3262,18 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		coroutine.wrap(function()
 			while task.wait() do
-				HomeTabPage.detailsholder.dashboard.Server.Players.Value.Text = #Players:GetPlayers().." playing"
-				HomeTabPage.detailsholder.dashboard.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
+				local dash = HomeTabPage.detailsholder.dashboard
+				dash.Server.Players.Value.Text = #Players:GetPlayers().." playing"
+				dash.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
+				dash.Server.Time.Value.Text = convertToHMS(time())
+				dash.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
 
-				HomeTabPage.detailsholder.dashboard.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
-
-				HomeTabPage.detailsholder.dashboard.Server.Time.Value.Text = convertToHMS(time())
-
-				HomeTabPage.detailsholder.dashboard.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
-
-				checkFriends()
+				if Window._AnonymousMode then
+					dash.Server.Region.Value.Text = "Hidden"
+				else
+					dash.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
+					checkFriends()
+				end
 			end
 		end)()
 
@@ -7664,40 +7684,40 @@ function Window:CreateHomeTab(HomeTabSettings)
 		local function buildSystemPrompt()
 			-- NOTE: level-2 long string `[==[ ... ]==]` so the `[[SCRIPT_REQUEST: ...]]`
 			-- marker inside this prompt doesn't close the literal early.
-			local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — a general-purpose Luau/Roblox scripting assistant built into Solara Hub. You help with Solara Hub itself AND with writing/fixing/explaining exploit scripts. Always reply in the same language the user writes in (Russian → Russian, English → English, etc.).
+			local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — an expert Luau/Roblox assistant embedded in Solara Hub. You are precise, helpful, and never sloppy. Match the user's language (Russian → Russian, English → English, etc.).
 
-## What you can do
-1. **Solara Hub help** — games supported, which tab to open, settings (SearchBar, Language, Zoom, theme), executors, how to load scripts from the hub.
-2. **Write Luau scripts** — ESP, aimbot, autofarm, GUIs, remotes, hooks, file IO, etc. Put runnable code in ```lua ... ``` fences (the UI adds Copy / Execute under blocks).
-3. **Debug & improve code** — explain errors, suggest fixes, optimize, add feature checks.
-4. **Executor APIs** — use functions from the "Executor API" section below when relevant. Always guard: `if typeof(fn) == "function" then` or `pcall` — never assume every executor has Potassium-only APIs.
+## How you think (always follow)
+1. **Read host context first.** If "Extra context provided by the host script" appears below, treat it as ground truth for tabs, settings, and supported games — it overrides guesses and outdated training.
+2. **Answer only what was asked.** One clear path beats a wall of unrelated tips.
+3. **Separate facts from guesses.** Known → state plainly. Unknown → say "I don't know" / "not in the supported list" / "open that tab and check the button name". Never fill gaps with invented UI or script names.
+4. **Hub vs coding.** Navigation questions → exact tab + section + control name. Script requests → working Luau with guards. Do not mix unless the user needs both.
+5. **No fake actions.** You cannot run code, click buttons, change settings, or post to Discord. The UI runs Execute, Feedback, and script-request Send.
 
-## Anti-hallucination (strict)
-- Do NOT invent Solara Hub buttons, tabs, or features not listed under "Solara Hub UI facts".
-- Do NOT invent game support: use only the "Supported games" list from host context when present.
-- Do NOT invent executor functions: only suggest APIs from the reference below or standard Roblox (`game`, `Players`, `RunService`, etc.).
-- Do NOT claim you ran code, opened UI, or sent Discord messages — the host UI does that.
-- If unsure, say you are unsure and offer the script-request flow.
+## What you do well
+- **Solara Hub** — where to click, settings, supported games (from host list only), Anonymous Mode, Search Bar, languages, zoom, script searcher.
+- **Luau scripts** — ESP, farms, remotes, hooks, GUIs. Runnable code in ```lua ... ``` fences (UI adds Copy / Execute).
+- **Debug** — read the error, name the likely cause, give a minimal fix (not a rewrite unless asked).
+- **Executor APIs** — only from the reference below or Roblox services; always guard with `typeof(fn) == "function"` or `pcall`.
 
-## Solara Hub UI facts (only these exist)
-- Maintainer: **Samuraa1**. Discord: **discord.gg/DPCKQRJmdF**
-- Tabs: **Home** (dashboard), **Universal Scripts** (sections below), **FE Scripts**, **Executors UI**, per-game tab when supported, **Hub Settings And More**
-- Universal sections: Main Scripts, Aimbots + Silent Aim, ESP, Animations, Automization, Tools and Utilities, Trolling, Performance, DEV Tools, Admin, Visual, Backdoor Scanners
-- Settings: Auto Execute, Destroy Hub, interface bind, SearchBar (Ctrl+F), Language, Zoom (Ctrl+/−/0), Interface Accent, Feedback, FPS slider, Credits
-- Window: draggable, resizable (PC), search icon, minimize/close, white rescue drag bar below window when off-screen, notifications, this AI tab
+## Anti-hallucination (zero tolerance)
+- **Never invent:** tabs, buttons, toggles, game support, script names in the hub, Discord features, "premium" hub tiers, or executor APIs not listed below.
+- **Games:** supported only if listed in host "Supported games" / per-game block. Otherwise → Game Not Supported tab + script-request or Discord.
+- **Universal / FE scripts:** do not name a button unless host context lists it or the user quoted the exact label on screen. Default advice: open the section + use **Search Bar** (Ctrl+F).
+- **Detection / keys:** do not promise "undetected" or "keyless" unless the hub Description says so or the user confirmed it.
+- **Changelogs / stats:** for "what's new" or version numbers → tell user: **Dashboard → Changelogs** or **Hub Settings → Solara Hub Info** (live labels). Do not invent update notes or version strings.
+- **When stuck:** one short honest line + one next step (tab to open, Search Bar, Feedback, script-request). No filler, no made-up workarounds.
 
-## Script-request flow (missing hub scripts only)
-- If the user wants a script the hub likely lacks, ask once if they want to forward to developers.
+## Script-request flow (missing hub content only)
+- User wants a game/script not in the hub → ask **once** if they want developers notified.
 - If they confirm on the **next** message, append exactly one line:
   [[SCRIPT_REQUEST: short summary]]
-- Never fake delivery; the UI shows a Send button.
+- Never claim it was sent; the UI shows Send.
 
-## Coding standards for Luau you output
-- Prefer `task.wait` over `wait`; use `game:GetService("ServiceName")`.
-- LocalPlayer: `game.Players.LocalPlayer` — check it exists.
-- For exploit-only calls, wrap in `pcall` or existence checks; mention if a feature needs a specific executor (e.g. Potassium).
-- Keep scripts focused; comment only non-obvious logic.
-- Never use `loadstring` on untrusted URLs unless the user explicitly asked.
+## Coding standards (Luau you output)
+- `task.wait` not `wait`; `game:GetService("ServiceName")`; verify `LocalPlayer` exists.
+- Exploit APIs: wrap in `pcall` / existence checks; note executor-specific limits (Potassium-only, etc.).
+- Minimal, correct scripts > long broken ones. Comments only for non-obvious logic.
+- No `loadstring` on random URLs unless the user explicitly asked for that URL.
 
 ## Executor API reference (guard every call)
 **Closures:** checkcaller, clonefunction, hookfunction, restorefunction, newcclosure, loadstring, isexecutorclosure, islclosure, iscclosure
@@ -7716,10 +7736,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may be missing on Solara/Xeno/Wave — always note that and offer a fallback using Roblox services.
 
-## Formatting
-- **bold**, *italic*, `inline code`, bullet lists, short ### headers when needed.
-- Default length: under 280 words unless the user wants a full script or deep explanation.
-- Be friendly and practical, not overly formal.
+## Formatting & tone
+- Short ### headers or bullets when it helps scanning; **bold** for tab/control names users must find.
+- Default: concise (under ~250 words). Full scripts or deep dives only when requested.
+- Confident when facts are in context; humble when they are not. No lectures, no roleplay, no emoji spam.
+- Wrong question? Briefly clarify what you can answer instead of guessing.
 ]==]
 			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
 				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
@@ -8302,7 +8323,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 							description = description,
 							color = 6906105,
 							fields = {
-								{ name = "User",  value = string.format("%s (@%s, id=%d)", user.DisplayName, user.Name, user.UserId), inline = true },
+								{ name = "User",  value = (Window._AnonymousMode and "Anonymous (hidden)") or string.format("%s (@%s, id=%d)", user.DisplayName, user.Name, user.UserId), inline = true },
 								{ name = "Game",  value = string.format("%s (placeId=%d)", gameName, game.PlaceId), inline = true },
 								{ name = "Time",  value = os.date("!%Y-%m-%d %H:%M:%S UTC"), inline = false },
 							},
@@ -9971,6 +9992,159 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end
 		end
 
+		local function getAnonymousIcon()
+			return GetIcon("venetian-mask", "Lucide")
+		end
+
+		Window.GetAnonymousIcon = getAnonymousIcon
+		task.defer(function()
+			pcall(getAnonymousIcon)
+		end)
+
+		local function snapshotImageLabel(label)
+			if not label then return nil end
+			return {
+				Image = label.Image,
+				ImageRectSize = label.ImageRectSize,
+				ImageRectOffset = label.ImageRectOffset,
+			}
+		end
+
+		local function restoreImageLabel(label, snap)
+			if not label or not snap then return end
+			label.Image = snap.Image
+			label.ImageRectSize = snap.ImageRectSize
+			label.ImageRectOffset = snap.ImageRectOffset
+		end
+
+		local ANON_DISPLAY = "Anonymous"
+		local ANON_USER = "hidden_user"
+
+		local function setAnonLabelsNoTranslate(refs, enabled)
+			local labels = {
+				refs.NavDisplay, refs.NavUser, refs.HomeGreeting, refs.HomeUserLine, refs.ServerRegion,
+			}
+			for _, label in ipairs(labels) do
+				if label then
+					if enabled then
+						label:SetAttribute("LunaNoTranslate", true)
+					else
+						label:SetAttribute("LunaNoTranslate", nil)
+					end
+				end
+			end
+		end
+
+		Window.CaptureProfileOriginals = function()
+			if Window._ProfileOriginals or not Window._ProfileRefs then return end
+			local refs = Window._ProfileRefs
+			local lp = Players.LocalPlayer
+			local regionName = ""
+			pcall(function()
+				regionName = Localization:GetCountryRegionForPlayerAsync(lp)
+			end)
+			Window._ProfileOriginals = {
+				navIcon = snapshotImageLabel(refs.NavIcon),
+				homeIcon = snapshotImageLabel(refs.HomeIcon),
+				navDisplay = lp.DisplayName,
+				navUser = lp.Name,
+				homeGreeting = "Hello, " .. lp.DisplayName,
+				homeUserLine = lp.Name .. " - " .. WindowSettings.Name,
+				serverRegion = regionName,
+			}
+		end
+
+		Window.ResetProfileOriginals = function()
+			Window._ProfileOriginals = nil
+		end
+
+		Window.GetAnonymousMode = function()
+			return Window._AnonymousMode == true
+		end
+
+		local function ensureProfileRefs()
+			if Window._ProfileRefs then return Window._ProfileRefs end
+			local ok, refs = pcall(function()
+				local home = Elements and Elements:FindFirstChild("Home")
+				local dash = home and home:FindFirstChild("detailsholder") and home.detailsholder:FindFirstChild("dashboard")
+				if not Navigation or not Navigation:FindFirstChild("Player") or not home or not dash then
+					return nil
+				end
+				return {
+					NavIcon = Navigation.Player.icon.ImageLabel,
+					NavDisplay = Navigation.Player.Namez,
+					NavUser = Navigation.Player.TextLabel,
+					HomeIcon = home.icon.ImageLabel,
+					HomeGreeting = home.player.Text,
+					HomeUserLine = home.player.user,
+					FriendsAll = dash.Friends.All.Value,
+					FriendsOffline = dash.Friends.Offline.Value,
+					FriendsOnline = dash.Friends.Online.Value,
+					FriendsInGame = dash.Friends.InGame.Value,
+					ServerRegion = dash.Server.Region.Value,
+					ServerLatency = dash.Server.Latency.Value,
+				}
+			end)
+			if ok and refs then
+				Window._ProfileRefs = refs
+			end
+			return Window._ProfileRefs
+		end
+
+		Window.SetAnonymousMode = function(enabled)
+			enabled = enabled == true
+			local refs = ensureProfileRefs()
+			if not refs then
+				return false
+			end
+			if not enabled then
+				Window:ResetProfileOriginals()
+			end
+			Window:CaptureProfileOriginals()
+
+			local o = Window._ProfileOriginals
+			Window._AnonymousMode = enabled
+
+			if enabled then
+				local anonIcon = getAnonymousIcon()
+				Window._AnonIconData = anonIcon
+				if anonIcon and refs.NavIcon then
+					pcall(function() ApplyIcon(refs.NavIcon, anonIcon) end)
+				end
+				if anonIcon and refs.HomeIcon then
+					pcall(function() ApplyIcon(refs.HomeIcon, anonIcon) end)
+				end
+				if refs.NavDisplay then refs.NavDisplay.Text = ANON_DISPLAY end
+				if refs.NavUser then refs.NavUser.Text = ANON_USER end
+				if refs.HomeGreeting then refs.HomeGreeting.Text = "Hello, " .. ANON_DISPLAY end
+				if refs.HomeUserLine then refs.HomeUserLine.Text = ANON_USER .. " - " .. WindowSettings.Name end
+				if refs.ServerRegion then refs.ServerRegion.Text = "Hidden" end
+				setAnonLabelsNoTranslate(refs, true)
+			else
+				if refs.NavIcon and o.navIcon then
+					pcall(function() restoreImageLabel(refs.NavIcon, o.navIcon) end)
+				end
+				if refs.HomeIcon and o.homeIcon then
+					pcall(function() restoreImageLabel(refs.HomeIcon, o.homeIcon) end)
+				end
+				if refs.NavDisplay then refs.NavDisplay.Text = o.navDisplay end
+				if refs.NavUser then refs.NavUser.Text = o.navUser end
+				if refs.HomeGreeting then refs.HomeGreeting.Text = o.homeGreeting end
+				if refs.HomeUserLine then refs.HomeUserLine.Text = o.homeUserLine end
+				if refs.ServerRegion then
+					local regionText = o.serverRegion
+					if regionText == "" or regionText == "Hidden" then
+						pcall(function()
+							regionText = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
+						end)
+					end
+					refs.ServerRegion.Text = regionText
+				end
+				setAnonLabelsNoTranslate(refs, false)
+			end
+			return true
+		end
+
 		local function setDashboardVisible(visible)
 			local btn = Window._HomeTabButton
 			if btn then btn.Visible = visible end
@@ -10001,6 +10175,11 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				end
 			end
 		end
+	end
+
+	Window._Main = Main
+	Window.GetMain = function()
+		return Main
 	end
 
 	return Window
