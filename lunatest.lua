@@ -7812,7 +7812,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 
 		local function nowSec() return os.time() end
 		local function newChatId()
-			return string.format("%08x_%d", math.random(0, 0xFFFFFFFF), nowSec())
+			-- Luau's `math.random(lo, hi)` is bounded by 2^31-1, so 0xFFFFFFFF
+			-- overflows ("interval is empty"). Compose 32 random bits from two
+			-- 16-bit halves instead.
+			local hi = math.random(0, 0xFFFF)
+			local lo = math.random(0, 0xFFFF)
+			return string.format("%04x%04x_%d", hi, lo, nowSec())
 		end
 		local function moveToFront(id)
 			for i, v in ipairs(chatOrder) do
