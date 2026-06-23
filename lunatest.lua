@@ -7639,21 +7639,33 @@ function Window:CreateHomeTab(HomeTabSettings)
 	-- ============================================================
 	-- AI Chat tab (powered by pollinations.ai, no API key required)
 	-- ============================================================
-	-- Creates a new tab with a chat UI: a scrollable message history, an input
-	-- bar, and an animated "thinking..." indicator while the request is in
-	-- flight. Returns a table with helper methods (:Send, :Clear, etc).
+	-- Layout:
+	--   ┌─────────────────────────────────────────────────────────────┐
+	--   │ Header: title • subtitle • [model] • [sidebar] [save] [×]   │
+	--   ├──────────────────────────────────────┬──────────────────────┤
+	--   │ Messages (scroll)                    │ + New chat           │
+	--   │                                      │ search               │
+	--   │                                      │ ────────             │
+	--   │                                      │ • Active chat   ⋯    │
+	--   │ [Quick-prompt chips]                 │   Recent chat 1 ⋯    │
+	--   │ [Input box                  ] [▶]    │   …                  │
+	--   └──────────────────────────────────────┴──────────────────────┘
+	--
+	-- Multi-chat persistence (Solara_AI_Chat.json v2):
+	--   { v = 2, activeId, model, chats = { {id, name, conv, updatedAt, pinned, autoNamed}, ... } }
+	-- Old v1 single-chat files are migrated transparently into one "Previous chat".
 	function Window:CreateAiTab(opts)
 		opts = Kwargify({
 			Name = "Solara Hub AI",
 			Icon = "bot",
 			ImageSource = "Material",
-			SystemPrompt = nil,         -- if set, replaces the default Solara-aware prompt
+			SystemPrompt = nil,         -- if set, replaces the default Luau/host prompt
 			Knowledge = nil,            -- extra context block injected into the system prompt
 			Model = "openai",
 			ShowTitle = true,
 			Endpoint = "https://text.pollinations.ai/openai",
 			Webhook = nil,              -- Discord webhook URL for "Send script request" flow
-			SaveFile = "LunaAI_chat.json", -- where to persist chat history
+			SaveFile = "LunaAI_chat.json", -- where to persist chat history (multi-chat v2)
 			AutoSave = true,
 		}, opts or {})
 
@@ -7666,58 +7678,71 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		local Page = hostTab.Page
 
-		-- The chat fills the whole page; remove the standard UIListLayout for this
-		-- tab so absolute positioning works as expected, and clear residual padding.
+		-- The chat fills the whole page; remove the standard UIListLayout so absolute
+		-- positioning works, and stop the Page from auto-canvassing.
 		local existingList = Page:FindFirstChildOfClass("UIListLayout")
 		if existingList then existingList:Destroy() end
 		local existingPadding = Page:FindFirstChildOfClass("UIPadding")
 		if existingPadding then existingPadding:Destroy() end
-		-- Also kill any auto canvas so our absolute layout decides the size.
 		if Page:IsA("ScrollingFrame") then
 			Page.CanvasSize = UDim2.new(0, 0, 0, 0)
 			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
 			Page.ScrollingEnabled = false
 		end
 
-		-- Default system prompt - rich enough that the model picks up tone/format
-		-- expectations and the Solara Hub context without callers having to repeat it.
+		-- =====================================================================
+		-- System prompt
+		-- =====================================================================
+		-- This is the "library" portion — generic Luau/Roblox/executor guidance.
+		-- All product-specific knowledge (tabs, settings, supported games) should
+		-- arrive from the host via opts.Knowledge and is appended below.
 		local function buildSystemPrompt()
 			-- NOTE: level-2 long string `[==[ ... ]==]` so the `[[SCRIPT_REQUEST: ...]]`
 			-- marker inside this prompt doesn't close the literal early.
-			local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — a general-purpose Luau/Roblox scripting assistant built into Solara Hub. You help with Solara Hub itself AND with writing/fixing/explaining exploit scripts. Always reply in the same language the user writes in (Russian → Russian, English → English, etc.).
+			local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — an expert Luau/Roblox assistant embedded inside the Solara Hub script-executor UI. You are precise, brutally honest, and never sloppy. Always reply in the **exact same language the user wrote in** (Russian → Russian, English → English, mixed → mirror the dominant one).
 
-## What you can do
-1. **Solara Hub help** — games supported, which tab to open, settings (SearchBar, Language, Zoom, theme), executors, how to load scripts from the hub.
-2. **Write Luau scripts** — ESP, aimbot, autofarm, GUIs, remotes, hooks, file IO, etc. Put runnable code in ```lua ... ``` fences (the UI adds Copy / Execute under blocks).
-3. **Debug & improve code** — explain errors, suggest fixes, optimize, add feature checks.
-4. **Executor APIs** — use functions from the "Executor API" section below when relevant. Always guard: `if typeof(fn) == "function" then` or `pcall` — never assume every executor has Potassium-only APIs.
+## Identity & purpose
+- You live INSIDE Solara Hub as a sidebar tab. The user already has the hub open and an executor running.
+- Primary jobs (in order of frequency): (1) help navigate Solara Hub, (2) write/fix Luau scripts, (3) debug errors, (4) explain executor / Roblox APIs.
+- You are NOT a roleplay chatbot. No personas, no flirting, no "as an AI…" disclaimers, no apologies for being an AI.
 
-## Anti-hallucination (strict)
-- Do NOT invent Solara Hub buttons, tabs, or features not listed under "Solara Hub UI facts".
-- Do NOT invent game support: use only the "Supported games" list from host context when present.
-- Do NOT invent executor functions: only suggest APIs from the reference below or standard Roblox (`game`, `Players`, `RunService`, etc.).
-- Do NOT claim you ran code, opened UI, or sent Discord messages — the host UI does that.
-- If unsure, say you are unsure and offer the script-request flow.
+## How to think before answering (always)
+1. **Read host context first.** A block "Extra context provided by the host script:" is appended below — that is ground truth for tabs, settings, supported games, accents, hotkeys. It overrides your training and any guessing.
+2. **Pick ONE clear path.** A focused answer beats a wall of related tips. Offer alternatives only if the user asks or the path is risky.
+3. **Separate facts from guesses.** Known → state plainly. Unknown → say "I don't know" / "not in the supported list" / "open that tab and check the exact name". Never fill gaps with invented UI labels, script names, hotkeys or version numbers.
+4. **Navigation vs custom code.** Hub-navigation questions → answer with exact `Tab → Section → Control` path. Custom code requests → working Luau in a ```lua fence. Do not mix unless the user needs both.
+5. **No fake actions.** You cannot click buttons, toggle settings, run scripts, send Discord messages, or modify files. Only the UI does: Execute button, Feedback form, script-request Send card. Never write "I have toggled / sent / executed".
+6. **Honesty over filler.** If a request is impossible, say so in one line and propose the closest legal alternative.
 
-## Solara Hub UI facts (only these exist)
-- Maintainer: **Samuraa1**. Discord: **discord.gg/DPCKQRJmdF**
-- Tabs: **Home** (dashboard), **Universal Scripts** (sections below), **FE Scripts**, **Executors UI**, per-game tab when supported, **Hub Settings And More**
-- Universal sections: Main Scripts, Aimbots + Silent Aim, ESP, Animations, Automization, Tools and Utilities, Trolling, Performance, DEV Tools, Admin, Visual, Backdoor Scanners
-- Settings: Auto Execute, Destroy Hub, interface bind, SearchBar (Ctrl+F), Language, Zoom (Ctrl+/−/0), Interface Accent, Feedback, FPS slider, Credits
-- Window: draggable, resizable (PC), search icon, minimize/close, white rescue drag bar below window when off-screen, notifications, this AI tab
+## Anti-hallucination — zero tolerance
+- **Never invent:** sidebar tabs, sections, buttons, toggles, game support, hub script names, executor APIs, premium tiers, account/login systems, Discord features, key statuses, version numbers, changelog entries.
+- **Games:** a game is "supported" only if listed in the host "Supported games" block. Otherwise call it **Game Not Supported** — explicitly — and offer the script-request flow or Discord.
+- **Universal / FE / Executor-UI sections:** do not name a specific button unless host context lists it OR the user just quoted the exact label on screen. Default advice for finding something: "open the section and use **Search Bar** (Ctrl+F by default)".
+- **"Undetected" / "keyless" / "free" claims:** never make them unless the host Description explicitly says so or the user confirmed it from the hub.
+- **Patch notes / stats / counters:** never invent. Always point to **Dashboard → Changelogs** or **Hub Settings And More → Solara Hub Info** so the user reads the live label.
+- **When you are unsure:** one honest sentence + one next step (tab to open, Search Bar, Feedback, script-request). No filler, no made-up workarounds.
 
-## Script-request flow (missing hub scripts only)
-- If the user wants a script the hub likely lacks, ask once if they want to forward to developers.
-- If they confirm on the **next** message, append exactly one line:
-  [[SCRIPT_REQUEST: short summary]]
-- Never fake delivery; the UI shows a Send button.
+## Script-request flow (missing hub content only)
+- Trigger: user wants a game or hub script that is NOT in host's Supported / per-game lists.
+- Turn 1 (current reply): **ask once** "Want me to notify the developers about this request?"
+- Turn 2 (next reply, ONLY if user confirms): include exactly one line, on its own:
+  `[[SCRIPT_REQUEST: short summary of what they want]]`
+- Never claim it was already sent — the UI shows a green Send card; the user clicks it.
 
-## Coding standards for Luau you output
-- Prefer `task.wait` over `wait`; use `game:GetService("ServiceName")`.
-- LocalPlayer: `game.Players.LocalPlayer` — check it exists.
-- For exploit-only calls, wrap in `pcall` or existence checks; mention if a feature needs a specific executor (e.g. Potassium).
-- Keep scripts focused; comment only non-obvious logic.
-- Never use `loadstring` on untrusted URLs unless the user explicitly asked.
+## Coding standards (Luau you output)
+- Use `task.wait`, `task.spawn`, `task.delay` — not the deprecated `wait/spawn/delay`.
+- `game:GetService("Service")` for every service; never `game.Service` repeatedly.
+- Verify `Players.LocalPlayer` exists; wait for `Character` and `HumanoidRootPart` if you touch them.
+- Wrap executor-only APIs (`hookmetamethod`, `getconnections`, etc.) in `pcall` or `if typeof(fn) == "function" then`. Note when something is Potassium-only / Solara-missing.
+- Keep scripts small and correct rather than long and broken. Only add a comment when the code's intent isn't obvious; never narrate trivial lines.
+- Do NOT use `loadstring(game:HttpGet(...))` on random URLs unless the user pasted that URL themselves or it is from host context.
+- ALWAYS put runnable code in a ```lua ... ``` fence. The UI adds Copy / Execute buttons to those automatically.
+
+## Debug workflow (when shown an error)
+1. Echo the key fragment of the error in `inline code` so the user knows you read it.
+2. State the most likely cause in one short sentence.
+3. Give the **minimal** fix — patch lines or a short snippet, not a full rewrite, unless the user asks for one.
+4. Mention executor-specific gotchas only when relevant (e.g. Solara missing `setnamecallmethod`).
 
 ## Executor API reference (guard every call)
 **Closures:** checkcaller, clonefunction, hookfunction, restorefunction, newcclosure, loadstring, isexecutorclosure, islclosure, iscclosure
@@ -7734,12 +7759,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 **WebSocket:** WebSocket.connect(url)
 **Crypt (Potassium):** crypt.hash, crypt.encrypt, crypt.decrypt, base64encode/decode via crypt or global aliases
 
-Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may be missing on Solara/Xeno/Wave — always note that and offer a fallback using Roblox services.
+Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are MISSING on Solara, Xeno, Wave, Codex, Trigon, Hydrogen — when you use one, mention the limitation and offer a Roblox-services fallback.
 
-## Formatting
-- **bold**, *italic*, `inline code`, bullet lists, short ### headers when needed.
-- Default length: under 280 words unless the user wants a full script or deep explanation.
-- Be friendly and practical, not overly formal.
+## Output format & tone
+- Match the user's language and approximate length. Russian user → answer in Russian.
+- Use short `###` sub-headers or bullets when scanning helps. **Bold** for tab / button / control names the user must find on screen.
+- Default length: under ~250 words unless the user wants a full script or a deep dive.
+- No emoji spam. No "Hope this helps!" filler. No restating the question back at the user.
+- Confident when host context backs you up; humble (and explicit) when it doesn't.
+- Wrong question or missing info? Briefly say what you can answer and what you'd need to answer the rest — don't guess.
 ]==]
 			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
 				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
@@ -7747,136 +7775,503 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return base
 		end
 
-		-- ---------- header ----------
+		-- =====================================================================
+		-- Palette
+		-- =====================================================================
+		local ACCENT       = Color3.fromRGB(124, 92, 240)
+		local ACCENT_DEEP  = Color3.fromRGB(95, 75, 220)
+		local PANEL_BG     = Color3.fromRGB(24, 22, 36)
+		local PANEL_BG_LT  = Color3.fromRGB(38, 34, 54)
+		local STROKE_SOFT  = Color3.fromRGB(120, 105, 175)
+		local TEXT_PRIMARY = Color3.fromRGB(245, 240, 255)
+		local TEXT_DIM     = Color3.fromRGB(175, 170, 200)
+
+		-- =====================================================================
+		-- Multi-chat storage
+		-- =====================================================================
+		local STORAGE_VERSION = 2
+		local MAX_CHATS = 50
+		local AVAILABLE_MODELS = {
+			{ id = "openai",           label = "GPT-4o-mini", desc = "Fast default" },
+			{ id = "openai-large",     label = "GPT-4o",      desc = "Smarter, slower" },
+			{ id = "openai-reasoning", label = "o3-mini",     desc = "Reasoning" },
+			{ id = "qwen-coder",       label = "Qwen Coder",  desc = "Code-focused" },
+			{ id = "mistral",          label = "Mistral",     desc = "Open weights" },
+			{ id = "deepseek",         label = "DeepSeek",    desc = "Code / logic" },
+			{ id = "llama",            label = "Llama 3.3",   desc = "Open weights" },
+		}
+
+		local chats = {}            -- id -> chat
+		local chatOrder = {}        -- array of ids in MRU order (most recent first)
+		local activeId = nil
+		local currentModel = opts.Model or "openai"
+		-- Generation token: incrementing counter so a Stop / chat-switch cancels
+		-- the in-flight reply (we drop it instead of writing to the UI).
+		local generation = { token = 0, active = false, chatId = nil }
+		local sidebarOpen = true
+
+		local function nowSec() return os.time() end
+		local function newChatId()
+			return string.format("%08x_%d", math.random(0, 0xFFFFFFFF), nowSec())
+		end
+		local function moveToFront(id)
+			for i, v in ipairs(chatOrder) do
+				if v == id then table.remove(chatOrder, i); break end
+			end
+			table.insert(chatOrder, 1, id)
+		end
+		local function freshConv()
+			return { { role = "system", content = buildSystemPrompt() } }
+		end
+		local function newChat(name)
+			local id = newChatId()
+			local c = {
+				id = id,
+				name = name or "New chat",
+				conv = freshConv(),
+				updatedAt = nowSec(),
+				pinned = false,
+				autoNamed = false,
+			}
+			chats[id] = c
+			table.insert(chatOrder, 1, id)
+			while #chatOrder > MAX_CHATS do
+				local rid = table.remove(chatOrder)
+				if rid and not (chats[rid] and chats[rid].pinned) then
+					chats[rid] = nil
+				elseif rid then
+					-- pinned: keep, but it dropped to the bottom of MRU
+					table.insert(chatOrder, 1, rid)
+					break
+				end
+			end
+			return c
+		end
+		local function getActive() return activeId and chats[activeId] or nil end
+		local function userMsgCount(chat)
+			local n = 0
+			if chat and chat.conv then
+				for _, m in ipairs(chat.conv) do
+					if m.role == "user" then n = n + 1 end
+				end
+			end
+			return n
+		end
+		local function lastAssistantText(chat)
+			if not chat or not chat.conv then return "" end
+			for i = #chat.conv, 1, -1 do
+				local m = chat.conv[i]
+				if m.role == "assistant" then return m.content end
+			end
+			for i = #chat.conv, 1, -1 do
+				local m = chat.conv[i]
+				if m.role == "user" then return m.content end
+			end
+			return ""
+		end
+
+		local function saveAll()
+			if not opts.AutoSave or not writefile then return end
+			pcall(function()
+				local payload = { v = STORAGE_VERSION, activeId = activeId, model = currentModel, chats = {} }
+				for _, id in ipairs(chatOrder) do
+					local c = chats[id]
+					if c then
+						table.insert(payload.chats, {
+							id = c.id, name = c.name, conv = c.conv,
+							updatedAt = c.updatedAt, pinned = c.pinned, autoNamed = c.autoNamed,
+						})
+					end
+				end
+				writefile(opts.SaveFile, HttpService:JSONEncode(payload))
+			end)
+		end
+		local function loadAll()
+			if not isfile or not readfile then return end
+			if not isfile(opts.SaveFile) then return end
+			local ok, data = pcall(function() return HttpService:JSONDecode(readfile(opts.SaveFile)) end)
+			if not ok or type(data) ~= "table" then return end
+			if data.v == STORAGE_VERSION and type(data.chats) == "table" then
+				for _, c in ipairs(data.chats) do
+					if type(c) == "table" and c.id and type(c.conv) == "table" then
+						-- Refresh the system message so updated host knowledge applies.
+						if c.conv[1] and c.conv[1].role == "system" then
+							c.conv[1].content = buildSystemPrompt()
+						else
+							table.insert(c.conv, 1, { role = "system", content = buildSystemPrompt() })
+						end
+						chats[c.id] = c
+						table.insert(chatOrder, c.id)
+					end
+				end
+				if data.activeId and chats[data.activeId] then activeId = data.activeId end
+				if type(data.model) == "string" and data.model ~= "" then currentModel = data.model end
+			elseif type(data.conv) == "table" then
+				-- v1 single-chat migration → "Previous chat".
+				local id = newChatId()
+				local c = {
+					id = id, name = "Previous chat",
+					conv = data.conv, updatedAt = nowSec(),
+					pinned = false, autoNamed = true,
+				}
+				if c.conv[1] and c.conv[1].role == "system" then
+					c.conv[1].content = buildSystemPrompt()
+				else
+					table.insert(c.conv, 1, { role = "system", content = buildSystemPrompt() })
+				end
+				chats[id] = c
+				table.insert(chatOrder, id)
+				activeId = id
+			end
+		end
+
+		-- =====================================================================
+		-- Forward declarations (referenced by UI callbacks defined below)
+		-- =====================================================================
+		local AiTab = {}
+		local renderActiveChat, renderSidebar, setHeaderForChat
+		local appendMessage, addScriptRequestCard, extractScriptRequest
+		local showQuickRow, showEmptyState
+		local welcomeNode
+
+		-- =====================================================================
+		-- Header
+		-- =====================================================================
 		local Header = Instance.new("Frame")
 		Header.Name = RandomName()
 		Header.BackgroundTransparency = 1
 		Header.BorderSizePixel = 0
 		Header.Position = UDim2.new(0, 12, 0, 6)
-		Header.Size = UDim2.new(1, -24, 0, 28)
+		Header.Size = UDim2.new(1, -24, 0, 34)
 		Header.Parent = Page
+
+		local titleIcon = Instance.new("ImageLabel")
+		titleIcon.BackgroundTransparency = 1
+		titleIcon.Size = UDim2.fromOffset(22, 22)
+		titleIcon.Position = UDim2.new(0, 0, 0.5, -11)
+		titleIcon.ImageColor3 = ACCENT
+		titleIcon.Parent = Header
+		ApplyIcon(titleIcon, GetIcon("auto_awesome", "Material"))
 
 		local headerTitle = Instance.new("TextLabel")
 		headerTitle.BackgroundTransparency = 1
-		headerTitle.Size = UDim2.new(1, -120, 1, 0)
-		headerTitle.Position = UDim2.new(0, 0, 0, 0)
+		headerTitle.Position = UDim2.new(0, 30, 0, 0)
+		headerTitle.Size = UDim2.new(1, -250, 0, 18)
 		headerTitle.Text = "Solara Hub AI"
-		headerTitle.TextColor3 = Color3.fromRGB(245, 240, 255)
+		headerTitle.TextColor3 = TEXT_PRIMARY
 		headerTitle.Font = Enum.Font.GothamBold
-		headerTitle.TextSize = 16
+		headerTitle.TextSize = 15
 		headerTitle.TextXAlignment = Enum.TextXAlignment.Left
-		headerTitle.TextYAlignment = Enum.TextYAlignment.Center
+		headerTitle.TextYAlignment = Enum.TextYAlignment.Bottom
+		headerTitle.TextTruncate = Enum.TextTruncate.AtEnd
 		headerTitle:SetAttribute("LunaNoTranslate", true)
 		headerTitle.Parent = Header
 
-		local function makeHeaderBtn(parent, iconName, tooltip, xOffset)
+		local headerSub = Instance.new("TextLabel")
+		headerSub.BackgroundTransparency = 1
+		headerSub.Position = UDim2.new(0, 30, 0, 18)
+		headerSub.Size = UDim2.new(1, -250, 0, 14)
+		headerSub.Text = ""
+		headerSub.TextColor3 = TEXT_DIM
+		headerSub.Font = Enum.Font.GothamMedium
+		headerSub.TextSize = 11
+		headerSub.TextXAlignment = Enum.TextXAlignment.Left
+		headerSub.TextYAlignment = Enum.TextYAlignment.Top
+		headerSub:SetAttribute("LunaNoTranslate", true)
+		headerSub.Parent = Header
+
+		local function makeHeaderBtn(iconName, xOffset)
 			local btn = Instance.new("ImageButton")
 			btn.Name = RandomName()
 			btn.AnchorPoint = Vector2.new(1, 0.5)
 			btn.Position = UDim2.new(1, xOffset, 0.5, 0)
-			btn.Size = UDim2.fromOffset(26, 22)
-			btn.BackgroundColor3 = Color3.fromRGB(45, 40, 60)
+			btn.Size = UDim2.fromOffset(28, 26)
+			btn.BackgroundColor3 = PANEL_BG_LT
 			btn.BackgroundTransparency = 0.2
-			btn.ImageColor3 = Color3.fromRGB(225, 220, 240)
+			btn.ImageColor3 = Color3.fromRGB(230, 225, 245)
 			btn.AutoButtonColor = false
-			btn.Parent = parent
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = btn
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 110, 170); s.Transparency = 0.55; s.Parent = btn
+			btn.Parent = Header
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 7); c.Parent = btn
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.6; s.Parent = btn
 			ApplyIcon(btn, GetIcon(iconName, "Material"))
 			btn.MouseEnter:Connect(function() tween(btn, {BackgroundTransparency = 0.05}) end)
 			btn.MouseLeave:Connect(function() tween(btn, {BackgroundTransparency = 0.2}) end)
 			return btn
 		end
 
-		local SaveBtn  = makeHeaderBtn(Header, "save",          "Save chat",  -0)
-		local LoadBtn  = makeHeaderBtn(Header, "folder_open",   "Load chat",  -32)
-		local ClearBtn = makeHeaderBtn(Header, "delete",        "Clear chat", -64)
+		local ClearBtn   = makeHeaderBtn("delete",       -0)
+		local SaveBtn    = makeHeaderBtn("save",         -34)
+		local SidebarBtn = makeHeaderBtn("view_sidebar", -68)
 
-		-- ---------- chat container ----------
-		local Container = Instance.new("Frame")
-		Container.Name = RandomName()
-		Container.BackgroundTransparency = 1
-		Container.BorderSizePixel = 0
-		Container.AnchorPoint = Vector2.new(0, 0)
-		Container.Position = UDim2.new(0, 8, 0, 40)
-		Container.Size = UDim2.new(1, -16, 1, -48)
-		Container.Parent = Page
+		-- Model selector pill
+		local ModelPill = Instance.new("TextButton")
+		ModelPill.Name = RandomName()
+		ModelPill.AnchorPoint = Vector2.new(1, 0.5)
+		ModelPill.Position = UDim2.new(1, -104, 0.5, 0)
+		ModelPill.Size = UDim2.fromOffset(120, 26)
+		ModelPill.BackgroundColor3 = PANEL_BG_LT
+		ModelPill.BackgroundTransparency = 0.15
+		ModelPill.AutoButtonColor = false
+		ModelPill.Text = ""
+		ModelPill.Parent = Header
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = ModelPill
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = ModelPill
+		end
+		local modelIcon = Instance.new("ImageLabel")
+		modelIcon.BackgroundTransparency = 1
+		modelIcon.Size = UDim2.fromOffset(13, 13)
+		modelIcon.Position = UDim2.new(0, 8, 0.5, -6)
+		modelIcon.ImageColor3 = ACCENT
+		modelIcon.Parent = ModelPill
+		ApplyIcon(modelIcon, GetIcon("bolt", "Material"))
+		local ModelLabel = Instance.new("TextLabel")
+		ModelLabel.BackgroundTransparency = 1
+		ModelLabel.Position = UDim2.new(0, 26, 0, 0)
+		ModelLabel.Size = UDim2.new(1, -30, 1, 0)
+		ModelLabel.Font = Enum.Font.GothamSemibold
+		ModelLabel.TextSize = 11
+		ModelLabel.TextColor3 = TEXT_PRIMARY
+		ModelLabel.TextXAlignment = Enum.TextXAlignment.Left
+		ModelLabel.Text = "GPT-4o-mini"
+		ModelLabel:SetAttribute("LunaNoTranslate", true)
+		ModelLabel.Parent = ModelPill
+		ModelPill.MouseEnter:Connect(function() tween(ModelPill, {BackgroundTransparency = 0}) end)
+		ModelPill.MouseLeave:Connect(function() tween(ModelPill, {BackgroundTransparency = 0.15}) end)
 
-		-- Messages history (scrollable). Marked non-translatable so user/AI
-		-- conversation text isn't sent through Google Translate.
+		-- =====================================================================
+		-- Body = ChatPane (left) + Sidebar (right)
+		-- =====================================================================
+		local SIDEBAR_W   = 210
+		local SIDEBAR_GAP = 8
+
+		local Body = Instance.new("Frame")
+		Body.Name = RandomName()
+		Body.BackgroundTransparency = 1
+		Body.Position = UDim2.new(0, 8, 0, 46)
+		Body.Size = UDim2.new(1, -16, 1, -54)
+		Body.Parent = Page
+
+		local Sidebar = Instance.new("Frame")
+		Sidebar.Name = RandomName()
+		Sidebar.AnchorPoint = Vector2.new(1, 0)
+		Sidebar.Position = UDim2.new(1, 0, 0, 0)
+		Sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
+		Sidebar.BackgroundColor3 = PANEL_BG
+		Sidebar.BackgroundTransparency = 0.15
+		Sidebar.BorderSizePixel = 0
+		Sidebar.Parent = Body
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = Sidebar
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.7; s.Parent = Sidebar
+			local g = Instance.new("UIGradient")
+			g.Rotation = 90
+			g.Transparency = NumberSequence.new(0.05, 0.2)
+			g.Parent = Sidebar
+		end
+
+		local ChatPane = Instance.new("Frame")
+		ChatPane.Name = RandomName()
+		ChatPane.Position = UDim2.new(0, 0, 0, 0)
+		ChatPane.Size = UDim2.new(1, -(SIDEBAR_W + SIDEBAR_GAP), 1, 0)
+		ChatPane.BackgroundTransparency = 1
+		ChatPane.Parent = Body
+
+		local function applySidebarLayout(animated)
+			local ti = animated == false and TweenInfo.new(0) or nil
+			if sidebarOpen then
+				Sidebar.Visible = true
+				TweenService:Create(Sidebar, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{Size = UDim2.new(0, SIDEBAR_W, 1, 0), BackgroundTransparency = 0.15}):Play()
+				TweenService:Create(ChatPane, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{Size = UDim2.new(1, -(SIDEBAR_W + SIDEBAR_GAP), 1, 0)}):Play()
+			else
+				TweenService:Create(Sidebar, ti or TweenInfo.new(0.18),
+					{Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1}):Play()
+				TweenService:Create(ChatPane, ti or TweenInfo.new(0.18),
+					{Size = UDim2.new(1, 0, 1, 0)}):Play()
+				task.delay(0.2, function() if not sidebarOpen then Sidebar.Visible = false end end)
+			end
+		end
+		SidebarBtn.MouseButton1Click:Connect(function()
+			sidebarOpen = not sidebarOpen
+			applySidebarLayout(true)
+		end)
+
+		-- =====================================================================
+		-- Sidebar contents
+		-- =====================================================================
+		do
+			local sbPad = Instance.new("UIPadding")
+			sbPad.PaddingTop = UDim.new(0, 10); sbPad.PaddingBottom = UDim.new(0, 10)
+			sbPad.PaddingLeft = UDim.new(0, 10); sbPad.PaddingRight = UDim.new(0, 10)
+			sbPad.Parent = Sidebar
+		end
+
+		local NewChatBtn = Instance.new("TextButton")
+		NewChatBtn.Name = RandomName()
+		NewChatBtn.Position = UDim2.new(0, 0, 0, 0)
+		NewChatBtn.Size = UDim2.new(1, 0, 0, 32)
+		NewChatBtn.BackgroundColor3 = ACCENT_DEEP
+		NewChatBtn.BackgroundTransparency = 0.05
+		NewChatBtn.Text = "  +  New chat"
+		NewChatBtn.Font = Enum.Font.GothamBold
+		NewChatBtn.TextSize = 13
+		NewChatBtn.TextColor3 = TEXT_PRIMARY
+		NewChatBtn.AutoButtonColor = false
+		NewChatBtn:SetAttribute("LunaNoTranslate", true)
+		NewChatBtn.Parent = Sidebar
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = NewChatBtn
+			local s = Instance.new("UIStroke"); s.Color = ACCENT; s.Transparency = 0.35; s.Parent = NewChatBtn
+			NewChatBtn.MouseEnter:Connect(function() tween(NewChatBtn, {BackgroundTransparency = -0.05}) end)
+			NewChatBtn.MouseLeave:Connect(function() tween(NewChatBtn, {BackgroundTransparency = 0.05}) end)
+		end
+
+		local SearchBox = Instance.new("Frame")
+		SearchBox.Name = RandomName()
+		SearchBox.Position = UDim2.new(0, 0, 0, 40)
+		SearchBox.Size = UDim2.new(1, 0, 0, 28)
+		SearchBox.BackgroundColor3 = PANEL_BG_LT
+		SearchBox.BackgroundTransparency = 0.25
+		SearchBox.Parent = Sidebar
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 7); c.Parent = SearchBox
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.7; s.Parent = SearchBox
+		end
+		do
+			local searchIcon = Instance.new("ImageLabel")
+			searchIcon.BackgroundTransparency = 1
+			searchIcon.Size = UDim2.fromOffset(14, 14)
+			searchIcon.Position = UDim2.new(0, 8, 0.5, -7)
+			searchIcon.ImageColor3 = TEXT_DIM
+			searchIcon.Parent = SearchBox
+			ApplyIcon(searchIcon, GetIcon("search", "Material"))
+		end
+		local SearchInput = Instance.new("TextBox")
+		SearchInput.Name = RandomName()
+		SearchInput.BackgroundTransparency = 1
+		SearchInput.Position = UDim2.new(0, 26, 0, 0)
+		SearchInput.Size = UDim2.new(1, -32, 1, 0)
+		SearchInput.PlaceholderText = "Search chats..."
+		SearchInput.PlaceholderColor3 = TEXT_DIM
+		SearchInput.Text = ""
+		SearchInput.TextColor3 = TEXT_PRIMARY
+		SearchInput.Font = Enum.Font.GothamMedium
+		SearchInput.TextSize = 12
+		SearchInput.TextXAlignment = Enum.TextXAlignment.Left
+		SearchInput.ClearTextOnFocus = false
+		SearchInput:SetAttribute("LunaNoTranslate", true)
+		SearchInput.Parent = SearchBox
+
+		local ChatList = Instance.new("ScrollingFrame")
+		ChatList.Name = RandomName()
+		ChatList.Position = UDim2.new(0, 0, 0, 76)
+		ChatList.Size = UDim2.new(1, 0, 1, -76)
+		ChatList.BackgroundTransparency = 1
+		ChatList.BorderSizePixel = 0
+		ChatList.ScrollBarThickness = 2
+		ChatList.ScrollBarImageColor3 = ACCENT
+		ChatList.CanvasSize = UDim2.new(0, 0, 0, 0)
+		ChatList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		ChatList:SetAttribute("LunaNoTranslate", true)
+		ChatList.Parent = Sidebar
+		do
+			local l = Instance.new("UIListLayout")
+			l.Padding = UDim.new(0, 4)
+			l.SortOrder = Enum.SortOrder.LayoutOrder
+			l.Parent = ChatList
+		end
+
+		-- =====================================================================
+		-- Chat pane: messages + quick prompts + input bar
+		-- =====================================================================
 		local Messages = Instance.new("ScrollingFrame")
 		Messages.Name = RandomName()
 		Messages.BackgroundTransparency = 1
 		Messages.BorderSizePixel = 0
 		Messages.Position = UDim2.new(0, 0, 0, 0)
-		Messages.Size = UDim2.new(1, 0, 1, -56)
+		Messages.Size = UDim2.new(1, 0, 1, -96)
 		Messages.ScrollBarThickness = 3
 		Messages.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
 		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Messages.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Messages.ScrollingDirection = Enum.ScrollingDirection.Y
 		Messages:SetAttribute("LunaNoTranslate", true)
-		Messages.Parent = Container
+		Messages.Parent = ChatPane
+		do
+			local l = Instance.new("UIListLayout")
+			l.SortOrder = Enum.SortOrder.LayoutOrder
+			l.Padding = UDim.new(0, 10)
+			l.Parent = Messages
+			local p = Instance.new("UIPadding")
+			p.PaddingLeft = UDim.new(0, 4); p.PaddingRight = UDim.new(0, 4); p.PaddingBottom = UDim.new(0, 4)
+			p.Parent = Messages
+		end
 
-		local msgList = Instance.new("UIListLayout")
-		msgList.SortOrder = Enum.SortOrder.LayoutOrder
-		msgList.Padding = UDim.new(0, 10)
-		msgList.Parent = Messages
+		local QuickRow = Instance.new("Frame")
+		QuickRow.Name = RandomName()
+		QuickRow.AnchorPoint = Vector2.new(0, 1)
+		QuickRow.Position = UDim2.new(0, 0, 1, -54)
+		QuickRow.Size = UDim2.new(1, 0, 0, 28)
+		QuickRow.BackgroundTransparency = 1
+		QuickRow.Visible = false
+		QuickRow.Parent = ChatPane
+		do
+			local l = Instance.new("UIListLayout")
+			l.FillDirection = Enum.FillDirection.Horizontal
+			l.Padding = UDim.new(0, 6)
+			l.SortOrder = Enum.SortOrder.LayoutOrder
+			l.Parent = QuickRow
+		end
 
-		local msgPad = Instance.new("UIPadding")
-		msgPad.PaddingLeft = UDim.new(0, 4)
-		msgPad.PaddingRight = UDim.new(0, 4)
-		msgPad.PaddingBottom = UDim.new(0, 4)
-		msgPad.Parent = Messages
-
-		-- ---------- input area ----------
 		local InputBar = Instance.new("Frame")
 		InputBar.Name = RandomName()
-		InputBar.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
-		InputBar.BackgroundTransparency = 0.2
+		InputBar.BackgroundColor3 = PANEL_BG_LT
+		InputBar.BackgroundTransparency = 0.15
 		InputBar.BorderSizePixel = 0
 		InputBar.AnchorPoint = Vector2.new(0, 1)
 		InputBar.Position = UDim2.new(0, 0, 1, 0)
-		InputBar.Size = UDim2.new(1, 0, 0, 46)
-		InputBar.Parent = Container
-
-		local inputCorner = Instance.new("UICorner"); inputCorner.CornerRadius = UDim.new(0, 12); inputCorner.Parent = InputBar
-		local inputStroke = Instance.new("UIStroke"); inputStroke.Color = Color3.fromRGB(130, 120, 170); inputStroke.Transparency = 0.55; inputStroke.Parent = InputBar
-		local inputGradient = Instance.new("UIGradient"); inputGradient.Rotation = 90; inputGradient.Transparency = NumberSequence.new(0.1, 0.35); inputGradient.Parent = InputBar
+		InputBar.Size = UDim2.new(1, 0, 0, 48)
+		InputBar.Parent = ChatPane
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = InputBar
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = InputBar
+			local g = Instance.new("UIGradient"); g.Rotation = 90; g.Transparency = NumberSequence.new(0.1, 0.35); g.Parent = InputBar
+		end
 
 		local InputBox = Instance.new("TextBox")
 		InputBox.Name = RandomName()
 		InputBox.BackgroundTransparency = 1
 		InputBox.Position = UDim2.new(0, 14, 0, 0)
-		InputBox.Size = UDim2.new(1, -64, 1, 0)
-		InputBox.PlaceholderText = "Ask anything..."
-		InputBox.PlaceholderColor3 = Color3.fromRGB(170, 165, 195)
+		InputBox.Size = UDim2.new(1, -68, 1, 0)
+		InputBox.PlaceholderText = "Ask anything — code, Solara Hub, errors..."
+		InputBox.PlaceholderColor3 = TEXT_DIM
 		InputBox.Text = ""
-		InputBox.TextColor3 = Color3.fromRGB(245, 245, 250)
+		InputBox.TextColor3 = TEXT_PRIMARY
 		InputBox.Font = Enum.Font.GothamMedium
 		InputBox.TextSize = 15
 		InputBox.TextXAlignment = Enum.TextXAlignment.Left
 		InputBox.TextYAlignment = Enum.TextYAlignment.Center
 		InputBox.ClearTextOnFocus = false
 		InputBox.MultiLine = false
+		InputBox:SetAttribute("LunaNoTranslate", true)
 		InputBox.Parent = InputBar
 
 		local SendButton = Instance.new("ImageButton")
 		SendButton.Name = RandomName()
 		SendButton.AnchorPoint = Vector2.new(1, 0.5)
 		SendButton.Position = UDim2.new(1, -8, 0.5, 0)
-		SendButton.Size = UDim2.fromOffset(40, 30)
-		SendButton.BackgroundColor3 = Color3.fromRGB(110, 90, 220)
+		SendButton.Size = UDim2.fromOffset(40, 32)
+		SendButton.BackgroundColor3 = ACCENT
 		SendButton.BackgroundTransparency = 0.05
 		SendButton.AutoButtonColor = false
 		SendButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
 		SendButton.Parent = InputBar
 		ApplyIcon(SendButton, GetIcon("send", "Material"))
-		local sendCorner = Instance.new("UICorner"); sendCorner.CornerRadius = UDim.new(0, 8); sendCorner.Parent = SendButton
-
-		-- Conversation state. Includes the system prompt to keep replies on-topic.
-		local conversation = {}
-		table.insert(conversation, { role = "system", content = buildSystemPrompt() })
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = SendButton
+		end
 
 		-- ---------- markdown / rich text ----------
 		-- Returns a list of segments: {kind="text"|"code", lang?, content}
@@ -8102,10 +8497,10 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		end
 
 		-- ---------- assemble a single chat row ----------
-		-- We build BOTH the row layout (left/right alignment) AND populate the
-		-- bubble with text/code segments. Returns helpers for in-place editing
-		-- (used by the streaming "thinking" indicator).
-		local function appendMessage(role, text)
+		-- Builds row layout (left/right alignment) and populates the bubble with
+		-- text/code segments. Returns (row, bubble, label, setContent) so the
+		-- streaming "thinking" indicator can mutate the same bubble in place.
+		appendMessage = function(role, text)
 			local Row = Instance.new("Frame")
 			Row.Name = RandomName()
 			Row.BackgroundTransparency = 1
@@ -8115,15 +8510,13 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Row.LayoutOrder = #Messages:GetChildren()
 			Row.Parent = Messages
 
-			-- Per-row layout. UIListLayout keeps the bubble + meta-row stacked.
 			local rowList = Instance.new("UIListLayout")
 			rowList.SortOrder = Enum.SortOrder.LayoutOrder
 			rowList.Padding = UDim.new(0, 4)
 			rowList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
 			rowList.Parent = Row
 
-			-- Width-limited holder so user / AI bubbles get a hard maximum that
-			-- TextWrapped can use. UISizeConstraint MaxSize.X = ~75% of container.
+			-- Width-limited holder; UISizeConstraint MaxSize.X ≈ 82% of Messages.
 			local Holder = Instance.new("Frame")
 			Holder.Name = "Holder"
 			Holder.BackgroundTransparency = 1
@@ -8133,59 +8526,68 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Holder.LayoutOrder = 1
 			Holder.Parent = Row
 
-			local function refreshMax()
-				local maxX = math.max(160, math.floor(Messages.AbsoluteSize.X * 0.85) - 12)
-				Holder:FindFirstChildOfClass("UISizeConstraint").MaxSize = Vector2.new(maxX, math.huge)
-			end
 			local sc = Instance.new("UISizeConstraint")
 			sc.MaxSize = Vector2.new(360, math.huge)
 			sc.Parent = Holder
+			local function refreshMax()
+				local maxX = math.max(160, math.floor(Messages.AbsoluteSize.X * 0.82) - 12)
+				sc.MaxSize = Vector2.new(maxX, math.huge)
+			end
 			task.defer(refreshMax)
 			Messages:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshMax)
 
-			-- Inner list so the bubble + any code blocks stack vertically inside Holder.
 			local innerList = Instance.new("UIListLayout")
 			innerList.SortOrder = Enum.SortOrder.LayoutOrder
 			innerList.Padding = UDim.new(0, 6)
 			innerList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
 			innerList.Parent = Holder
 
-			-- Main bubble holds the prose. Code blocks render OUTSIDE the bubble
-			-- below it (full Holder width) so monospaced text never wraps weird.
 			local Bubble = bubbleFor(role, Holder)
-
 			local Label = bubbleTextLabel(Bubble, "")
 
-			-- Tiny meta row with Copy button (AI bubbles only - copying our own
-			-- messages back to ourselves is silly).
+			-- Meta row: Copy + Retry (assistant only).
 			local metaRow
 			if role == "assistant" then
 				metaRow = Instance.new("Frame")
+				metaRow.Name = "Meta"
 				metaRow.BackgroundTransparency = 1
-				metaRow.Size = UDim2.new(0, 60, 0, 16)
+				metaRow.Size = UDim2.new(0, 116, 0, 18)
 				metaRow.LayoutOrder = 999
 				metaRow.Parent = Holder
+				local metaList = Instance.new("UIListLayout")
+				metaList.FillDirection = Enum.FillDirection.Horizontal
+				metaList.Padding = UDim.new(0, 4)
+				metaList.SortOrder = Enum.SortOrder.LayoutOrder
+				metaList.Parent = metaRow
 
-				local cpy = Instance.new("TextButton")
-				cpy.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
-				cpy.BackgroundTransparency = 0.25
-				cpy.Size = UDim2.new(1, 0, 1, 0)
-				cpy.Text = "Copy"
-				cpy.Font = Enum.Font.GothamMedium
-				cpy.TextSize = 11
-				cpy.TextColor3 = Color3.fromRGB(220, 215, 240)
-				cpy.AutoButtonColor = false
-				cpy:SetAttribute("LunaNoTranslate", true)
-				cpy.Parent = metaRow
-				local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 5); cc.Parent = cpy
-				cpy.MouseEnter:Connect(function() tween(cpy, {BackgroundTransparency = 0.05}) end)
-				cpy.MouseLeave:Connect(function() tween(cpy, {BackgroundTransparency = 0.25}) end)
+				local function metaBtn(label, layoutOrder)
+					local b = Instance.new("TextButton")
+					b.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
+					b.BackgroundTransparency = 0.25
+					b.Size = UDim2.new(0, 54, 1, 0)
+					b.Text = label
+					b.Font = Enum.Font.GothamMedium
+					b.TextSize = 11
+					b.TextColor3 = Color3.fromRGB(220, 215, 240)
+					b.AutoButtonColor = false
+					b.LayoutOrder = layoutOrder
+					b:SetAttribute("LunaNoTranslate", true)
+					b.Parent = metaRow
+					local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 5); c.Parent = b
+					b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0.05}) end)
+					b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.25}) end)
+					return b
+				end
+				local cpy = metaBtn("Copy", 1)
+				local retry = metaBtn("Retry", 2)
 				cpy.MouseButton1Click:Connect(function()
-					-- Copy the raw, unrendered text so it pastes nicely elsewhere.
 					if copyToClipboard(Label:GetAttribute("LunaRawText") or text or "") then
 						cpy.Text = "Copied!"
 						task.delay(1.2, function() if cpy and cpy.Parent then cpy.Text = "Copy" end end)
 					end
+				end)
+				retry.MouseButton1Click:Connect(function()
+					if AiTab and AiTab.Regenerate then AiTab:Regenerate() end
 				end)
 			end
 
@@ -8250,7 +8652,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		-- Adds a "Send request to developers" card below the AI's bubble. Pressing
 		-- it fires the webhook with userinfo + a short description; the card then
 		-- collapses into a small confirmation pill.
-		local function addScriptRequestCard(holder, description)
+		addScriptRequestCard = function(holder, description)
 			local Card = Instance.new("Frame")
 			Card.Name = RandomName()
 			Card.BackgroundColor3 = Color3.fromRGB(30, 90, 50)
@@ -8350,7 +8752,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		-- Strips the [[SCRIPT_REQUEST: ...]] marker (case-insensitive) and returns
 		-- (cleaned_text, description_or_nil). The marker survives across newlines.
-		local function extractScriptRequest(text)
+		extractScriptRequest = function(text)
 			local desc = text:match("%[%[SCRIPT_REQUEST:%s*(.-)%]%]")
 			if not desc then desc = text:match("%[%[script_request:%s*(.-)%]%]") end
 			if not desc then return text, nil end
@@ -8359,39 +8761,674 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			return cleaned, desc:gsub("^%s+", ""):gsub("%s+$", "")
 		end
 
-		-- ---------- main API ----------
-		local AiTab = { Messages = Messages, Conversation = conversation }
-		local isGenerating = false
+		-- =====================================================================
+		-- Quick prompts (chips + welcome card)
+		-- =====================================================================
+		local QUICK_PROMPTS = {
+			{ chip = "Что умеет Solara Hub?",
+			  prompt = "Расскажи кратко что умеет Solara Hub: какие основные табы, главные фичи и как ими пользоваться." },
+			{ chip = "Скрипт под текущую игру",
+			  prompt = "Какие скрипты есть в Solara Hub для игры, в которой я сейчас? Если игра не поддерживается — скажи прямо и предложи запросить разработку." },
+			{ chip = "Напиши Luau скрипт",
+			  prompt = "Напиши Luau скрипт: " },
+			{ chip = "Объясни ошибку",
+			  prompt = "Помоги дебагнуть эту ошибку:\n```\n\n```" },
+		}
+
+		local function clearQuickRow()
+			for _, ch in ipairs(QuickRow:GetChildren()) do
+				if ch:IsA("TextButton") then ch:Destroy() end
+			end
+		end
+		showQuickRow = function(visible)
+			QuickRow.Visible = visible == true
+			if not visible then return end
+			clearQuickRow()
+			for i, qp in ipairs(QUICK_PROMPTS) do
+				local b = Instance.new("TextButton")
+				b.BackgroundColor3 = PANEL_BG_LT
+				b.BackgroundTransparency = 0.2
+				b.AutomaticSize = Enum.AutomaticSize.X
+				b.Size = UDim2.new(0, 0, 1, 0)
+				b.Text = "  " .. qp.chip .. "  "
+				b.Font = Enum.Font.GothamMedium
+				b.TextSize = 12
+				b.TextColor3 = TEXT_PRIMARY
+				b.AutoButtonColor = false
+				b.LayoutOrder = i
+				b:SetAttribute("LunaNoTranslate", true)
+				b.Parent = QuickRow
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
+				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.65; s.Parent = b
+				b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0.05}) end)
+				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.2}) end)
+				b.MouseButton1Click:Connect(function()
+					InputBox.Text = qp.prompt
+					InputBox:CaptureFocus()
+				end)
+			end
+		end
+
+		showEmptyState = function()
+			if welcomeNode and welcomeNode.Parent then welcomeNode:Destroy() end
+			welcomeNode = Instance.new("Frame")
+			welcomeNode.Name = "Welcome"
+			welcomeNode.BackgroundTransparency = 1
+			welcomeNode.Size = UDim2.new(1, 0, 0, 200)
+			welcomeNode.LayoutOrder = 1
+			welcomeNode.Parent = Messages
+
+			local card = Instance.new("Frame")
+			card.AnchorPoint = Vector2.new(0.5, 0.5)
+			card.Position = UDim2.new(0.5, 0, 0.5, 0)
+			card.Size = UDim2.new(0, 380, 0, 180)
+			card.BackgroundColor3 = PANEL_BG_LT
+			card.BackgroundTransparency = 0.15
+			card.Parent = welcomeNode
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 14); c.Parent = card
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = card
+			local g = Instance.new("UIGradient")
+			g.Rotation = 120
+			g.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, ACCENT_DEEP),
+				ColorSequenceKeypoint.new(1, PANEL_BG_LT),
+			})
+			g.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.72),
+				NumberSequenceKeypoint.new(1, 0.92),
+			})
+			g.Parent = card
+
+			local icon = Instance.new("ImageLabel")
+			icon.BackgroundTransparency = 1
+			icon.Size = UDim2.fromOffset(28, 28)
+			icon.Position = UDim2.new(0, 18, 0, 18)
+			icon.ImageColor3 = ACCENT
+			icon.Parent = card
+			ApplyIcon(icon, GetIcon("auto_awesome", "Material"))
+
+			local t1 = Instance.new("TextLabel")
+			t1.BackgroundTransparency = 1
+			t1.Position = UDim2.new(0, 54, 0, 18)
+			t1.Size = UDim2.new(1, -70, 0, 22)
+			t1.Text = "Solara Hub AI"
+			t1.Font = Enum.Font.GothamBold
+			t1.TextSize = 18
+			t1.TextColor3 = TEXT_PRIMARY
+			t1.TextXAlignment = Enum.TextXAlignment.Left
+			t1:SetAttribute("LunaNoTranslate", true)
+			t1.Parent = card
+
+			local t2 = Instance.new("TextLabel")
+			t2.BackgroundTransparency = 1
+			t2.Position = UDim2.new(0, 54, 0, 42)
+			t2.Size = UDim2.new(1, -70, 0, 16)
+			t2.Text = "Code • Solara Hub help • debugging • Roblox APIs"
+			t2.Font = Enum.Font.GothamMedium
+			t2.TextSize = 12
+			t2.TextColor3 = TEXT_DIM
+			t2.TextXAlignment = Enum.TextXAlignment.Left
+			t2:SetAttribute("LunaNoTranslate", true)
+			t2.Parent = card
+
+			local listFrame = Instance.new("Frame")
+			listFrame.BackgroundTransparency = 1
+			listFrame.Position = UDim2.new(0, 18, 0, 80)
+			listFrame.Size = UDim2.new(1, -36, 0, 90)
+			listFrame.Parent = card
+			local ll = Instance.new("UIListLayout")
+			ll.Padding = UDim.new(0, 6)
+			ll.Parent = listFrame
+			for i, qp in ipairs(QUICK_PROMPTS) do
+				if i > 3 then break end
+				local row = Instance.new("TextButton")
+				row.BackgroundColor3 = PANEL_BG
+				row.BackgroundTransparency = 0.2
+				row.Size = UDim2.new(1, 0, 0, 24)
+				row.Text = "  →  " .. qp.chip
+				row.Font = Enum.Font.GothamMedium
+				row.TextSize = 12
+				row.TextColor3 = TEXT_PRIMARY
+				row.TextXAlignment = Enum.TextXAlignment.Left
+				row.AutoButtonColor = false
+				row:SetAttribute("LunaNoTranslate", true)
+				row.Parent = listFrame
+				local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 7); rc.Parent = row
+				row.MouseEnter:Connect(function() tween(row, {BackgroundTransparency = 0.05}) end)
+				row.MouseLeave:Connect(function() tween(row, {BackgroundTransparency = 0.2}) end)
+				row.MouseButton1Click:Connect(function()
+					InputBox.Text = qp.prompt
+					InputBox:CaptureFocus()
+				end)
+			end
+		end
+
+		-- =====================================================================
+		-- Render: active chat + sidebar
+		-- =====================================================================
+		local function clearMessagesUI()
+			for _, ch in ipairs(Messages:GetChildren()) do
+				if ch:IsA("Frame") then ch:Destroy() end
+			end
+			welcomeNode = nil
+		end
+
+		setHeaderForChat = function(chat)
+			if not chat then
+				headerTitle.Text = "Solara Hub AI"
+				headerSub.Text = ""
+				return
+			end
+			headerTitle.Text = chat.name
+			local n = userMsgCount(chat)
+			headerSub.Text = (n == 0) and "Empty chat" or (n .. (n == 1 and " message" or " messages"))
+		end
+
+		renderActiveChat = function()
+			clearMessagesUI()
+			local chat = getActive()
+			setHeaderForChat(chat)
+			if not chat then
+				showEmptyState()
+				showQuickRow(false)
+				return
+			end
+			local hasContent = false
+			for _, m in ipairs(chat.conv) do
+				if m.role == "user" then
+					appendMessage("user", m.content)
+					hasContent = true
+				elseif m.role == "assistant" then
+					local visibleText, reqDescription = extractScriptRequest(m.content)
+					local _, bubble = appendMessage("assistant", visibleText)
+					if reqDescription then
+						addScriptRequestCard(bubble.Parent, reqDescription)
+					end
+					hasContent = true
+				end
+			end
+			if not hasContent then
+				showEmptyState()
+				showQuickRow(true)
+			else
+				showQuickRow(false)
+			end
+		end
+
+		-- ---------- sidebar item ----------
+		local function previewText(chat)
+			local last = lastAssistantText(chat)
+			if last == "" then return "Empty chat" end
+			last = last:gsub("```.-```", "[code]")
+			last = last:gsub("\n+", " "):gsub("%s+", " ")
+			if #last > 56 then last = last:sub(1, 56) .. "..." end
+			return last
+		end
+		local function timeAgo(ts)
+			if not ts then return "" end
+			local diff = os.time() - ts
+			if diff < 60 then return "now" end
+			if diff < 3600 then return math.floor(diff / 60) .. "m" end
+			if diff < 86400 then return math.floor(diff / 3600) .. "h" end
+			return math.floor(diff / 86400) .. "d"
+		end
+
+		local function makeChatItem(chat)
+			local isActive = (chat.id == activeId)
+			local Item = Instance.new("Frame")
+			Item.Name = RandomName()
+			Item.Size = UDim2.new(1, 0, 0, 50)
+			Item.BackgroundColor3 = isActive and ACCENT_DEEP or PANEL_BG_LT
+			Item.BackgroundTransparency = isActive and 0.05 or 0.3
+			Item.BorderSizePixel = 0
+			Item.Parent = ChatList
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = Item
+			local s = Instance.new("UIStroke")
+			s.Color = isActive and ACCENT or STROKE_SOFT
+			s.Transparency = isActive and 0.4 or 0.75
+			s.Parent = Item
+
+			local leftPad = 10
+			if chat.pinned then
+				local pinIcon = Instance.new("ImageLabel")
+				pinIcon.BackgroundTransparency = 1
+				pinIcon.Size = UDim2.fromOffset(10, 10)
+				pinIcon.Position = UDim2.new(0, 8, 0, 7)
+				pinIcon.ImageColor3 = ACCENT
+				pinIcon.Parent = Item
+				ApplyIcon(pinIcon, GetIcon("push_pin", "Material"))
+				leftPad = 22
+			end
+
+			local titleLbl = Instance.new("TextLabel")
+			titleLbl.BackgroundTransparency = 1
+			titleLbl.Position = UDim2.new(0, leftPad, 0, 5)
+			titleLbl.Size = UDim2.new(1, -leftPad - 38, 0, 16)
+			titleLbl.Text = chat.name
+			titleLbl.Font = Enum.Font.GothamBold
+			titleLbl.TextSize = 12
+			titleLbl.TextColor3 = TEXT_PRIMARY
+			titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+			titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			titleLbl:SetAttribute("LunaNoTranslate", true)
+			titleLbl.Parent = Item
+
+			local prev = Instance.new("TextLabel")
+			prev.BackgroundTransparency = 1
+			prev.Position = UDim2.new(0, 10, 0, 24)
+			prev.Size = UDim2.new(1, -20, 0, 14)
+			prev.Text = previewText(chat)
+			prev.Font = Enum.Font.GothamMedium
+			prev.TextSize = 11
+			prev.TextColor3 = TEXT_DIM
+			prev.TextXAlignment = Enum.TextXAlignment.Left
+			prev.TextTruncate = Enum.TextTruncate.AtEnd
+			prev:SetAttribute("LunaNoTranslate", true)
+			prev.Parent = Item
+
+			local timeLbl = Instance.new("TextLabel")
+			timeLbl.BackgroundTransparency = 1
+			timeLbl.Position = UDim2.new(1, -34, 0, 5)
+			timeLbl.Size = UDim2.new(0, 30, 0, 14)
+			timeLbl.Text = timeAgo(chat.updatedAt)
+			timeLbl.Font = Enum.Font.GothamMedium
+			timeLbl.TextSize = 10
+			timeLbl.TextColor3 = TEXT_DIM
+			timeLbl.TextXAlignment = Enum.TextXAlignment.Right
+			timeLbl:SetAttribute("LunaNoTranslate", true)
+			timeLbl.Parent = Item
+
+			local Click = Instance.new("TextButton")
+			Click.BackgroundTransparency = 1
+			Click.Size = UDim2.new(1, 0, 1, 0)
+			Click.Text = ""
+			Click.AutoButtonColor = false
+			Click:SetAttribute("LunaNoTranslate", true)
+			Click.Parent = Item
+			Click.MouseEnter:Connect(function()
+				if not isActive then tween(Item, {BackgroundTransparency = 0.15}) end
+			end)
+			Click.MouseLeave:Connect(function()
+				if not isActive then tween(Item, {BackgroundTransparency = 0.3}) end
+			end)
+			Click.MouseButton1Click:Connect(function()
+				AiTab:SwitchTo(chat.id)
+			end)
+
+			-- Hover-only action buttons (right edge): pin, rename, delete.
+			local actionsRow = Instance.new("Frame")
+			actionsRow.BackgroundTransparency = 1
+			actionsRow.AnchorPoint = Vector2.new(1, 1)
+			actionsRow.Position = UDim2.new(1, -6, 1, -4)
+			actionsRow.Size = UDim2.new(0, 64, 0, 18)
+			actionsRow.Visible = false
+			actionsRow.Parent = Item
+			do
+				local arl = Instance.new("UIListLayout")
+				arl.FillDirection = Enum.FillDirection.Horizontal
+				arl.Padding = UDim.new(0, 3)
+				arl.HorizontalAlignment = Enum.HorizontalAlignment.Right
+				arl.SortOrder = Enum.SortOrder.LayoutOrder
+				arl.Parent = actionsRow
+			end
+			local function actBtn(iconName, color, order)
+				local b = Instance.new("ImageButton")
+				b.Size = UDim2.fromOffset(18, 18)
+				b.BackgroundColor3 = PANEL_BG
+				b.BackgroundTransparency = 0.2
+				b.ImageColor3 = color or TEXT_PRIMARY
+				b.AutoButtonColor = false
+				b.LayoutOrder = order
+				b.Parent = actionsRow
+				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 5); bc.Parent = b
+				ApplyIcon(b, GetIcon(iconName, "Material"))
+				b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0}) end)
+				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.2}) end)
+				return b
+			end
+			local pinBtn    = actBtn("push_pin", chat.pinned and ACCENT or TEXT_DIM, 1)
+			local renameBtn = actBtn("edit",     TEXT_DIM,                            2)
+			local delBtn    = actBtn("delete",   Color3.fromRGB(220, 120, 120),       3)
+			Item.MouseEnter:Connect(function() actionsRow.Visible = true; timeLbl.Visible = false end)
+			Item.MouseLeave:Connect(function() actionsRow.Visible = false; timeLbl.Visible = true end)
+
+			pinBtn.MouseButton1Click:Connect(function()
+				chat.pinned = not chat.pinned
+				saveAll(); renderSidebar()
+			end)
+			renameBtn.MouseButton1Click:Connect(function()
+				local newName = AiTab:_promptRename(chat.name)
+				if newName and newName ~= "" then
+					chat.name = newName
+					chat.autoNamed = false
+					saveAll(); renderSidebar()
+					if chat.id == activeId then setHeaderForChat(chat) end
+				end
+			end)
+			delBtn.MouseButton1Click:Connect(function()
+				AiTab:DeleteChat(chat.id)
+			end)
+			return Item
+		end
+
+		renderSidebar = function()
+			for _, ch in ipairs(ChatList:GetChildren()) do
+				if not ch:IsA("UIListLayout") then ch:Destroy() end
+			end
+			local query = (SearchInput.Text or ""):lower()
+			local rows = {}
+			for _, id in ipairs(chatOrder) do
+				local c = chats[id]
+				if c then table.insert(rows, c) end
+			end
+			table.sort(rows, function(a, b)
+				if a.pinned ~= b.pinned then return a.pinned end
+				return (a.updatedAt or 0) > (b.updatedAt or 0)
+			end)
+			local layoutIdx = 0
+			for _, c in ipairs(rows) do
+				if query == "" or c.name:lower():find(query, 1, true) or lastAssistantText(c):lower():find(query, 1, true) then
+					layoutIdx = layoutIdx + 1
+					local item = makeChatItem(c)
+					item.LayoutOrder = layoutIdx
+				end
+			end
+		end
+		SearchInput:GetPropertyChangedSignal("Text"):Connect(function() renderSidebar() end)
+
+		-- =====================================================================
+		-- Model selector popup
+		-- =====================================================================
+		local modelMenu
+		local function closeModelMenu()
+			if modelMenu and modelMenu.Parent then modelMenu:Destroy() end
+			modelMenu = nil
+		end
+		local function findModelInfo(id)
+			for _, m in ipairs(AVAILABLE_MODELS) do
+				if m.id == id then return m end
+			end
+			return AVAILABLE_MODELS[1]
+		end
+		local function refreshModelLabel()
+			ModelLabel.Text = findModelInfo(currentModel).label
+		end
+		ModelPill.MouseButton1Click:Connect(function()
+			if modelMenu then closeModelMenu(); return end
+			modelMenu = Instance.new("Frame")
+			modelMenu.Name = "ModelMenu"
+			modelMenu.Size = UDim2.new(0, 220, 0, #AVAILABLE_MODELS * 32 + 12)
+			modelMenu.Position = UDim2.new(0, ModelPill.AbsolutePosition.X - Page.AbsolutePosition.X - 100, 0, ModelPill.AbsolutePosition.Y - Page.AbsolutePosition.Y + 32)
+			modelMenu.BackgroundColor3 = PANEL_BG
+			modelMenu.BackgroundTransparency = 0.05
+			modelMenu.BorderSizePixel = 0
+			modelMenu.ZIndex = 50
+			modelMenu.Parent = Page
+			do
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = modelMenu
+				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.5; s.Parent = modelMenu
+				local p = Instance.new("UIPadding")
+				p.PaddingTop = UDim.new(0, 6); p.PaddingBottom = UDim.new(0, 6)
+				p.PaddingLeft = UDim.new(0, 6); p.PaddingRight = UDim.new(0, 6)
+				p.Parent = modelMenu
+				local l = Instance.new("UIListLayout"); l.Padding = UDim.new(0, 2); l.Parent = modelMenu
+			end
+			for _, m in ipairs(AVAILABLE_MODELS) do
+				local row = Instance.new("TextButton")
+				row.Size = UDim2.new(1, 0, 0, 30)
+				row.BackgroundColor3 = (m.id == currentModel) and ACCENT_DEEP or PANEL_BG_LT
+				row.BackgroundTransparency = 0.2
+				row.Text = ""
+				row.AutoButtonColor = false
+				row.ZIndex = 51
+				row:SetAttribute("LunaNoTranslate", true)
+				row.Parent = modelMenu
+				local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 7); rc.Parent = row
+				local lbl = Instance.new("TextLabel")
+				lbl.BackgroundTransparency = 1
+				lbl.Position = UDim2.new(0, 10, 0, 0)
+				lbl.Size = UDim2.new(0.5, -10, 1, 0)
+				lbl.Text = m.label
+				lbl.Font = Enum.Font.GothamBold
+				lbl.TextSize = 12
+				lbl.TextColor3 = TEXT_PRIMARY
+				lbl.TextXAlignment = Enum.TextXAlignment.Left
+				lbl.ZIndex = 52
+				lbl:SetAttribute("LunaNoTranslate", true)
+				lbl.Parent = row
+				local desc = Instance.new("TextLabel")
+				desc.BackgroundTransparency = 1
+				desc.Position = UDim2.new(0.5, 0, 0, 0)
+				desc.Size = UDim2.new(0.5, -8, 1, 0)
+				desc.Text = m.desc
+				desc.Font = Enum.Font.GothamMedium
+				desc.TextSize = 10
+				desc.TextColor3 = TEXT_DIM
+				desc.TextXAlignment = Enum.TextXAlignment.Right
+				desc.ZIndex = 52
+				desc:SetAttribute("LunaNoTranslate", true)
+				desc.Parent = row
+				row.MouseEnter:Connect(function() tween(row, {BackgroundTransparency = 0.05}) end)
+				row.MouseLeave:Connect(function() tween(row, {BackgroundTransparency = 0.2}) end)
+				row.MouseButton1Click:Connect(function()
+					currentModel = m.id
+					refreshModelLabel()
+					saveAll()
+					closeModelMenu()
+				end)
+			end
+		end)
+
+		-- =====================================================================
+		-- AiTab API
+		-- =====================================================================
+		AiTab.Messages = Messages
 
 		local function setSendEnabled(enabled)
 			SendButton.AutoButtonColor = enabled
-			SendButton.BackgroundColor3 = enabled and Color3.fromRGB(110, 90, 220) or Color3.fromRGB(60, 55, 80)
+			if enabled then
+				ApplyIcon(SendButton, GetIcon("send", "Material"))
+				SendButton.BackgroundColor3 = ACCENT
+			else
+				ApplyIcon(SendButton, GetIcon("stop", "Material"))
+				SendButton.BackgroundColor3 = Color3.fromRGB(190, 90, 90)
+			end
 		end
 
-		local function saveChat()
-			if not opts.AutoSave or not writefile then return end
-			pcall(function()
-				writefile(opts.SaveFile, HttpService:JSONEncode({
-					system = conversation[1] and conversation[1].content or "",
-					conv   = conversation,
-				}))
+		-- Minimal in-page rename dialog (blocking).
+		function AiTab:_promptRename(currentName)
+			local accepted
+			local dialog = Instance.new("Frame")
+			dialog.Size = UDim2.new(0, 280, 0, 116)
+			dialog.AnchorPoint = Vector2.new(0.5, 0.5)
+			dialog.Position = UDim2.new(0.5, 0, 0.5, 0)
+			dialog.BackgroundColor3 = PANEL_BG
+			dialog.BackgroundTransparency = 0.05
+			dialog.BorderSizePixel = 0
+			dialog.ZIndex = 100
+			dialog.Parent = Page
+			local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(0, 12); dc.Parent = dialog
+			local ds = Instance.new("UIStroke"); ds.Color = ACCENT; ds.Transparency = 0.5; ds.Parent = dialog
+			local lbl = Instance.new("TextLabel")
+			lbl.BackgroundTransparency = 1
+			lbl.Position = UDim2.new(0, 14, 0, 10); lbl.Size = UDim2.new(1, -28, 0, 18)
+			lbl.Text = "Rename chat"
+			lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 14
+			lbl.TextColor3 = TEXT_PRIMARY; lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.ZIndex = 101
+			lbl:SetAttribute("LunaNoTranslate", true)
+			lbl.Parent = dialog
+			local box = Instance.new("TextBox")
+			box.BackgroundColor3 = PANEL_BG_LT; box.BackgroundTransparency = 0.2
+			box.Position = UDim2.new(0, 14, 0, 36); box.Size = UDim2.new(1, -28, 0, 30)
+			box.Text = currentName or ""; box.TextColor3 = TEXT_PRIMARY
+			box.Font = Enum.Font.GothamMedium; box.TextSize = 13
+			box.TextXAlignment = Enum.TextXAlignment.Left
+			box.PlaceholderText = "Chat name"
+			box.ClearTextOnFocus = false
+			box.ZIndex = 101
+			box:SetAttribute("LunaNoTranslate", true)
+			box.Parent = dialog
+			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = box
+			local bp = Instance.new("UIPadding"); bp.PaddingLeft = UDim.new(0, 8); bp.PaddingRight = UDim.new(0, 8); bp.Parent = box
+			local function close(val)
+				accepted = val
+				if dialog.Parent then dialog:Destroy() end
+			end
+			local okBtn = Instance.new("TextButton")
+			okBtn.AnchorPoint = Vector2.new(1, 1)
+			okBtn.Position = UDim2.new(1, -14, 1, -10); okBtn.Size = UDim2.fromOffset(70, 26)
+			okBtn.BackgroundColor3 = ACCENT; okBtn.Text = "Save"
+			okBtn.Font = Enum.Font.GothamBold; okBtn.TextSize = 12
+			okBtn.TextColor3 = TEXT_PRIMARY; okBtn.AutoButtonColor = false
+			okBtn.ZIndex = 101
+			okBtn:SetAttribute("LunaNoTranslate", true)
+			okBtn.Parent = dialog
+			local okc = Instance.new("UICorner"); okc.CornerRadius = UDim.new(0, 7); okc.Parent = okBtn
+			local cancelBtn = Instance.new("TextButton")
+			cancelBtn.AnchorPoint = Vector2.new(1, 1)
+			cancelBtn.Position = UDim2.new(1, -90, 1, -10); cancelBtn.Size = UDim2.fromOffset(70, 26)
+			cancelBtn.BackgroundColor3 = PANEL_BG_LT; cancelBtn.Text = "Cancel"
+			cancelBtn.Font = Enum.Font.GothamMedium; cancelBtn.TextSize = 12
+			cancelBtn.TextColor3 = TEXT_PRIMARY; cancelBtn.AutoButtonColor = false
+			cancelBtn.ZIndex = 101
+			cancelBtn:SetAttribute("LunaNoTranslate", true)
+			cancelBtn.Parent = dialog
+			local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 7); cc.Parent = cancelBtn
+			task.spawn(function() box:CaptureFocus() end)
+			okBtn.MouseButton1Click:Connect(function()
+				local v = box.Text and box.Text:gsub("^%s+", ""):gsub("%s+$", "")
+				close((v ~= "" and v) or nil)
 			end)
+			cancelBtn.MouseButton1Click:Connect(function() close(nil) end)
+			box.FocusLost:Connect(function(enter)
+				if enter then
+					local v = box.Text and box.Text:gsub("^%s+", ""):gsub("%s+$", "")
+					close((v ~= "" and v) or nil)
+				end
+			end)
+			while dialog.Parent do task.wait() end
+			return accepted
 		end
 
-		function AiTab:Send(prompt)
-			prompt = tostring(prompt or "")
-			if prompt == "" or isGenerating then return end
-			isGenerating = true
+		function AiTab:NewChat(name)
+			local c = newChat(name or "New chat")
+			activeId = c.id
+			AiTab.Conversation = c.conv
+			saveAll(); renderSidebar(); renderActiveChat()
+			return c
+		end
+		function AiTab:SwitchTo(id)
+			if not chats[id] or id == activeId then return end
+			activeId = id
+			moveToFront(id)
+			AiTab.Conversation = chats[id].conv
+			saveAll(); renderSidebar(); renderActiveChat()
+		end
+		function AiTab:DeleteChat(id)
+			if not chats[id] then return end
+			chats[id] = nil
+			for i, v in ipairs(chatOrder) do
+				if v == id then table.remove(chatOrder, i); break end
+			end
+			if activeId == id then
+				activeId = chatOrder[1]
+				if not activeId then
+					local c = newChat("New chat")
+					activeId = c.id
+				end
+				AiTab.Conversation = chats[activeId].conv
+			end
+			saveAll(); renderSidebar(); renderActiveChat()
+		end
+		function AiTab:RenameChat(id, name)
+			local c = chats[id]
+			if not c or not name or name == "" then return end
+			c.name = name
+			c.autoNamed = false
+			saveAll(); renderSidebar()
+			if id == activeId then setHeaderForChat(c) end
+		end
+		function AiTab:Clear()
+			-- "Clear" wipes the active chat back to a blank state (keeps the id).
+			local c = getActive()
+			if not c then return end
+			c.conv = freshConv()
+			c.updatedAt = nowSec()
+			c.autoNamed = false
+			c.name = "New chat"
+			saveAll(); renderSidebar(); renderActiveChat()
+		end
+		function AiTab:Save()
+			saveAll()
+			Luna:Notification({ Title = "Chats saved", Content = opts.SaveFile, Icon = "check_circle", ImageSource = "Material", Duration = 3 })
+		end
+		function AiTab:Load()
+			chats = {}; chatOrder = {}; activeId = nil
+			loadAll()
+			if not activeId then
+				local c = newChat("New chat")
+				activeId = c.id
+			end
+			AiTab.Conversation = chats[activeId].conv
+			renderSidebar(); renderActiveChat()
+			Luna:Notification({ Title = "Chats loaded", Content = "Restored " .. #chatOrder .. " chat(s).", Icon = "check_circle", ImageSource = "Material", Duration = 3 })
+		end
+		function AiTab:Stop()
+			if generation.active then
+				-- Invalidate the in-flight reply token; the response, when it arrives,
+				-- will be silently dropped and the UI re-enabled.
+				generation.token = generation.token + 1
+				generation.active = false
+				setSendEnabled(true)
+			end
+		end
+
+		-- Auto-name a chat from its first user message (until manually renamed).
+		local function autoNameChat(chat, firstUserMsg)
+			if not chat.autoNamed and chat.name == "New chat" then
+				local nm = firstUserMsg:gsub("\n", " "):gsub("%s+", " ")
+				nm = nm:gsub("^%s+", ""):gsub("%s+$", "")
+				if #nm > 36 then nm = nm:sub(1, 36) .. "..." end
+				if nm ~= "" then
+					chat.name = nm
+					chat.autoNamed = true
+				end
+			end
+		end
+
+		local function doSend(prompt, isRegenerate)
+			local chat = getActive()
+			if not chat then return end
+			if generation.active then return end
+			-- Refresh system prompt so live host knowledge is current on every call.
+			if chat.conv[1] and chat.conv[1].role == "system" then
+				chat.conv[1].content = buildSystemPrompt()
+			else
+				table.insert(chat.conv, 1, { role = "system", content = buildSystemPrompt() })
+			end
+			if not isRegenerate then
+				table.insert(chat.conv, { role = "user", content = prompt })
+				appendMessage("user", prompt)
+				autoNameChat(chat, prompt)
+			end
+			chat.updatedAt = nowSec()
+			moveToFront(chat.id)
+			setHeaderForChat(chat)
+			showQuickRow(false)
+			if welcomeNode and welcomeNode.Parent then welcomeNode:Destroy(); welcomeNode = nil end
+			renderSidebar()
+
+			generation.active = true
+			generation.token  = generation.token + 1
+			generation.chatId = chat.id
+			local myToken = generation.token
 			setSendEnabled(false)
 
-			table.insert(conversation, { role = "user", content = prompt })
-			appendMessage("user", prompt)
-
-			-- Thinking bubble with an animated ellipsis until the response arrives.
 			local _, thinkBubble, thinkLabel, thinkSet = appendMessage("assistant", "Thinking")
 			task.spawn(function()
 				local dots = 0
-				while isGenerating and thinkBubble.Parent do
+				while generation.active and generation.token == myToken and thinkBubble.Parent do
 					dots = (dots % 3) + 1
 					thinkLabel.Text = richText("*Thinking" .. string.rep(".", dots) .. "*")
 					task.wait(0.35)
@@ -8399,10 +9436,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end)
 
 			task.spawn(function()
-				local payload = HttpService:JSONEncode({ messages = conversation, model = opts.Model })
+				local payload = HttpService:JSONEncode({ messages = chat.conv, model = currentModel })
 				local fn = getHttpFn()
 				local replyText
-
 				if fn then
 					local ok, res = pcall(fn, {
 						Url = opts.Endpoint,
@@ -8417,78 +9453,66 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 						end
 					end
 				end
-
 				if not replyText then
 					replyText = "_(Unable to reach the AI service. Make sure your executor supports HTTP POST.)_"
 				end
-
-				isGenerating = false
+				-- Token mismatch → user pressed Stop or switched chats; persist silently.
+				if generation.token ~= myToken then
+					table.insert(chat.conv, { role = "assistant", content = replyText })
+					chat.updatedAt = nowSec()
+					saveAll(); renderSidebar()
+					return
+				end
+				generation.active = false
 				setSendEnabled(true)
+				table.insert(chat.conv, { role = "assistant", content = replyText })
+				chat.updatedAt = nowSec()
+				saveAll(); renderSidebar()
 
-				table.insert(conversation, { role = "assistant", content = replyText })
-				saveChat()
-
-				-- Pull out the [[SCRIPT_REQUEST: ...]] marker if present.
 				local visibleText, reqDescription = extractScriptRequest(replyText)
-
-				-- Replace the thinking bubble with the actual reply (with markdown / code blocks).
-				if thinkSet and thinkLabel and thinkLabel.Parent then
-					thinkSet(visibleText)
-				else
-					appendMessage("assistant", visibleText)
+				if chat.id == activeId then
+					if thinkSet and thinkLabel and thinkLabel.Parent then
+						thinkSet(visibleText)
+					else
+						appendMessage("assistant", visibleText)
+					end
+					if reqDescription then
+						local holder = thinkBubble and thinkBubble.Parent
+						if holder then addScriptRequestCard(holder, reqDescription) end
+					end
+					task.defer(function()
+						task.wait()
+						Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+					end)
 				end
-
-				if reqDescription then
-					-- The Holder for the assistant bubble is the parent of thinkBubble.
-					local holder = thinkBubble and thinkBubble.Parent
-					if holder then addScriptRequestCard(holder, reqDescription) end
-				end
-
-				task.defer(function()
-					task.wait()
-					Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
-				end)
 			end)
 		end
 
-		function AiTab:Clear()
-			for _, child in ipairs(Messages:GetChildren()) do
-				if child:IsA("Frame") then child:Destroy() end
-			end
-			conversation = {}
-			table.insert(conversation, { role = "system", content = buildSystemPrompt() })
-			AiTab.Conversation = conversation
-			saveChat()
+		function AiTab:Send(prompt)
+			prompt = tostring(prompt or "")
+			if prompt == "" or generation.active then return end
+			doSend(prompt, false)
 		end
 
-		function AiTab:Save()
-			saveChat()
-			Luna:Notification({ Title = "Chat saved", Content = opts.SaveFile, Icon = "check_circle", ImageSource = "Material", Duration = 3 })
+		function AiTab:Regenerate()
+			local chat = getActive()
+			if not chat or generation.active then return end
+			-- Find the last user message and drop everything after it.
+			local lastUserIdx
+			for i = #chat.conv, 1, -1 do
+				if chat.conv[i].role == "user" then lastUserIdx = i; break end
+			end
+			if not lastUserIdx then return end
+			while #chat.conv > lastUserIdx do
+				table.remove(chat.conv)
+			end
+			renderActiveChat()
+			doSend(chat.conv[lastUserIdx].content, true)
 		end
 
-		function AiTab:Load()
-			if not isfile or not readfile then return end
-			if not isfile(opts.SaveFile) then
-				Luna:Notification({ Title = "No saved chat", Content = "Nothing to load yet.", Icon = "info", ImageSource = "Material", Duration = 3 })
-				return
-			end
-			local ok, data = pcall(function() return HttpService:JSONDecode(readfile(opts.SaveFile)) end)
-			if not ok or not data or not data.conv then
-				Luna:Notification({ Title = "Load failed", Content = "Could not read saved chat.", Icon = "error", ImageSource = "Material", Duration = 4 })
-				return
-			end
-			AiTab:Clear()
-			conversation = {}
-			for _, m in ipairs(data.conv) do
-				table.insert(conversation, m)
-				if m.role == "user" or m.role == "assistant" then
-					appendMessage(m.role, m.content)
-				end
-			end
-			AiTab.Conversation = conversation
-			Luna:Notification({ Title = "Chat loaded", Content = "Restored " .. (#conversation - 1) .. " messages.", Icon = "check_circle", ImageSource = "Material", Duration = 3 })
-		end
-
+		-- =====================================================================
+		-- Event bindings
+		-- =====================================================================
 		InputBox.FocusLost:Connect(function(enterPressed)
 			if enterPressed then
 				local t = InputBox.Text
@@ -8497,22 +9521,33 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			end
 		end)
 		SendButton.MouseButton1Click:Connect(function()
+			if generation.active then AiTab:Stop(); return end
 			local t = InputBox.Text
 			InputBox.Text = ""
 			AiTab:Send(t)
 		end)
 		SaveBtn.MouseButton1Click:Connect(function() AiTab:Save() end)
-		LoadBtn.MouseButton1Click:Connect(function() AiTab:Load() end)
 		ClearBtn.MouseButton1Click:Connect(function() AiTab:Clear() end)
-
-		-- Subtle hover for the send button
-		SendButton.MouseEnter:Connect(function() tween(SendButton, {BackgroundTransparency = -0.05}) end)
-		SendButton.MouseLeave:Connect(function() tween(SendButton, {BackgroundTransparency = 0.05}) end)
-
-		-- Friendly opening line so the tab doesn't feel empty.
-		task.defer(function()
-			appendMessage("assistant", "Hey! I'm **Solara Hub AI**. I can help with **Solara Hub**, write/fix **Luau scripts**, explain **executor APIs**, and answer Roblox questions. Paste code or describe what you need — I'll use ```lua blocks with *Copy* / *Execute* buttons.")
+		NewChatBtn.MouseButton1Click:Connect(function() AiTab:NewChat() end)
+		SendButton.MouseEnter:Connect(function()
+			if not generation.active then tween(SendButton, {BackgroundTransparency = -0.05}) end
 		end)
+		SendButton.MouseLeave:Connect(function()
+			if not generation.active then tween(SendButton, {BackgroundTransparency = 0.05}) end
+		end)
+
+		-- =====================================================================
+		-- Bootstrap
+		-- =====================================================================
+		loadAll()
+		if not activeId then
+			local c = newChat("New chat")
+			activeId = c.id
+		end
+		AiTab.Conversation = chats[activeId].conv
+		refreshModelLabel()
+		renderSidebar()
+		renderActiveChat()
 
 		Window._AiTab = AiTab
 		return AiTab
