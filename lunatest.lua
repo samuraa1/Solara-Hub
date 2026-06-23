@@ -7835,15 +7835,21 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			}
 			chats[id] = c
 			table.insert(chatOrder, 1, id)
+			-- Trim to MAX_CHATS by dropping the oldest UN-pinned entry. If everything
+			-- is pinned we simply stop — exceeding the cap by a little is fine.
 			while #chatOrder > MAX_CHATS do
-				local rid = table.remove(chatOrder)
-				if rid and not (chats[rid] and chats[rid].pinned) then
-					chats[rid] = nil
-				elseif rid then
-					-- pinned: keep, but it dropped to the bottom of MRU
-					table.insert(chatOrder, 1, rid)
-					break
+				local removed = false
+				for i = #chatOrder, 1, -1 do
+					local rid = chatOrder[i]
+					local rec = rid and chats[rid]
+					if rec and not rec.pinned then
+						chats[rid] = nil
+						table.remove(chatOrder, i)
+						removed = true
+						break
+					end
 				end
+				if not removed then break end
 			end
 			return c
 		end
@@ -8294,50 +8300,117 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			return segments
 		end
 
-		-- Light markdown -> RichText. Handles headers (#/##/###), bullets (- *),
-		-- numbered lists (intact), inline bold/italic/strike/code, quotes (>).
-		-- Inline code spans are extracted first so their contents survive the
-		-- header / bullet / italic passes.
+		-- Full Markdown → Roblox RichText. Supports:
+		--   Headers       # ## ### #### #####
+		--   Lists         - * + bullets, 1. numbered, nested by indent
+		--   Task lists    - [ ]  /  - [x]
+		--   Blockquotes   > quoted text  (vertical bar marker)
+		--   Horizontal rule  ---  ***  ___
+		--   Inline code   `code`           (orange)
+		--   Bold          **b**  __b__
+		--   Italic        *i*    _i_       (only when surrounded by whitespace to avoid snake_case false positives)
+		--   Strike        ~~s~~
+		--   Highlight     ==h==            (RichText <mark>)
+		--   Underline     [[u]]  (uncommon but cheap to support)
+		--   Links         [text](url)      (underlined, colored — RichText cannot click, so we just style)
+		-- Inline code + links + raw HTML get stashed FIRST so their bodies survive
+		-- the per-line / per-emphasis passes that follow. All stashed bodies are
+		-- HTML-escaped to prevent the model accidentally injecting RichText tags.
 		local function richText(t)
 			if type(t) ~= "string" then return tostring(t) end
+			local function htmlEscape(s)
+				return (s:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+			end
 			local placeholders = {}
 			local function stash(s)
 				table.insert(placeholders, s)
-				return "\0CODE" .. #placeholders .. "\0"
+				return "\0LUNA" .. #placeholders .. "\0"
 			end
-			-- Pull inline code FIRST so its content isn't mangled.
-			t = t:gsub("`([^`\n]+)`", function(c) return stash("<font color=\"rgb(255,180,140)\">" .. c .. "</font>") end)
-			-- HTML-escape what's left.
-			t = t:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
-			-- Per-line transforms (headers, bullets, quotes).
+
+			-- 1) Stash inline code first; body must NOT be re-escaped later.
+			t = t:gsub("``([^`\n]+)``", function(c)
+				return stash("<font color=\"rgb(255,180,140)\">" .. htmlEscape(c) .. "</font>")
+			end)
+			t = t:gsub("`([^`\n]+)`", function(c)
+				return stash("<font color=\"rgb(255,180,140)\">" .. htmlEscape(c) .. "</font>")
+			end)
+
+			-- 2) Stash links [text](url) — text is styled, url displayed in dim parens.
+			t = t:gsub("%[([^%]\n]*)%]%(([^%s%)\n]+)%)", function(text, url)
+				if text == "" then text = url end
+				return stash(
+					"<u><font color=\"rgb(150,180,255)\">" .. htmlEscape(text) .. "</font></u>"
+				)
+			end)
+
+			-- 3) HTML-escape whatever raw markdown remains (placeholders survive).
+			t = htmlEscape(t)
+
+			-- 4) Per-line block-level transforms.
 			local lines = {}
 			for raw in (t .. "\n"):gmatch("([^\n]*)\n") do
 				local line = raw
-				local h3 = line:match("^###%s+(.+)$")
-				local h2 = not h3 and line:match("^##%s+(.+)$")
-				local h1 = not h3 and not h2 and line:match("^#%s+(.+)$")
-				local bullet = not (h1 or h2 or h3) and line:match("^[%-%*]%s+(.+)$")
-				local quote = not (h1 or h2 or h3 or bullet) and line:match("^&gt;%s+(.+)$")
-				if h1 then
-					line = "<b><font size=\"22\">" .. h1 .. "</font></b>"
-				elseif h2 then
-					line = "<b><font size=\"19\">" .. h2 .. "</font></b>"
-				elseif h3 then
-					line = "<b><font size=\"16\">" .. h3 .. "</font></b>"
-				elseif bullet then
-					line = "  • " .. bullet
-				elseif quote then
-					line = "<i><font color=\"rgb(180,180,200)\">  " .. quote .. "</font></i>"
+				-- Preserve indentation for nested lists.
+				local leadSpaces = line:match("^(%s*)") or ""
+				local indentLevel = math.floor(#leadSpaces / 2)
+				local indent = string.rep("    ", indentLevel)
+				local body = line:sub(#leadSpaces + 1)
+
+				-- Horizontal rule (any of --- *** ___).
+				if body:match("^%-%-%-+%s*$") or body:match("^%*%*%*+%s*$") or body:match("^___+%s*$") then
+					line = "<font color=\"rgb(90,82,140)\">────────────────────────────────</font>"
+				else
+					local hashes, hText = body:match("^(#+)%s+(.+)$")
+					local hLevel = hashes and #hashes
+					-- Task lists must be checked BEFORE generic bullets.
+					local taskOff = body:match("^[%-%*%+]%s+%[%s%]%s+(.+)$")
+					local taskOn  = body:match("^[%-%*%+]%s+%[[xX]%]%s+(.+)$")
+					local numIdx, numText = body:match("^(%d+)%.%s+(.+)$")
+					local bullet = (not (hashes or taskOff or taskOn or numIdx))
+						and body:match("^[%-%*%+]%s+(.+)$")
+					local quote = body:match("^&gt;%s*(.*)$")
+
+					if hLevel == 1 and hText then
+						line = "<b><font size=\"22\" color=\"rgb(255,255,255)\">" .. hText .. "</font></b>"
+					elseif hLevel == 2 and hText then
+						line = "<b><font size=\"19\" color=\"rgb(245,240,255)\">" .. hText .. "</font></b>"
+					elseif hLevel == 3 and hText then
+						line = "<b><font size=\"17\" color=\"rgb(225,215,255)\">" .. hText .. "</font></b>"
+					elseif hLevel == 4 and hText then
+						line = "<b><font size=\"15\" color=\"rgb(210,200,240)\">" .. hText .. "</font></b>"
+					elseif hLevel and hLevel >= 5 and hText then
+						line = "<b><font size=\"13\" color=\"rgb(200,190,230)\">" .. hText .. "</font></b>"
+					elseif taskOn then
+						line = indent .. "<font color=\"rgb(120,220,150)\"><b>☑</b></font> <s>" .. taskOn .. "</s>"
+					elseif taskOff then
+						line = indent .. "<font color=\"rgb(180,170,220)\">☐</font> " .. taskOff
+					elseif numIdx then
+						line = indent .. "<font color=\"rgb(180,170,220)\"><b>" .. numIdx .. ".</b></font>  " .. numText
+					elseif bullet then
+						line = indent .. "<font color=\"rgb(180,170,220)\">●</font>  " .. bullet
+					elseif quote then
+						line = "<i><font color=\"rgb(180,180,210)\">▎ " .. quote .. "</font></i>"
+					end
 				end
 				table.insert(lines, line)
 			end
 			t = table.concat(lines, "\n")
-			-- Inline emphasis (after headers so we don't conflict with bullets).
-			t = t:gsub("%*%*([^%*\n]+)%*%*", "<b>%1</b>")
-			t = t:gsub("__([^_\n]+)__", "<b>%1</b>")
-			t = t:gsub("%*([^%*\n]+)%*", "<i>%1</i>")
-			t = t:gsub("~~([^~\n]+)~~", "<s>%1</s>")
-			-- Restore code spans.
+
+			-- 5) Inline emphasis (after block transforms so they don't conflict with bullets).
+			t = t:gsub("%*%*%*([^%*\n]+)%*%*%*", "<b><i>%1</i></b>")  -- ***bold-italic***
+			t = t:gsub("___([^_\n]+)___",          "<b><i>%1</i></b>")  -- ___bold-italic___
+			t = t:gsub("%*%*([^%*\n]+)%*%*",       "<b>%1</b>")
+			t = t:gsub("__([^_\n]+)__",            "<b>%1</b>")
+			t = t:gsub("%*([^%*\n]+)%*",           "<i>%1</i>")
+			-- _italic_ only when the underscores are word-bounded (avoid snake_case mangling).
+			t = t:gsub("(%f[%w_])_([^_\n]+)_(%f[^%w_])", "%1<i>%2</i>%3")
+			t = t:gsub("~~([^~\n]+)~~",            "<s>%1</s>")
+			t = t:gsub("==([^=\n]+)==",            "<mark>%1</mark>")
+			t = t:gsub("%[%[([^%]\n]+)%]%]",       "<u>%1</u>") -- [[underline]]
+
+			-- 6) Restore stashes.
+			t = t:gsub("\0LUNA(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
+			-- Old-format compat for any pre-stashed CODE markers from cached chats.
 			t = t:gsub("\0CODE(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
 			return t
 		end
@@ -9397,10 +9470,62 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 
+		-- ---------- HTTP call (wrapped) ----------
+		-- Returns (replyText, errReason). replyText is nil on failure; errReason
+		-- describes what went wrong (used both for UI + warn() in console).
+		local function callPollinations(conv)
+			local fn = getHttpFn()
+			if not fn then
+				return nil, "Executor missing `request`/`syn.request`/`http_request` — cannot reach pollinations.ai."
+			end
+			local okEnc, payload = pcall(HttpService.JSONEncode, HttpService, { messages = conv, model = currentModel })
+			if not okEnc then
+				return nil, "Failed to JSON-encode the conversation: " .. tostring(payload)
+			end
+			local ok, res = pcall(fn, {
+				Url = opts.Endpoint,
+				Method = "POST",
+				Headers = { ["Content-Type"] = "application/json" },
+				Body = payload,
+			})
+			if not ok then
+				return nil, "HTTP call threw: " .. tostring(res)
+			end
+			if type(res) ~= "table" then
+				return nil, "HTTP returned non-table: " .. tostring(res)
+			end
+			local code = res.StatusCode or res.Status or 0
+			local body = res.Body or ""
+			if code >= 400 then
+				return nil, ("pollinations.ai returned HTTP %s — %s"):format(tostring(code), body:sub(1, 240))
+			end
+			if body == "" then
+				return nil, "pollinations.ai returned an empty body."
+			end
+			local okDec, decoded = pcall(HttpService.JSONDecode, HttpService, body)
+			if not okDec then
+				-- Some pollinations endpoints stream as plain text; treat as the reply.
+				return body, nil
+			end
+			if decoded and decoded.choices and decoded.choices[1] then
+				local msg = decoded.choices[1].message
+				if msg and msg.content then return msg.content, nil end
+			end
+			-- Some models return `text` field instead of `choices[].message`.
+			if decoded and decoded.text then return decoded.text, nil end
+			return nil, "Could not extract `choices[1].message.content` from response."
+		end
+
 		local function doSend(prompt, isRegenerate)
 			local chat = getActive()
-			if not chat then return end
-			if generation.active then return end
+			if not chat then
+				warn("[Solara AI] doSend aborted: no active chat")
+				return
+			end
+			if generation.active then
+				warn("[Solara AI] doSend aborted: another reply is generating (press Stop first)")
+				return
+			end
 			-- Refresh system prompt so live host knowledge is current on every call.
 			if chat.conv[1] and chat.conv[1].role == "system" then
 				chat.conv[1].content = buildSystemPrompt()
@@ -9436,25 +9561,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 
 			task.spawn(function()
-				local payload = HttpService:JSONEncode({ messages = chat.conv, model = currentModel })
-				local fn = getHttpFn()
-				local replyText
-				if fn then
-					local ok, res = pcall(fn, {
-						Url = opts.Endpoint,
-						Method = "POST",
-						Headers = { ["Content-Type"] = "application/json" },
-						Body = payload,
-					})
-					if ok and res and res.Body then
-						local okDec, decoded = pcall(function() return HttpService:JSONDecode(res.Body) end)
-						if okDec and decoded and decoded.choices and decoded.choices[1] then
-							replyText = decoded.choices[1].message and decoded.choices[1].message.content
-						end
-					end
+				local ok, replyText, errReason = pcall(callPollinations, chat.conv)
+				if not ok then
+					warn("[Solara AI] callPollinations crashed:", replyText)
+					errReason = "Internal error: " .. tostring(replyText)
+					replyText = nil
 				end
 				if not replyText then
-					replyText = "_(Unable to reach the AI service. Make sure your executor supports HTTP POST.)_"
+					warn("[Solara AI] reply unavailable:", errReason)
+					replyText = "_(AI request failed.)_\n\n**Reason:** " .. tostring(errReason or "unknown")
 				end
 				-- Token mismatch → user pressed Stop or switched chats; persist silently.
 				if generation.token ~= myToken then
@@ -9513,22 +9628,40 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		-- =====================================================================
 		-- Event bindings
 		-- =====================================================================
-		InputBox.FocusLost:Connect(function(enterPressed)
+		-- Click handlers are wrapped so any unhandled error surfaces in F9 and
+		-- as a toast — instead of the button silently appearing "dead".
+		local function safeClick(label, fn)
+			return function(...)
+				local ok, err = pcall(fn, ...)
+				if not ok then
+					warn(("[Solara AI] %s click error: %s"):format(label, tostring(err)))
+					pcall(function()
+						Luna:Notification({
+							Title = "AI: " .. label .. " failed",
+							Content = tostring(err),
+							Icon = "error", ImageSource = "Material", Duration = 6,
+						})
+					end)
+				end
+			end
+		end
+
+		InputBox.FocusLost:Connect(safeClick("Enter", function(enterPressed)
 			if enterPressed then
 				local t = InputBox.Text
 				InputBox.Text = ""
 				AiTab:Send(t)
 			end
-		end)
-		SendButton.MouseButton1Click:Connect(function()
+		end))
+		SendButton.MouseButton1Click:Connect(safeClick("Send", function()
 			if generation.active then AiTab:Stop(); return end
 			local t = InputBox.Text
 			InputBox.Text = ""
 			AiTab:Send(t)
-		end)
-		SaveBtn.MouseButton1Click:Connect(function() AiTab:Save() end)
-		ClearBtn.MouseButton1Click:Connect(function() AiTab:Clear() end)
-		NewChatBtn.MouseButton1Click:Connect(function() AiTab:NewChat() end)
+		end))
+		SaveBtn.MouseButton1Click:Connect(safeClick("Save", function() AiTab:Save() end))
+		ClearBtn.MouseButton1Click:Connect(safeClick("Clear", function() AiTab:Clear() end))
+		NewChatBtn.MouseButton1Click:Connect(safeClick("New chat", function() AiTab:NewChat() end))
 		SendButton.MouseEnter:Connect(function()
 			if not generation.active then tween(SendButton, {BackgroundTransparency = -0.05}) end
 		end)
@@ -9540,9 +9673,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		-- Bootstrap
 		-- =====================================================================
 		loadAll()
-		if not activeId then
-			local c = newChat("New chat")
-			activeId = c.id
+		if not (activeId and chats[activeId]) then
+			-- Stale / missing activeId: fall back to the most recent persisted
+			-- chat, or create a fresh one if the storage was empty.
+			if chatOrder[1] and chats[chatOrder[1]] then
+				activeId = chatOrder[1]
+			else
+				local c = newChat("New chat")
+				activeId = c.id
+			end
 		end
 		AiTab.Conversation = chats[activeId].conv
 		refreshModelLabel()
