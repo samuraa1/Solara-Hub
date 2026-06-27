@@ -1739,6 +1739,17 @@ local PresetGradients = {
 	Cherry = {Color3.fromRGB(148, 54, 54), Color3.fromRGB(168, 67, 70), Color3.fromRGB(188, 80, 86)},
 	Daylight = {Color3.fromRGB(51, 156, 255), Color3.fromRGB(89, 171, 237), Color3.fromRGB(127, 186, 218)},
 	Blossom = {Color3.fromRGB(255, 165, 243), Color3.fromRGB(213, 129, 231), Color3.fromRGB(170, 92, 218)},
+	Synthwave = {Color3.fromRGB(255, 71, 179), Color3.fromRGB(173, 84, 255), Color3.fromRGB(83, 144, 255)},
+	Ocean = {Color3.fromRGB(0, 201, 255), Color3.fromRGB(45, 161, 232), Color3.fromRGB(146, 254, 157)},
+	Sunset = {Color3.fromRGB(255, 94, 98), Color3.fromRGB(255, 154, 92), Color3.fromRGB(255, 206, 84)},
+	Aurora = {Color3.fromRGB(0, 255, 170), Color3.fromRGB(70, 180, 255), Color3.fromRGB(180, 120, 255)},
+	Dracula = {Color3.fromRGB(189, 147, 249), Color3.fromRGB(255, 121, 198), Color3.fromRGB(139, 233, 253)},
+	Catppuccin = {Color3.fromRGB(203, 166, 247), Color3.fromRGB(245, 194, 231), Color3.fromRGB(148, 226, 213)},
+	Mono = {Color3.fromRGB(225, 225, 225), Color3.fromRGB(170, 170, 170), Color3.fromRGB(120, 120, 120)},
+	Ember = {Color3.fromRGB(255, 88, 51), Color3.fromRGB(255, 140, 66), Color3.fromRGB(255, 191, 71)},
+	Frost = {Color3.fromRGB(160, 230, 255), Color3.fromRGB(196, 229, 255), Color3.fromRGB(232, 244, 255)},
+	Toxic = {Color3.fromRGB(166, 255, 0), Color3.fromRGB(99, 255, 132), Color3.fromRGB(0, 255, 198)},
+	Royal = {Color3.fromRGB(100, 115, 255), Color3.fromRGB(140, 100, 255), Color3.fromRGB(190, 110, 255)},
 }
 
 local IconCache = {}
@@ -1884,11 +1895,17 @@ end
 local LUNA_CALLBACK_ERR_FOOTER = " Report this in Discord: discord.gg/DPCKQRJmdF"
 
 local function LunaCallbackErrorNotification(response, ...)
+    local elementName = _LunaErrName(...)
     Luna:Notification({
         Title = "Callback Error",
-        Content = "Luna Interface Suite | " .. _LunaErrName(...) .. " | " .. tostring(response) .. LUNA_CALLBACK_ERR_FOOTER,
+        Content = "Luna Interface Suite | " .. elementName .. " | " .. tostring(response) .. LUNA_CALLBACK_ERR_FOOTER,
         Icon = "error",
     })
+    -- Optional host hook: lets the hub forward callback/script errors elsewhere
+    -- (e.g. a Discord webhook). Set Luna.CallbackErrorReporter = function(err, name) end
+    if type(Luna.CallbackErrorReporter) == "function" then
+        pcall(Luna.CallbackErrorReporter, tostring(response), elementName)
+    end
 end
 
 -- Detect "PC-like" environment: has a keyboard AND mouse. Phones/tablets typically
@@ -7772,6 +7789,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
 				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
 			end
+			-- Live runtime context (auto-attached so the AI knows the current game/player).
+			pcall(function()
+				local placeId = game.PlaceId
+				local gameName = "Unknown"
+				pcall(function()
+					gameName = game:GetService("MarketplaceService"):GetProductInfo(placeId).Name
+				end)
+				local plr = game:GetService("Players").LocalPlayer
+				local playerName = plr and plr.Name or "Unknown"
+				base = base .. ("\n\nLive runtime context (current session, auto-attached):\n- Current game: %s (PlaceId %s)\n- Local player: %s\nUse this to answer 'this game' / 'current game' questions without asking.")
+					:format(tostring(gameName), tostring(placeId), tostring(playerName))
+			end)
 			return base
 		end
 
@@ -7791,19 +7820,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		-- =====================================================================
 		local STORAGE_VERSION = 2
 		local MAX_CHATS = 50
-		local AVAILABLE_MODELS = {
-			{ id = "openai",           label = "GPT-4o-mini", desc = "Fast default" },
-			{ id = "openai-large",     label = "GPT-4o",      desc = "Smarter, slower" },
-			{ id = "openai-reasoning", label = "o3-mini",     desc = "Reasoning" },
-			{ id = "qwen-coder",       label = "Qwen Coder",  desc = "Code-focused" },
-			{ id = "mistral",          label = "Mistral",     desc = "Open weights" },
-			{ id = "deepseek",         label = "DeepSeek",    desc = "Code / logic" },
-			{ id = "llama",            label = "Llama 3.3",   desc = "Open weights" },
-		}
-
 		local chats = {}            -- id -> chat
 		local chatOrder = {}        -- array of ids in MRU order (most recent first)
 		local activeId = nil
+		-- Single fixed model — pollinations' alternate endpoints (mistral, deepseek,
+		-- llama, etc.) are unreliable / 404 in practice, so the UI no longer exposes
+		-- a picker. Host can still override via opts.Model if it really wants to.
 		local currentModel = opts.Model or "openai"
 		-- Generation token: incrementing counter so a Stop / chat-switch cancels
 		-- the in-flight reply (we drop it instead of writing to the UI).
@@ -7945,6 +7967,29 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local showQuickRow, showEmptyState
 		local welcomeNode
 
+		-- ---- Added-feature state ----
+		local codeRunHistory = {}       -- last code blocks run via Execute (newest first)
+		local lastClientError = ""      -- most recent client error (LogService)
+		local consecutiveFailures = 0   -- for the "AI offline?" banner
+		local streamingEnabled = true   -- progressive (typewriter) reveal of replies
+		-- Capture client-side errors so the user can pull "last error" into chat.
+		pcall(function()
+			game:GetService("LogService").MessageOut:Connect(function(msg, mt)
+				if mt == Enum.MessageType.MessageError and msg and msg ~= "" then
+					lastClientError = tostring(msg)
+				end
+			end)
+		end)
+		local function approxTokens(chat)
+			local chars = 0
+			if chat and chat.conv then
+				for _, m in ipairs(chat.conv) do
+					chars = chars + #tostring(m.content or "")
+				end
+			end
+			return math.floor(chars / 4)
+		end
+
 		-- =====================================================================
 		-- Header
 		-- =====================================================================
@@ -8013,42 +8058,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local ClearBtn   = makeHeaderBtn("delete",       -0)
 		local SaveBtn    = makeHeaderBtn("save",         -34)
 		local SidebarBtn = makeHeaderBtn("view_sidebar", -68)
-
-		-- Model selector pill
-		local ModelPill = Instance.new("TextButton")
-		ModelPill.Name = RandomName()
-		ModelPill.AnchorPoint = Vector2.new(1, 0.5)
-		ModelPill.Position = UDim2.new(1, -104, 0.5, 0)
-		ModelPill.Size = UDim2.fromOffset(120, 26)
-		ModelPill.BackgroundColor3 = PANEL_BG_LT
-		ModelPill.BackgroundTransparency = 0.15
-		ModelPill.AutoButtonColor = false
-		ModelPill.Text = ""
-		ModelPill.Parent = Header
-		do
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = ModelPill
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = ModelPill
-		end
-		local modelIcon = Instance.new("ImageLabel")
-		modelIcon.BackgroundTransparency = 1
-		modelIcon.Size = UDim2.fromOffset(13, 13)
-		modelIcon.Position = UDim2.new(0, 8, 0.5, -6)
-		modelIcon.ImageColor3 = ACCENT
-		modelIcon.Parent = ModelPill
-		ApplyIcon(modelIcon, GetIcon("bolt", "Material"))
-		local ModelLabel = Instance.new("TextLabel")
-		ModelLabel.BackgroundTransparency = 1
-		ModelLabel.Position = UDim2.new(0, 26, 0, 0)
-		ModelLabel.Size = UDim2.new(1, -30, 1, 0)
-		ModelLabel.Font = Enum.Font.GothamSemibold
-		ModelLabel.TextSize = 11
-		ModelLabel.TextColor3 = TEXT_PRIMARY
-		ModelLabel.TextXAlignment = Enum.TextXAlignment.Left
-		ModelLabel.Text = "GPT-4o-mini"
-		ModelLabel:SetAttribute("LunaNoTranslate", true)
-		ModelLabel.Parent = ModelPill
-		ModelPill.MouseEnter:Connect(function() tween(ModelPill, {BackgroundTransparency = 0}) end)
-		ModelPill.MouseLeave:Connect(function() tween(ModelPill, {BackgroundTransparency = 0.15}) end)
 
 		-- =====================================================================
 		-- Body = ChatPane (left) + Sidebar (right)
@@ -8566,6 +8575,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 				if ok then
 					execBtn.Text = "Running"
+					-- Track for /rerun and /history (newest first, max 5).
+					table.insert(codeRunHistory, 1, code)
+					while #codeRunHistory > 5 do table.remove(codeRunHistory) end
 					task.delay(1.6, function() if execBtn and execBtn.Parent then execBtn.Text = "Execute" end end)
 				else
 					Luna:Notification({ Title = "Execute failed", Content = tostring(err), Icon = "error", ImageSource = "Material", Duration = 6 })
@@ -8717,11 +8729,19 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 
 			setContent(text or "")
 
-			-- Soft fade-in.
+			-- Pop-in: scale 0.94 → 1.0 + fade. UIStroke and Label use separate
+			-- tweens because UIStroke.Transparency is its own property.
+			local scaleFx = Instance.new("UIScale"); scaleFx.Scale = 0.94; scaleFx.Parent = Bubble
 			Bubble.BackgroundTransparency = 1
 			Label.TextTransparency = 1
-			TweenService:Create(Bubble, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
-			TweenService:Create(Label, TweenInfo.new(0.25), {TextTransparency = 0}):Play()
+			local popInfo  = TweenInfo.new(0.30, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local fadeInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(scaleFx, popInfo,  {Scale = 1}):Play()
+			TweenService:Create(Bubble,  fadeInfo, {BackgroundTransparency = 0.15}):Play()
+			TweenService:Create(Label,   fadeInfo, {TextTransparency = 0}):Play()
+			task.delay(0.40, function()
+				if scaleFx and scaleFx.Parent then scaleFx:Destroy() end
+			end)
 
 			return Row, Bubble, Label, setContent
 		end
@@ -8842,15 +8862,40 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		-- =====================================================================
 		-- Quick prompts (chips + welcome card)
 		-- =====================================================================
+		local function readClipboard()
+			local fn = getclipboard or readclipboard or (Clipboard and Clipboard.get)
+			if not fn then return nil end
+			local ok, txt = pcall(fn)
+			if ok and type(txt) == "string" then return txt end
+			return nil
+		end
+
 		local QUICK_PROMPTS = {
-			{ chip = "Что умеет Solara Hub?",
-			  prompt = "Расскажи кратко что умеет Solara Hub: какие основные табы, главные фичи и как ими пользоваться." },
-			{ chip = "Скрипт под текущую игру",
-			  prompt = "Какие скрипты есть в Solara Hub для игры, в которой я сейчас? Если игра не поддерживается — скажи прямо и предложи запросить разработку." },
-			{ chip = "Напиши Luau скрипт",
-			  prompt = "Напиши Luau скрипт: " },
-			{ chip = "Объясни ошибку",
-			  prompt = "Помоги дебагнуть эту ошибку:\n```\n\n```" },
+			{ chip = "What can Solara Hub do?",
+			  prompt = "Briefly explain what Solara Hub can do: list the main tabs, the headline features, and how to use them." },
+			{ chip = "Scripts for current game",
+			  prompt = "What scripts does Solara Hub have for the game I'm currently in? If it's not supported, say so directly and offer to send a script request." },
+			{ chip = "Write a Luau script",
+			  prompt = "Write a Luau script that " },
+			{ chip = "Explain this error",
+			  prompt = "Help me debug this error:\n```\n\n```" },
+			{ chip = "📋 Paste",
+			  action = function()
+				local txt = readClipboard()
+				if not txt or txt == "" then
+					Luna:Notification({ Title = "Clipboard", Content = "Executor has no clipboard-read API (or it's empty).", Icon = "error", ImageSource = "Material", Duration = 5 })
+					return nil
+				end
+				return txt
+			  end },
+			{ chip = "🐛 Last error",
+			  action = function()
+				if lastClientError == "" then
+					Luna:Notification({ Title = "Last error", Content = "No client error captured yet.", Icon = "info", ImageSource = "Material", Duration = 4 })
+					return nil
+				end
+				return "Help me debug this error:\n```\n" .. lastClientError .. "\n```"
+			  end },
 		}
 
 		local function clearQuickRow()
@@ -8865,24 +8910,54 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			for i, qp in ipairs(QUICK_PROMPTS) do
 				local b = Instance.new("TextButton")
 				b.BackgroundColor3 = PANEL_BG_LT
-				b.BackgroundTransparency = 0.2
+				b.BackgroundTransparency = 1
 				b.AutomaticSize = Enum.AutomaticSize.X
 				b.Size = UDim2.new(0, 0, 1, 0)
 				b.Text = "  " .. qp.chip .. "  "
 				b.Font = Enum.Font.GothamMedium
 				b.TextSize = 12
 				b.TextColor3 = TEXT_PRIMARY
+				b.TextTransparency = 1
 				b.AutoButtonColor = false
 				b.LayoutOrder = i
 				b:SetAttribute("LunaNoTranslate", true)
 				b.Parent = QuickRow
 				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
-				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.65; s.Parent = b
-				b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0.05}) end)
-				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.2}) end)
+				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 1; s.Parent = b
+				local sc = Instance.new("UIScale"); sc.Scale = 0.85; sc.Parent = b
+				-- Stagger entrance (each chip slightly after the previous).
+				task.delay((i - 1) * 0.05, function()
+					if not b.Parent then return end
+					local ti = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+					TweenService:Create(b,  ti, {BackgroundTransparency = 0.2, TextTransparency = 0}):Play()
+					TweenService:Create(s,  TweenInfo.new(0.22), {Transparency = 0.65}):Play()
+					TweenService:Create(sc, ti, {Scale = 1}):Play()
+				end)
+				b.MouseEnter:Connect(function()
+					tween(b,  {BackgroundTransparency = 0.05})
+					tween(sc, {Scale = 1.05}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+				end)
+				b.MouseLeave:Connect(function()
+					tween(b,  {BackgroundTransparency = 0.2})
+					tween(sc, {Scale = 1}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+				end)
 				b.MouseButton1Click:Connect(function()
-					InputBox.Text = qp.prompt
-					InputBox:CaptureFocus()
+					tween(sc, {Scale = 0.92}, nil, TweenInfo.new(0.08))
+					task.delay(0.1, function()
+						if sc and sc.Parent then
+							tween(sc, {Scale = 1}, nil, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+						end
+					end)
+					if type(qp.action) == "function" then
+						local ok, res = pcall(qp.action)
+						if ok and type(res) == "string" then
+							InputBox.Text = res
+						end
+						InputBox:CaptureFocus()
+					else
+						InputBox.Text = qp.prompt
+						InputBox:CaptureFocus()
+					end
 				end)
 			end
 		end
@@ -8901,10 +8976,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			card.Position = UDim2.new(0.5, 0, 0.5, 0)
 			card.Size = UDim2.new(0, 380, 0, 180)
 			card.BackgroundColor3 = PANEL_BG_LT
-			card.BackgroundTransparency = 0.15
+			card.BackgroundTransparency = 1   -- faded in below
 			card.Parent = welcomeNode
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 14); c.Parent = card
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = card
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 1; s.Parent = card
 			local g = Instance.new("UIGradient")
 			g.Rotation = 120
 			g.Color = ColorSequence.new({
@@ -8916,6 +8991,22 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				NumberSequenceKeypoint.new(1, 0.92),
 			})
 			g.Parent = card
+
+			-- Pop-in animation + ambient gradient sweep (~6s loop).
+			local cardScale = Instance.new("UIScale"); cardScale.Scale = 0.88; cardScale.Parent = card
+			local popInfo = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			TweenService:Create(card, TweenInfo.new(0.32), {BackgroundTransparency = 0.15}):Play()
+			TweenService:Create(s,    TweenInfo.new(0.32), {Transparency = 0.55}):Play()
+			TweenService:Create(cardScale, popInfo, {Scale = 1}):Play()
+			task.spawn(function()
+				while card.Parent do
+					TweenService:Create(g, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Rotation = 200}):Play()
+					task.wait(3)
+					if not card.Parent then break end
+					TweenService:Create(g, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Rotation = 120}):Play()
+					task.wait(3)
+				end
+			end)
 
 			local icon = Instance.new("ImageLabel")
 			icon.BackgroundTransparency = 1
@@ -8999,7 +9090,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			headerTitle.Text = chat.name
 			local n = userMsgCount(chat)
-			headerSub.Text = (n == 0) and "Empty chat" or (n .. (n == 1 and " message" or " messages"))
+			local toks = approxTokens(chat)
+			local tokStr = (toks >= 1000) and (string.format("%.1fk", toks / 1000)) or tostring(toks)
+			if n == 0 then
+				headerSub.Text = "Empty chat  ·  ~" .. tokStr .. " tokens"
+			else
+				headerSub.Text = (n .. (n == 1 and " message" or " messages")) .. "  ·  ~" .. tokStr .. " tokens"
+			end
 		end
 
 		renderActiveChat = function()
@@ -9189,6 +9286,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			return Item
 		end
 
+		-- Set by the search input so per-keystroke re-renders don't stutter with
+		-- entrance animations. NewChat / Delete / Switch keep the animation.
+		local suppressItemAnim = false
+
 		renderSidebar = function()
 			for _, ch in ipairs(ChatList:GetChildren()) do
 				if not ch:IsA("UIListLayout") then ch:Destroy() end
@@ -9209,92 +9310,25 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					layoutIdx = layoutIdx + 1
 					local item = makeChatItem(c)
 					item.LayoutOrder = layoutIdx
+					if not suppressItemAnim then
+						local baseTrans = item.BackgroundTransparency
+						item.BackgroundTransparency = 1
+						local sc = Instance.new("UIScale"); sc.Scale = 0.94; sc.Parent = item
+						local delay = (layoutIdx - 1) * 0.035
+						task.delay(delay, function()
+							if not item.Parent then return end
+							TweenService:Create(item, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = baseTrans}):Play()
+							TweenService:Create(sc, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+							task.delay(0.4, function() if sc and sc.Parent then sc:Destroy() end end)
+						end)
+					end
 				end
 			end
 		end
-		SearchInput:GetPropertyChangedSignal("Text"):Connect(function() renderSidebar() end)
-
-		-- =====================================================================
-		-- Model selector popup
-		-- =====================================================================
-		local modelMenu
-		local function closeModelMenu()
-			if modelMenu and modelMenu.Parent then modelMenu:Destroy() end
-			modelMenu = nil
-		end
-		local function findModelInfo(id)
-			for _, m in ipairs(AVAILABLE_MODELS) do
-				if m.id == id then return m end
-			end
-			return AVAILABLE_MODELS[1]
-		end
-		local function refreshModelLabel()
-			ModelLabel.Text = findModelInfo(currentModel).label
-		end
-		ModelPill.MouseButton1Click:Connect(function()
-			if modelMenu then closeModelMenu(); return end
-			modelMenu = Instance.new("Frame")
-			modelMenu.Name = "ModelMenu"
-			modelMenu.Size = UDim2.new(0, 220, 0, #AVAILABLE_MODELS * 32 + 12)
-			modelMenu.Position = UDim2.new(0, ModelPill.AbsolutePosition.X - Page.AbsolutePosition.X - 100, 0, ModelPill.AbsolutePosition.Y - Page.AbsolutePosition.Y + 32)
-			modelMenu.BackgroundColor3 = PANEL_BG
-			modelMenu.BackgroundTransparency = 0.05
-			modelMenu.BorderSizePixel = 0
-			modelMenu.ZIndex = 50
-			modelMenu.Parent = Page
-			do
-				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = modelMenu
-				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.5; s.Parent = modelMenu
-				local p = Instance.new("UIPadding")
-				p.PaddingTop = UDim.new(0, 6); p.PaddingBottom = UDim.new(0, 6)
-				p.PaddingLeft = UDim.new(0, 6); p.PaddingRight = UDim.new(0, 6)
-				p.Parent = modelMenu
-				local l = Instance.new("UIListLayout"); l.Padding = UDim.new(0, 2); l.Parent = modelMenu
-			end
-			for _, m in ipairs(AVAILABLE_MODELS) do
-				local row = Instance.new("TextButton")
-				row.Size = UDim2.new(1, 0, 0, 30)
-				row.BackgroundColor3 = (m.id == currentModel) and ACCENT_DEEP or PANEL_BG_LT
-				row.BackgroundTransparency = 0.2
-				row.Text = ""
-				row.AutoButtonColor = false
-				row.ZIndex = 51
-				row:SetAttribute("LunaNoTranslate", true)
-				row.Parent = modelMenu
-				local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 7); rc.Parent = row
-				local lbl = Instance.new("TextLabel")
-				lbl.BackgroundTransparency = 1
-				lbl.Position = UDim2.new(0, 10, 0, 0)
-				lbl.Size = UDim2.new(0.5, -10, 1, 0)
-				lbl.Text = m.label
-				lbl.Font = Enum.Font.GothamBold
-				lbl.TextSize = 12
-				lbl.TextColor3 = TEXT_PRIMARY
-				lbl.TextXAlignment = Enum.TextXAlignment.Left
-				lbl.ZIndex = 52
-				lbl:SetAttribute("LunaNoTranslate", true)
-				lbl.Parent = row
-				local desc = Instance.new("TextLabel")
-				desc.BackgroundTransparency = 1
-				desc.Position = UDim2.new(0.5, 0, 0, 0)
-				desc.Size = UDim2.new(0.5, -8, 1, 0)
-				desc.Text = m.desc
-				desc.Font = Enum.Font.GothamMedium
-				desc.TextSize = 10
-				desc.TextColor3 = TEXT_DIM
-				desc.TextXAlignment = Enum.TextXAlignment.Right
-				desc.ZIndex = 52
-				desc:SetAttribute("LunaNoTranslate", true)
-				desc.Parent = row
-				row.MouseEnter:Connect(function() tween(row, {BackgroundTransparency = 0.05}) end)
-				row.MouseLeave:Connect(function() tween(row, {BackgroundTransparency = 0.2}) end)
-				row.MouseButton1Click:Connect(function()
-					currentModel = m.id
-					refreshModelLabel()
-					saveAll()
-					closeModelMenu()
-				end)
-			end
+		SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
+			suppressItemAnim = true
+			renderSidebar()
+			suppressItemAnim = false
 		end)
 
 		-- =====================================================================
@@ -9451,7 +9485,28 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			AiTab.Conversation = chats[activeId].conv
 			renderSidebar(); renderActiveChat()
 			Luna:Notification({ Title = "Chats loaded", Content = "Restored " .. #chatOrder .. " chat(s).", Icon = "check_circle", ImageSource = "Material", Duration = 3 })
+			-- One-time warm greeting on the very first launch.
+			pcall(function()
+				local flag = "Solara_AI_Greeted.txt"
+				local greeted = isfile and isfile(flag)
+				if not greeted then
+					task.delay(2.2, function()
+						Luna:Notification({
+							Title = "👋 Welcome to Solara Hub AI",
+							Content = "Ask me about scripts, this game, or paste an error. Type /help for commands.",
+							Icon = "smart_toy", ImageSource = "Material", Duration = 8,
+						})
+					end)
+					if writefile then pcall(writefile, flag, "1") end
+				end
+			end)
 		end
+
+		-- Focus the chat input from anywhere (used by the host's Ctrl+L hotkey).
+		function AiTab:Focus()
+			pcall(function() InputBox:CaptureFocus() end)
+		end
+		self._AiFocus = function() AiTab:Focus() end
 		function AiTab:Stop()
 			if generation.active then
 				-- Invalidate the in-flight reply token; the response, when it arrives,
@@ -9477,7 +9532,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 
 		-- ---------- HTTP call (wrapped) ----------
 		-- Returns (replyText, errReason). replyText is nil on failure; errReason
-		-- describes what went wrong (used both for UI + warn() in console).
+		-- is shown inside the chat bubble so the user sees what went wrong.
 		local function callPollinations(conv)
 			local fn = getHttpFn()
 			if not fn then
@@ -9523,19 +9578,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 
 		local function doSend(prompt, isRegenerate)
 			local chat = getActive()
-			if not chat then
-				warn("[Solara AI] doSend aborted: no active chat")
-				return
-			end
-			if generation.active then
-				warn("[Solara AI] doSend aborted: another reply is generating (press Stop first)")
-				return
-			end
+			if not chat then return end
+			if generation.active then return end
 			-- Refresh system prompt so live host knowledge is current on every call.
+			-- Per-chat custom instructions (set via /system) are appended on top.
+			local sysContent = buildSystemPrompt()
+			if chat.systemExtra and chat.systemExtra ~= "" then
+				sysContent = sysContent .. "\n\nUser custom instructions for THIS chat (obey them):\n" .. chat.systemExtra
+			end
 			if chat.conv[1] and chat.conv[1].role == "system" then
-				chat.conv[1].content = buildSystemPrompt()
+				chat.conv[1].content = sysContent
 			else
-				table.insert(chat.conv, 1, { role = "system", content = buildSystemPrompt() })
+				table.insert(chat.conv, 1, { role = "system", content = sysContent })
 			end
 			if not isRegenerate then
 				table.insert(chat.conv, { role = "user", content = prompt })
@@ -9568,12 +9622,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			task.spawn(function()
 				local ok, replyText, errReason = pcall(callPollinations, chat.conv)
 				if not ok then
-					warn("[Solara AI] callPollinations crashed:", replyText)
 					errReason = "Internal error: " .. tostring(replyText)
 					replyText = nil
 				end
+				local didFail = false
 				if not replyText then
-					warn("[Solara AI] reply unavailable:", errReason)
+					didFail = true
 					replyText = "_(AI request failed.)_\n\n**Reason:** " .. tostring(errReason or "unknown")
 				end
 				-- Token mismatch → user pressed Stop or switched chats; persist silently.
@@ -9589,12 +9643,45 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				chat.updatedAt = nowSec()
 				saveAll(); renderSidebar()
 
+				-- "AI offline?" banner after 2 consecutive failures.
+				if didFail then
+					consecutiveFailures = consecutiveFailures + 1
+					if consecutiveFailures >= 2 then
+						Luna:Notification({
+							Title = "AI offline?",
+							Content = "pollinations.ai seems unreachable — wait a minute and try again.",
+							Icon = "wifi_off", ImageSource = "Material", Duration = 7,
+						})
+					end
+				else
+					consecutiveFailures = 0
+				end
+
 				local visibleText, reqDescription = extractScriptRequest(replyText)
 				if chat.id == activeId then
-					if thinkSet and thinkLabel and thinkLabel.Parent then
-						thinkSet(visibleText)
+					local function commit()
+						if thinkSet and thinkLabel and thinkLabel.Parent then
+							thinkSet(visibleText)
+						else
+							appendMessage("assistant", visibleText)
+						end
+					end
+					-- Progressive (typewriter) reveal — only for plain-text answers, so
+					-- code blocks (with Copy/Execute buttons) don't flicker mid-stream.
+					local hasCode = visibleText:find("```", 1, true) ~= nil
+					if streamingEnabled and not didFail and not hasCode and thinkSet and #visibleText >= 40 then
+						local steps = math.clamp(math.floor(#visibleText / 60), 6, 16)
+						for i = 1, steps do
+							if generation.token ~= myToken then break end
+							thinkSet(visibleText:sub(1, math.floor(#visibleText * i / steps)))
+							pcall(function()
+								Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
+							end)
+							task.wait(0.03)
+						end
+						if generation.token == myToken then thinkSet(visibleText) end
 					else
-						appendMessage("assistant", visibleText)
+						commit()
 					end
 					if reqDescription then
 						local holder = thinkBubble and thinkBubble.Parent
@@ -9608,9 +9695,168 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 		end
 
+		-- ---- helpers for slash commands ----
+		local function urlencode(s)
+			return (tostring(s):gsub("[^%w%-_%.~]", function(ch)
+				return string.format("%%%02X", string.byte(ch))
+			end))
+		end
+
+		local function appendImageBubble(assetId)
+			local Row = Instance.new("Frame")
+			Row.Name = RandomName()
+			Row.BackgroundTransparency = 1
+			Row.Size = UDim2.new(1, 0, 0, 0)
+			Row.AutomaticSize = Enum.AutomaticSize.Y
+			Row.LayoutOrder = #Messages:GetChildren()
+			Row.Parent = Messages
+			local img = Instance.new("ImageLabel")
+			img.BackgroundColor3 = PANEL_BG_LT
+			img.BorderSizePixel = 0
+			img.Size = UDim2.new(0, 256, 0, 256)
+			img.Image = assetId
+			img.Parent = Row
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = img
+			task.defer(function()
+				task.wait()
+				pcall(function() Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y) end)
+			end)
+		end
+
+		local function doImage(p)
+			if p == "" then
+				Luna:Notification({ Title = "/image", Content = "Usage: /image <prompt>", Icon = "image", ImageSource = "Material" })
+				return
+			end
+			Luna:Notification({ Title = "Generating image…", Content = p, Icon = "image", ImageSource = "Material", Duration = 4 })
+			task.spawn(function()
+				local url = "https://image.pollinations.ai/prompt/" .. urlencode(p)
+				local fn = getHttpFn()
+				local shown = false
+				local assetFn = getcustomasset or getsynasset or (syn and syn.getcustomasset)
+				if fn and writefile and assetFn then
+					local ok, res = pcall(fn, { Url = url, Method = "GET" })
+					if ok and type(res) == "table" and res.Body and #res.Body > 200 then
+						local path = "SolaraAI_img_" .. os.time() .. ".png"
+						if pcall(writefile, path, res.Body) then
+							local okA, asset = pcall(assetFn, path)
+							if okA and asset then appendImageBubble(asset); shown = true end
+						end
+					end
+				end
+				if not shown then
+					if setclipboard then pcall(setclipboard, url) end
+					appendMessage("assistant", "Image generated (in-game display needs `writefile`+`getcustomasset`). URL copied to clipboard:\n" .. url)
+				end
+			end)
+		end
+
+		local function doExport()
+			local chat = getActive()
+			if not chat then return end
+			local lines = { "# " .. tostring(chat.name or "Chat"), "" }
+			for _, m in ipairs(chat.conv) do
+				if m.role ~= "system" then
+					table.insert(lines, "**" .. (m.role == "user" and "You" or "AI") .. ":**")
+					table.insert(lines, tostring(m.content))
+					table.insert(lines, "")
+				end
+			end
+			local md = table.concat(lines, "\n")
+			if writefile then
+				local path = "SolaraAI_export_" .. os.time() .. ".md"
+				if pcall(writefile, path, md) then
+					if setclipboard then pcall(setclipboard, md) end
+					Luna:Notification({ Title = "Chat exported", Content = "Saved to " .. path .. " (also copied).", Icon = "check_circle", ImageSource = "Material", Duration = 6 })
+					return
+				end
+			end
+			if setclipboard then
+				pcall(setclipboard, md)
+				Luna:Notification({ Title = "Chat exported", Content = "Copied chat to clipboard.", Icon = "content_copy", ImageSource = "Material", Duration = 5 })
+			else
+				Luna:Notification({ Title = "Export failed", Content = "Executor has no writefile/clipboard.", Icon = "error", ImageSource = "Material", Duration = 5 })
+			end
+		end
+
 		function AiTab:Send(prompt)
 			prompt = tostring(prompt or "")
-			if prompt == "" or generation.active then return end
+			if generation.active then return end
+			if prompt == "" then return end
+
+			-- ---- Slash commands ----
+			if prompt:sub(1, 1) == "/" then
+				local cmd, rest = prompt:match("^/(%S+)%s*(.*)$")
+				cmd = (cmd or ""):lower()
+				rest = rest or ""
+				if cmd == "help" then
+					appendMessage("assistant", "**Slash commands**\n`/clear` new-clear · `/new` new chat · `/model <name>` · `/explain` · `/fix` · `/lasterror` · `/system <text>` set per-chat instructions · `/export` · `/image <prompt>` · `/rerun` · `/history` · `/stream on|off`")
+					return
+				elseif cmd == "clear" then AiTab:Clear(); return
+				elseif cmd == "new" then AiTab:NewChat(); return
+				elseif cmd == "model" then
+					if rest ~= "" then
+						currentModel = rest; saveAll()
+						Luna:Notification({ Title = "Model set", Content = currentModel, Icon = "smart_toy", ImageSource = "Material" })
+					else
+						Luna:Notification({ Title = "/model", Content = "Current model: " .. currentModel, Icon = "smart_toy", ImageSource = "Material" })
+					end
+					return
+				elseif cmd == "stream" then
+					streamingEnabled = (rest:lower() ~= "off")
+					Luna:Notification({ Title = "Streaming", Content = streamingEnabled and "on" or "off", Icon = "bolt", ImageSource = "Material" })
+					return
+				elseif cmd == "explain" then
+					doSend("Explain your previous answer/code in detail, step by step.", false); return
+				elseif cmd == "fix" then
+					local extra = (lastClientError ~= "") and ("\n\nMost recent client error:\n```\n" .. lastClientError .. "\n```") or ""
+					doSend("Fix the problem in your previous code and give the corrected version." .. extra, false); return
+				elseif cmd == "lasterror" then
+					if lastClientError == "" then
+						Luna:Notification({ Title = "/lasterror", Content = "No client error captured yet.", Icon = "info", ImageSource = "Material" })
+					else
+						doSend("Help me debug this error:\n```\n" .. lastClientError .. "\n```", false)
+					end
+					return
+				elseif cmd == "system" then
+					local chat = getActive()
+					if chat then
+						chat.systemExtra = rest; saveAll()
+						Luna:Notification({ Title = "Custom instructions", Content = (rest == "" and "Cleared for this chat." or rest), Icon = "tune", ImageSource = "Material", Duration = 5 })
+					end
+					return
+				elseif cmd == "export" then doExport(); return
+				elseif cmd == "image" then doImage(rest); return
+				elseif cmd == "rerun" then
+					if codeRunHistory[1] then
+						local fn, perr = loadstring(codeRunHistory[1])
+						if fn then
+							task.spawn(fn)
+							Luna:Notification({ Title = "Re-run", Content = "Ran last code block.", Icon = "play_arrow", ImageSource = "Material" })
+						else
+							Luna:Notification({ Title = "Re-run failed", Content = tostring(perr), Icon = "error", ImageSource = "Material" })
+						end
+					else
+						Luna:Notification({ Title = "/rerun", Content = "No code run yet.", Icon = "info", ImageSource = "Material" })
+					end
+					return
+				elseif cmd == "history" then
+					if #codeRunHistory == 0 then
+						appendMessage("assistant", "No code has been run via the Execute button yet.")
+					else
+						local parts = { "**Last " .. #codeRunHistory .. " executed script(s):**" }
+						for i, c in ipairs(codeRunHistory) do
+							table.insert(parts, i .. ". `" .. (c:gsub("%s+", " "):sub(1, 60)) .. "`")
+						end
+						appendMessage("assistant", table.concat(parts, "\n"))
+					end
+					return
+				else
+					Luna:Notification({ Title = "Unknown command", Content = "/" .. cmd .. " — type /help", Icon = "error", ImageSource = "Material" })
+					return
+				end
+			end
+
 			doSend(prompt, false)
 		end
 
@@ -9633,13 +9879,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		-- =====================================================================
 		-- Event bindings
 		-- =====================================================================
-		-- Click handlers are wrapped so any unhandled error surfaces in F9 and
-		-- as a toast — instead of the button silently appearing "dead".
+		-- Click handlers are wrapped so any unhandled error surfaces as a toast
+		-- instead of the button silently appearing "dead".
 		local function safeClick(label, fn)
 			return function(...)
 				local ok, err = pcall(fn, ...)
 				if not ok then
-					warn(("[Solara AI] %s click error: %s"):format(label, tostring(err)))
 					pcall(function()
 						Luna:Notification({
 							Title = "AI: " .. label .. " failed",
@@ -9667,11 +9912,38 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SaveBtn.MouseButton1Click:Connect(safeClick("Save", function() AiTab:Save() end))
 		ClearBtn.MouseButton1Click:Connect(safeClick("Clear", function() AiTab:Clear() end))
 		NewChatBtn.MouseButton1Click:Connect(safeClick("New chat", function() AiTab:NewChat() end))
+		-- Send button: hover glow + click pulse via UIScale.
+		local sendScale = Instance.new("UIScale"); sendScale.Scale = 1; sendScale.Parent = SendButton
 		SendButton.MouseEnter:Connect(function()
-			if not generation.active then tween(SendButton, {BackgroundTransparency = -0.05}) end
+			if not generation.active then
+				tween(SendButton, {BackgroundTransparency = 0})
+				tween(sendScale, {Scale = 1.06}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+			end
 		end)
 		SendButton.MouseLeave:Connect(function()
-			if not generation.active then tween(SendButton, {BackgroundTransparency = 0.05}) end
+			if not generation.active then
+				tween(SendButton, {BackgroundTransparency = 0.05})
+				tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+			end
+		end)
+		SendButton.MouseButton1Down:Connect(function()
+			tween(sendScale, {Scale = 0.88}, nil, TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+		end)
+		SendButton.MouseButton1Up:Connect(function()
+			tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+		end)
+
+		-- Sidebar toggle button: rotate the icon when the sidebar collapses.
+		SidebarBtn.MouseButton1Click:Connect(function()
+			tween(SidebarBtn, {Rotation = sidebarOpen and 0 or 180}, nil, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+		end)
+
+		-- Header title: subtle accent shimmer when hovered (color cycle).
+		Header.MouseEnter:Connect(function()
+			tween(titleIcon, {ImageColor3 = Color3.fromRGB(180, 160, 255)}, nil, TweenInfo.new(0.25))
+		end)
+		Header.MouseLeave:Connect(function()
+			tween(titleIcon, {ImageColor3 = ACCENT}, nil, TweenInfo.new(0.35))
 		end)
 
 		-- =====================================================================
@@ -9689,7 +9961,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 		AiTab.Conversation = chats[activeId].conv
-		refreshModelLabel()
 		renderSidebar()
 		renderActiveChat()
 
