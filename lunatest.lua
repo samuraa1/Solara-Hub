@@ -10323,11 +10323,37 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ImageSource = opts.ImageSource,
 			ShowTitle = false,
 		})
-		local Page = hostTab.Page
+
+		-- Sub-pages: Search (default) / Favorites / History.
+		local searchSub = hostTab:CreateSubTab({ Name = "Search", Icon = "search", Default = true, Order = 1 })
+		local favSub    = hostTab:CreateSubTab({ Name = "Favorites", Icon = "star", Order = 2 })
+		local histSub   = hostTab:CreateSubTab({ Name = "History", Icon = "history", Order = 3 })
+		local searchPage = searchSub.Page
+
+		-- Persistence. Custom/Stats files are shared with the host script's
+		-- My Scripts section (same JSON schema, keys must stay compatible).
+		local FAV_FILE    = "Solara_SSFavorites.json"
+		local HIST_FILE   = "Solara_SSHistory.json"
+		local CUSTOM_FILE = "Solara_Custom.json"
+		local STATS_FILE  = "Solara_Stats.json"
+
+		local function ssReadJson(path)
+			if not (isfile and readfile and isfile(path)) then return nil end
+			local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+			if ok then return data end
+			return nil
+		end
+		local function ssWriteJson(path, tbl)
+			if not writefile then return end
+			pcall(function() writefile(path, HttpService:JSONEncode(tbl)) end)
+		end
 
 		local source = "ScriptBlox"
 		local pageNum = 1
+		local maxPages = 1
 		local loading = false
+		local sortMode = "date" -- date | views | likes
+		local lastQuery = nil
 		local filters = {
 			verifiedOnly = false,
 			notPaid = false,
@@ -10338,25 +10364,87 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			verified = false,
 			patched = false,
 		}
+		-- Result cache: key -> {cards, maxPages, ts}. 5 min TTL.
+		local resultCache = {}
+		local CACHE_TTL = 300
+
+		local favorites = ssReadJson(FAV_FILE) or {}
+		local history   = ssReadJson(HIST_FILE) or {}
+		local runStats  = nil -- lazy: Solara_Stats.json ({ [urlOrCode] = {Name, Count} })
+
+		local function getRunStats()
+			if runStats == nil then runStats = ssReadJson(STATS_FILE) or {} end
+			return runStats
+		end
+
+		local function fmtNum(n)
+			n = tonumber(n) or 0
+			if n >= 1e6 then return string.format("%.1fM", n / 1e6) end
+			if n >= 1e3 then return string.format("%.1fK", n / 1e3) end
+			return tostring(math.floor(n))
+		end
+		local function fmtDate(iso)
+			if type(iso) == "string" and #iso >= 10 then return iso:sub(1, 10) end
+			return nil
+		end
+
+		local gameNameCache = nil
+		local function currentGameName()
+			if gameNameCache ~= nil then return gameNameCache end
+			local ok, info = pcall(function()
+				return getService("MarketplaceService"):GetProductInfo(game.PlaceId)
+			end)
+			gameNameCache = (ok and info and info.Name) or false
+			return gameNameCache or nil
+		end
+
+		-- Identity key shared by favorites, run stats and the "ran" badge.
+		local function dataKey(data)
+			return data.fetchUrl or data.link or data.raw
+		end
+
+		local function isFavorite(data)
+			local k = dataKey(data)
+			for _, e in ipairs(favorites) do
+				if (e.FetchUrl or e.Link or e.Raw) == k then return true end
+			end
+			return false
+		end
 
 		local statusLabel
 		local runSearch
+		local updateFilterVisibility
 
 		local function setStatus(msg)
 			if statusLabel then statusLabel:Set(tostring(msg)) end
 		end
 
-		local searchSec = hostTab:CreateSection("Search")
-		local queryInput = searchSec:CreateInput({
+		-- Snapshot-diff helper: collects Page children a creation function adds,
+		-- so whole sections can be shown/hidden per selected API source.
+		local function collectNew(parent, fn)
+			local before = {}
+			for _, c in ipairs(parent:GetChildren()) do before[c] = true end
+			fn()
+			local added = {}
+			for _, c in ipairs(parent:GetChildren()) do
+				if not before[c] then table.insert(added, c) end
+			end
+			return added
+		end
+
+		-- Element creation goes through the SubTab (its delegation swaps the
+		-- shared TabPage upvalue); Section objects would parent to the real page.
+		searchSub:CreateSection("Search")
+		local queryInput = searchSub:CreateInput({
 			Name = "Query",
 			PlaceholderText = "e.g. infinite yield, arsenal, universal",
 			Enter = true,
 			Flag = "SS_Query",
 			Callback = function()
-				runSearch()
+				runSearch(1)
 			end,
 		})
-		local sourceDropdown = searchSec:CreateDropdown({
+		local sourceDropdown = searchSub:CreateDropdown({
 			Name = "API Source",
 			Options = {"ScriptBlox", "RScripts"},
 			CurrentOption = "ScriptBlox",
@@ -10365,18 +10453,44 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local v = opt
 				if type(v) == "table" then v = v[1] end
 				if type(v) == "string" and v ~= "" then source = v end
+				if updateFilterVisibility then updateFilterVisibility() end
 				setStatus("Source: " .. source)
 			end,
 		})
-		searchSec:CreateButton({
+		searchSub:CreateDropdown({
+			Name = "Sort By",
+			Options = {"Newest", "Most Viewed", "Most Liked"},
+			CurrentOption = "Newest",
+			Flag = "SS_Sort",
+			Callback = function(opt)
+				local v = opt
+				if type(v) == "table" then v = v[1] end
+				sortMode = (v == "Most Viewed" and "views") or (v == "Most Liked" and "likes") or "date"
+				if lastQuery then runSearch(1) end
+			end,
+		})
+		searchSub:CreateButton({
 			Name = "Search",
 			Description = "ScriptBlox / RScripts APIs",
 			Callback = function()
-				runSearch()
+				runSearch(1)
+			end,
+		})
+		searchSub:CreateButton({
+			Name = "Search This Game",
+			Description = "Fills the query with the current game's name",
+			Callback = function()
+				local gname = currentGameName()
+				if not gname then
+					setStatus("Could not resolve the current game's name.")
+					return
+				end
+				pcall(function() queryInput:Set(gname) end)
+				runSearch(1)
 			end,
 		})
 
-		statusLabel = searchSec:CreateLabel({
+		statusLabel = searchSub:CreateLabel({
 			Text = "Enter a query and press Search (needs HttpService / request).",
 			Style = 2,
 		})
@@ -10387,8 +10501,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		resultsHost.BackgroundTransparency = 0.15
 		resultsHost.BorderSizePixel = 0
 		resultsHost.Size = UDim2.new(1, 0, 0, 340)
-		resultsHost.LayoutOrder = 4
-		resultsHost.Parent = Page
+		resultsHost.LayoutOrder = 8
+		resultsHost.Parent = searchPage
 		local hostCorner = Instance.new("UICorner")
 		hostCorner.CornerRadius = UDim.new(0, 8)
 		hostCorner.Parent = resultsHost
@@ -10420,49 +10534,109 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		scrollPad.PaddingRight = UDim.new(0, 4)
 		scrollPad.Parent = Scroll
 
+		-- Pagination bar (Prev / Page x of y / Next). maxPages comes from the
+		-- APIs: ScriptBlox result.totalPages, RScripts info.maxPages.
+		local pageBar = Instance.new("Frame")
+		pageBar.Name = "ScriptSearcherPager"
+		pageBar.BackgroundTransparency = 1
+		pageBar.Size = UDim2.new(1, 0, 0, 34)
+		pageBar.LayoutOrder = 9
+		pageBar.Parent = searchPage
+
+		local function pagerBtn(text, anchor, pos)
+			local b = Instance.new("TextButton")
+			b.AnchorPoint = anchor
+			b.Position = pos
+			b.Size = UDim2.new(0, 92, 0, 28)
+			b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+			b.Font = Enum.Font.GothamSemibold
+			b.TextSize = 12
+			b.TextColor3 = Color3.new(1, 1, 1)
+			b.Text = text
+			b.AutoButtonColor = false
+			b.Parent = pageBar
+			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = b
+			return b
+		end
+		local prevBtn = pagerBtn("< Prev", Vector2.new(0, 0), UDim2.new(0, 6, 0, 3))
+		local nextBtn = pagerBtn("Next >", Vector2.new(1, 0), UDim2.new(1, -6, 0, 3))
+		local pageLabel = Instance.new("TextLabel")
+		pageLabel.BackgroundTransparency = 1
+		pageLabel.AnchorPoint = Vector2.new(0.5, 0)
+		pageLabel.Position = UDim2.new(0.5, 0, 0, 3)
+		pageLabel.Size = UDim2.new(0, 170, 0, 28)
+		pageLabel.Font = Enum.Font.GothamMedium
+		pageLabel.TextSize = 12
+		pageLabel.TextColor3 = Color3.fromRGB(200, 198, 210)
+		pageLabel.Text = "Page 1"
+		pageLabel.Parent = pageBar
+
+		local function updatePageBar()
+			pageLabel.Text = "Page " .. pageNum .. " / " .. math.max(maxPages, 1)
+			prevBtn.BackgroundTransparency = (pageNum > 1) and 0 or 0.55
+			nextBtn.BackgroundTransparency = (pageNum < maxPages) and 0 or 0.55
+		end
+		prevBtn.MouseButton1Click:Connect(function()
+			if pageNum > 1 and not loading then runSearch(pageNum - 1) end
+		end)
+		nextBtn.MouseButton1Click:Connect(function()
+			if pageNum < maxPages and not loading then runSearch(pageNum + 1) end
+		end)
+
 		local function cardWidth()
 			return math.max(Scroll.AbsoluteSize.X - 12, 220)
 		end
 
 		local function scrollToResults()
-			if not Page:IsA("ScrollingFrame") then return end
+			if not searchPage:IsA("ScrollingFrame") then return end
 			task.defer(function()
 				task.wait(0.15)
-				local pageY = Page.AbsolutePosition.Y
+				local pageY = searchPage.AbsolutePosition.Y
 				local hostY = resultsHost.AbsolutePosition.Y
-				local target = hostY - pageY + Page.CanvasPosition.Y - 12
-				Page.CanvasPosition = Vector2.new(0, math.max(0, target))
+				local target = hostY - pageY + searchPage.CanvasPosition.Y - 12
+				searchPage.CanvasPosition = Vector2.new(0, math.max(0, target))
 			end)
 		end
 
-		local sbSec = hostTab:CreateSection("ScriptBlox filters")
-		local function sbToggle(name, key)
-			sbSec:CreateToggle({
-				Name = name,
-				CurrentValue = false,
-				Callback = function(v) filters[key] = v end,
-			})
-		end
-		sbToggle("Key system", "key")
-		sbToggle("Universal", "universal")
-		sbToggle("Verified", "verified")
-		sbToggle("Patched", "patched")
+		local sbFilterInsts = collectNew(searchPage, function()
+			searchSub:CreateSection("ScriptBlox filters")
+			local function sbToggle(name, key)
+				searchSub:CreateToggle({
+					Name = name,
+					CurrentValue = false,
+					Callback = function(v) filters[key] = v end,
+				})
+			end
+			sbToggle("Key system", "key")
+			sbToggle("Universal", "universal")
+			sbToggle("Verified", "verified")
+			sbToggle("Patched", "patched")
+		end)
 
-		local rsSec = hostTab:CreateSection("RScripts filters")
-		local function rsToggle(name, key)
-			rsSec:CreateToggle({
-				Name = name,
-				CurrentValue = false,
-				Callback = function(v) filters[key] = v end,
-			})
+		local rsFilterInsts = collectNew(searchPage, function()
+			searchSub:CreateSection("RScripts filters")
+			local function rsToggle(name, key)
+				searchSub:CreateToggle({
+					Name = name,
+					CurrentValue = false,
+					Callback = function(v) filters[key] = v end,
+				})
+			end
+			rsToggle("Verified only", "verifiedOnly")
+			rsToggle("Free only", "notPaid")
+			rsToggle("Unpatched", "unpatched")
+			rsToggle("No key system", "noKeySystem")
+		end)
+
+		-- Only the active source's filter section stays visible.
+		updateFilterVisibility = function()
+			for _, inst in ipairs(sbFilterInsts) do inst.Visible = (source == "ScriptBlox") end
+			for _, inst in ipairs(rsFilterInsts) do inst.Visible = (source == "RScripts") end
 		end
-		rsToggle("Verified only", "verifiedOnly")
-		rsToggle("Free only", "notPaid")
-		rsToggle("Unpatched", "unpatched")
-		rsToggle("No key system", "noKeySystem")
+		updateFilterVisibility()
 
 		local function setSectionLayoutOrder(sectionTitle, order)
-			for _, ch in ipairs(Page:GetChildren()) do
+			for _, ch in ipairs(searchPage:GetChildren()) do
 				if ch:IsA("TextLabel") and ch.Text == sectionTitle then
 					ch.LayoutOrder = order
 					break
@@ -10483,14 +10657,158 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Luna:Notification({Title = "Script Searcher", Content = text, Icon = "content_copy"})
 		end
 
-		local function makeCard(data, order)
+		-- Run counter shared with the host's My Scripts stats (same file, same schema).
+		local function ssRecordRun(name, key)
+			if not key then return end
+			local stats = getRunStats()
+			local e = stats[key] or { Name = name, Count = 0 }
+			e.Name = name or e.Name
+			e.Count = (e.Count or 0) + 1
+			stats[key] = e
+			ssWriteJson(STATS_FILE, stats)
+		end
+
+		local renderFavorites, renderHistory -- forward; list pages refresh live on changes
+
+		local function toggleFavorite(data)
+			local k = dataKey(data)
+			if not k then return false end
+			for i, e in ipairs(favorites) do
+				if (e.FetchUrl or e.Link or e.Raw) == k then
+					table.remove(favorites, i)
+					ssWriteJson(FAV_FILE, favorites)
+					if renderFavorites then renderFavorites() end
+					return false
+				end
+			end
+			table.insert(favorites, 1, {
+				Title = data.title, Game = data.game, Source = data.source or source,
+				Link = data.link, FetchUrl = data.fetchUrl, Raw = data.raw, Ts = os.time(),
+			})
+			ssWriteJson(FAV_FILE, favorites)
+			if renderFavorites then renderFavorites() end
+			return true
+		end
+
+		-- Solara_Custom.json is owned by the host's My Scripts section; entries
+		-- added here show up after the hub is re-executed.
+		local function addToMyScripts(data)
+			local src = data.fetchUrl or data.raw or data.link
+			if not src then return end
+			local list = ssReadJson(CUSTOM_FILE) or {}
+			for _, e in ipairs(list) do
+				if e.URL == src then
+					Luna:Notification({ Title = "Script Searcher", Content = "Already in My Scripts.", Icon = "info" })
+					return
+				end
+			end
+			table.insert(list, { Name = data.title or "Script", URL = src })
+			ssWriteJson(CUSTOM_FILE, list)
+			Luna:Notification({ Title = "Script Searcher", Content = "Saved to My Scripts (visible after hub reload).", Icon = "check_circle" })
+		end
+
+		-- ---------- code preview popup ----------
+		local function showCodePopup(titleText, code)
+			local overlay = Instance.new("Frame")
+			overlay.Name = "SSCodePreview"
+			overlay.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
+			overlay.BackgroundTransparency = 0.35
+			overlay.Size = UDim2.fromScale(1, 1)
+			overlay.ZIndex = 200
+			overlay.Parent = LunaUI
+
+			local closeCatcher = Instance.new("TextButton")
+			closeCatcher.BackgroundTransparency = 1
+			closeCatcher.Size = UDim2.fromScale(1, 1)
+			closeCatcher.Text = ""
+			closeCatcher.ZIndex = 201
+			closeCatcher.Parent = overlay
+
+			local panel = Instance.new("Frame")
+			panel.AnchorPoint = Vector2.new(0.5, 0.5)
+			panel.Position = UDim2.fromScale(0.5, 0.5)
+			panel.Size = UDim2.new(0.86, 0, 0.82, 0)
+			panel.BackgroundColor3 = Color3.fromRGB(24, 23, 31)
+			panel.ZIndex = 202
+			panel.Parent = overlay
+			local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 12); pc.Parent = panel
+			local ps = Instance.new("UIStroke"); ps.Color = Color3.fromRGB(70, 68, 85); ps.Transparency = 0.4; ps.Parent = panel
+
+			local titleLbl = Instance.new("TextLabel")
+			titleLbl.BackgroundTransparency = 1
+			titleLbl.Position = UDim2.new(0, 14, 0, 10)
+			titleLbl.Size = UDim2.new(1, -190, 0, 20)
+			titleLbl.Font = Enum.Font.GothamSemibold
+			titleLbl.TextSize = 14
+			titleLbl.TextColor3 = Color3.fromRGB(245, 245, 250)
+			titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+			titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			titleLbl.Text = tostring(titleText or "Script code")
+			titleLbl.ZIndex = 203
+			titleLbl.Parent = panel
+
+			local function panelBtn(text, xOffset)
+				local b = Instance.new("TextButton")
+				b.AnchorPoint = Vector2.new(1, 0)
+				b.Position = UDim2.new(1, xOffset, 0, 8)
+				b.Size = UDim2.new(0, 76, 0, 24)
+				b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+				b.Font = Enum.Font.GothamSemibold
+				b.TextSize = 12
+				b.TextColor3 = Color3.new(1, 1, 1)
+				b.Text = text
+				b.AutoButtonColor = false
+				b.ZIndex = 203
+				b.Parent = panel
+				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = b
+				return b
+			end
+			local closeBtn = panelBtn("Close", -10)
+			local copyBtn = panelBtn("Copy", -94)
+			closeBtn.MouseButton1Click:Connect(function() overlay:Destroy() end)
+			closeCatcher.MouseButton1Click:Connect(function() overlay:Destroy() end)
+			copyBtn.MouseButton1Click:Connect(function()
+				if setclipboard then setclipboard(code); notifyCopy("Code copied.") end
+			end)
+
+			local codeScroll = Instance.new("ScrollingFrame")
+			codeScroll.BackgroundColor3 = Color3.fromRGB(16, 15, 21)
+			codeScroll.Position = UDim2.new(0, 10, 0, 40)
+			codeScroll.Size = UDim2.new(1, -20, 1, -50)
+			codeScroll.ScrollBarThickness = 5
+			codeScroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+			codeScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+			codeScroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
+			codeScroll.ScrollingDirection = Enum.ScrollingDirection.XY
+			codeScroll.ZIndex = 203
+			codeScroll.Parent = panel
+			local csc = Instance.new("UICorner"); csc.CornerRadius = UDim.new(0, 8); csc.Parent = codeScroll
+
+			local codeLbl = Instance.new("TextLabel")
+			codeLbl.BackgroundTransparency = 1
+			codeLbl.Position = UDim2.new(0, 8, 0, 6)
+			codeLbl.Size = UDim2.new(0, 0, 0, 0)
+			codeLbl.AutomaticSize = Enum.AutomaticSize.XY
+			codeLbl.Font = Enum.Font.Code
+			codeLbl.TextSize = 13
+			codeLbl.TextColor3 = Color3.fromRGB(210, 215, 225)
+			codeLbl.TextXAlignment = Enum.TextXAlignment.Left
+			codeLbl.TextYAlignment = Enum.TextYAlignment.Top
+			codeLbl.Text = code
+			codeLbl.ZIndex = 204
+			codeLbl.Parent = codeScroll
+		end
+
+		-- ---------- result card ----------
+		local function makeCard(data, order, parentScroll)
+			parentScroll = parentScroll or Scroll
 			local card = Instance.new("Frame")
 			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
 			card.BackgroundTransparency = 0.05
-			card.Size = UDim2.fromOffset(cardWidth(), 88)
+			card.Size = UDim2.fromOffset(cardWidth(), 116)
 			card.LayoutOrder = order
 			card.ZIndex = 2
-			card.Parent = Scroll
+			card.Parent = parentScroll
 			local cCorner = Instance.new("UICorner")
 			cCorner.CornerRadius = UDim.new(0, 10)
 			cCorner.Parent = card
@@ -10501,51 +10819,83 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 
 			local title = Instance.new("TextLabel")
 			title.BackgroundTransparency = 1
-			title.Position = UDim2.new(0, 10, 0, 8)
-			title.Size = UDim2.new(1, -20, 0, 36)
+			title.Position = UDim2.new(0, 10, 0, 6)
+			title.Size = UDim2.new(1, -20, 0, 18)
 			title.Font = Enum.Font.GothamSemibold
 			title.TextSize = 13
 			title.TextColor3 = Color3.fromRGB(245, 245, 250)
-			title.TextWrapped = true
+			title.TextTruncate = Enum.TextTruncate.AtEnd
 			title.TextXAlignment = Enum.TextXAlignment.Left
-			title.TextYAlignment = Enum.TextYAlignment.Top
 			title.Text = data.title or "Untitled"
 			title.Parent = card
 
+			local badges = {}
+			if data.gameMatch then table.insert(badges, '<font color="#7CE38B">[THIS GAME]</font>') end
+			if data.verified then table.insert(badges, '<font color="#7CE38B">[VERIFIED]</font>') end
+			if data.patched then table.insert(badges, '<font color="#FF6B6B">[PATCHED]</font>') end
+			if data.keySystem then table.insert(badges, '<font color="#FFD166">[KEY]</font>') end
+			if data.paid then table.insert(badges, '<font color="#FF9F43">[PAID]</font>') end
+			if data.mobile then table.insert(badges, '<font color="#6EC1FF">[MOBILE]</font>') end
+			if data.universal then table.insert(badges, '<font color="#C792EA">[UNIVERSAL]</font>') end
+			if data.ranCount and data.ranCount > 0 then table.insert(badges, '<font color="#9AA0A6">[RAN x' .. data.ranCount .. ']</font>') end
+			local badgeLbl = Instance.new("TextLabel")
+			badgeLbl.BackgroundTransparency = 1
+			badgeLbl.Position = UDim2.new(0, 10, 0, 25)
+			badgeLbl.Size = UDim2.new(1, -20, 0, 14)
+			badgeLbl.Font = Enum.Font.GothamMedium
+			badgeLbl.TextSize = 10
+			badgeLbl.RichText = true
+			badgeLbl.TextXAlignment = Enum.TextXAlignment.Left
+			badgeLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			badgeLbl.Text = table.concat(badges, " ")
+			badgeLbl.Parent = card
+
+			local metaParts = {}
+			if data.game then table.insert(metaParts, tostring(data.game)) end
+			if data.author then table.insert(metaParts, tostring(data.author)) end
+			if data.views then table.insert(metaParts, fmtNum(data.views) .. " views") end
+			if data.likes then table.insert(metaParts, fmtNum(data.likes) .. " likes") end
+			local upd = fmtDate(data.updated)
+			if upd then table.insert(metaParts, "upd " .. upd) end
 			local meta = Instance.new("TextLabel")
 			meta.BackgroundTransparency = 1
-			meta.Position = UDim2.new(0, 10, 0, 44)
-			meta.Size = UDim2.new(1, -20, 0, 32)
+			meta.Position = UDim2.new(0, 10, 0, 41)
+			meta.Size = UDim2.new(1, -20, 0, 14)
 			meta.Font = Enum.Font.Gotham
 			meta.TextSize = 11
 			meta.TextColor3 = Color3.fromRGB(160, 160, 170)
-			meta.TextWrapped = true
+			meta.TextTruncate = Enum.TextTruncate.AtEnd
 			meta.TextXAlignment = Enum.TextXAlignment.Left
-			meta.TextYAlignment = Enum.TextYAlignment.Top
-			meta.Text = (data.game or "Unknown") .. "\n" .. (data.author or data.owner or "—")
+			meta.Text = table.concat(metaParts, "  •  ")
 			meta.Parent = card
 
-			local btnRow = Instance.new("Frame")
-			btnRow.BackgroundTransparency = 1
-			btnRow.Position = UDim2.new(0, 8, 1, -34)
-			btnRow.Size = UDim2.new(1, -16, 0, 26)
-			btnRow.Parent = card
-			local btnLayout = Instance.new("UIListLayout")
-			btnLayout.FillDirection = Enum.FillDirection.Horizontal
-			btnLayout.Padding = UDim.new(0, 6)
-			btnLayout.Parent = btnRow
+			local function btnRow(y)
+				local row = Instance.new("Frame")
+				row.BackgroundTransparency = 1
+				row.Position = UDim2.new(0, 8, 0, y)
+				row.Size = UDim2.new(1, -16, 0, 24)
+				row.Parent = card
+				local rl = Instance.new("UIListLayout")
+				rl.FillDirection = Enum.FillDirection.Horizontal
+				rl.Padding = UDim.new(0, 6)
+				rl.SortOrder = Enum.SortOrder.LayoutOrder
+				rl.Parent = row
+				return row
+			end
+			local row1 = btnRow(60)
+			local row2 = btnRow(88)
 
-			local function miniBtn(text, orderB, cb)
+			local function miniBtn(row, text, orderB, cb)
 				local b = Instance.new("TextButton")
 				b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
-				b.Size = UDim2.new(0.5, -3, 1, 0)
+				b.Size = UDim2.new(1/3, -4, 1, 0)
 				b.Font = Enum.Font.GothamSemibold
 				b.TextSize = 11
 				b.TextColor3 = Color3.new(1, 1, 1)
 				b.Text = text
 				b.LayoutOrder = orderB
 				b.AutoButtonColor = false
-				b.Parent = btnRow
+				b.Parent = row
 				local bc = Instance.new("UICorner")
 				bc.CornerRadius = UDim.new(0, 6)
 				bc.Parent = b
@@ -10554,18 +10904,26 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				return b
 			end
 
-			miniBtn("Execute", 1, function()
+			local execBtn
+			execBtn = miniBtn(row1, "Execute", 1, function()
 				if data.raw and data.raw ~= "" then
 					local ok, err = pcall(function() loadstring(data.raw)() end)
-					if not ok then
+					if ok then
+						ssRecordRun(data.title, dataKey(data))
+					else
 						Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
 					end
 				elseif data.fetchUrl then
+					if execBtn.Text ~= "Execute" then return end
+					execBtn.Text = "..."
 					task.spawn(function()
 						local body = LunaHttpGet(data.fetchUrl)
+						execBtn.Text = "Execute"
 						if body then
 							local ok2, err = pcall(function() loadstring(body)() end)
-							if not ok2 then
+							if ok2 then
+								ssRecordRun(data.title, dataKey(data))
+							else
 								Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
 							end
 						else
@@ -10574,17 +10932,57 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end)
 				end
 			end)
-			miniBtn("Copy", 2, function()
-				if setclipboard and data.link then
-					setclipboard(data.link)
-					notifyCopy("Link copied.")
-				elseif setclipboard and data.raw and data.raw ~= "" then
+
+			local viewBtn
+			viewBtn = miniBtn(row1, "View", 2, function()
+				if data.raw and data.raw ~= "" then
+					showCodePopup(data.title, data.raw)
+				elseif data.fetchUrl then
+					if viewBtn.Text ~= "View" then return end
+					viewBtn.Text = "..."
+					task.spawn(function()
+						local body = LunaHttpGet(data.fetchUrl)
+						viewBtn.Text = "View"
+						if body then
+							showCodePopup(data.title, body)
+						else
+							Luna:Notification({Title = "Script Searcher", Content = "Could not fetch script code.", Icon = "error"})
+						end
+					end)
+				end
+			end)
+
+			miniBtn(row1, "Copy", 3, function()
+				if setclipboard and data.raw and data.raw ~= "" then
 					setclipboard(data.raw)
 					notifyCopy("Script copied.")
 				elseif setclipboard and data.fetchUrl then
 					setclipboard(data.fetchUrl)
 					notifyCopy("URL copied.")
+				elseif setclipboard and data.link then
+					setclipboard(data.link)
+					notifyCopy("Link copied.")
 				end
+			end)
+
+			miniBtn(row2, data.fetchUrl and "Copy LS" or "Copy Raw", 1, function()
+				if not setclipboard then return end
+				if data.fetchUrl then
+					setclipboard('loadstring(game:HttpGet("' .. data.fetchUrl .. '"))()')
+					notifyCopy("Loadstring copied.")
+				elseif data.raw and data.raw ~= "" then
+					setclipboard(data.raw)
+					notifyCopy("Script copied.")
+				end
+			end)
+
+			local favBtn
+			favBtn = miniBtn(row2, isFavorite(data) and "* Fav" or "+ Fav", 2, function()
+				favBtn.Text = toggleFavorite(data) and "* Fav" or "+ Fav"
+			end)
+
+			miniBtn(row2, "+ My Scripts", 3, function()
+				addToMyScripts(data)
 			end)
 
 			card.MouseEnter:Connect(function() tween(cStroke, {Transparency = 0.35}) end)
@@ -10630,11 +11028,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 
-		local function buildRScriptsUrl(q)
+		local function buildRScriptsUrl(q, page)
 			local params = {
-				page = tostring(pageNum),
+				page = tostring(page),
 				q = q,
-				orderBy = "date",
+				orderBy = sortMode,
 				sort = "desc",
 			}
 			if filters.verifiedOnly then params.verifiedOnly = "true" end
@@ -10650,9 +11048,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			return "https://rscripts.net/api/v2/scripts?" .. table.concat(parts, "&")
 		end
 
-		local function buildScriptBloxUrl(q)
+		local function buildScriptBloxUrl(q, page)
 			local url = "https://scriptblox.com/api/script/search?q=" .. HttpService:UrlEncode(q)
-				.. "&mode=free&page=" .. tostring(pageNum) .. "&max=20"
+				.. "&mode=free&page=" .. tostring(page) .. "&max=20"
 			if filters.key then url = url .. "&key=1" end
 			if filters.universal then url = url .. "&universal=1" end
 			if filters.verified then url = url .. "&verified=1" end
@@ -10666,14 +11064,22 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if type(list) ~= "table" then return {} end
 			local cards = {}
 			for _, s in ipairs(list) do
-				local id = s._id or s.slug or s.id
+				local id = s.slug or s._id or s.id
 				table.insert(cards, {
 					title = s.title or "Untitled",
 					game = s.game and (s.game.title or s.game.name) or "Universal",
-					author = s.user and s.user.username or "—",
+					author = s.user and s.user.username or nil,
+					views = s.views,
+					likes = s.likes,
+					updated = s.lastUpdated or s.createdAt,
+					verified = s.user and s.user.verified or nil,
+					keySystem = s.keySystem or nil,
+					paid = s.paid or nil,
+					mobile = s.mobileReady or nil,
 					link = id and ("https://rscripts.net/script/" .. tostring(id)) or nil,
 					fetchUrl = s.rawScript,
 					raw = nil,
+					source = "RScripts",
 				})
 			end
 			return cards
@@ -10689,16 +11095,265 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				table.insert(cards, {
 					title = s.title or "Untitled",
 					game = s.game and (s.game.name or s.game.title) or "Universal",
-					author = tostring(s.views or 0) .. " views",
+					author = nil,
+					views = s.views,
+					likes = s.likeCount,
+					updated = s.lastBump or s.createdAt,
+					verified = s.verified or nil,
+					patched = s.isPatched or nil,
+					keySystem = s.key or nil,
+					paid = (s.scriptType ~= nil and s.scriptType ~= "free") or nil,
+					universal = s.isUniversal or nil,
 					link = slug and ("https://scriptblox.com/script/" .. tostring(slug)) or nil,
 					fetchUrl = nil,
 					raw = s.script,
+					source = "ScriptBlox",
 				})
 			end
 			return cards
 		end
 
-		runSearch = function()
+		local function fetchCards(query, page)
+			local cards, errMsg, mp = {}, nil, 1
+			if source == "RScripts" then
+				local data, err = LunaHttpJSON(buildRScriptsUrl(query, page))
+				errMsg = err
+				if data then
+					cards = parseRScripts(data)
+					if data.info and tonumber(data.info.maxPages) then
+						mp = tonumber(data.info.maxPages)
+					end
+					if #cards == 0 and data.message then
+						errMsg = tostring(data.message)
+					end
+				end
+			else
+				task.wait(1.05) -- scriptblox rate-limits; keep the old courtesy delay
+				local data, err = LunaHttpJSON(buildScriptBloxUrl(query, page))
+				errMsg = err
+				if data then
+					cards = parseScriptBlox(data)
+					if data.result and tonumber(data.result.totalPages) then
+						mp = tonumber(data.result.totalPages)
+					end
+					if #cards == 0 and data.message then
+						errMsg = tostring(data.message)
+					end
+				end
+			end
+			return cards, errMsg, mp
+		end
+
+		-- ScriptBlox search has no server-side sort param; sort its page locally.
+		local function sortCards(cards)
+			if source == "ScriptBlox" then
+				if sortMode == "views" then
+					table.sort(cards, function(a, b) return (a.views or 0) > (b.views or 0) end)
+				elseif sortMode == "likes" then
+					table.sort(cards, function(a, b) return (a.likes or 0) > (b.likes or 0) end)
+				end
+			end
+			return cards
+		end
+
+		-- Badges (ran counter) + current-game cards floated to the top, stable.
+		local function annotateCards(cards)
+			local gname = currentGameName()
+			local gl = gname and gname:lower()
+			local stats = getRunStats()
+			for _, c in ipairs(cards) do
+				if gl then
+					local cg = tostring(c.game or ""):lower()
+					if cg ~= "" and cg ~= "universal" and (gl:find(cg, 1, true) or cg:find(gl, 1, true)) then
+						c.gameMatch = true
+					end
+				end
+				local k = dataKey(c)
+				if k and stats[k] and stats[k].Count then
+					c.ranCount = stats[k].Count
+				end
+			end
+			local ranked = {}
+			local rest = {}
+			for _, c in ipairs(cards) do
+				if c.gameMatch then table.insert(ranked, c) else table.insert(rest, c) end
+			end
+			for _, c in ipairs(rest) do table.insert(ranked, c) end
+			return ranked
+		end
+
+		local function cacheKeyFor(query, page)
+			local f = {}
+			for k, v in pairs(filters) do
+				if v then table.insert(f, k) end
+			end
+			table.sort(f)
+			return source .. "|" .. query:lower() .. "|" .. tostring(page) .. "|" .. sortMode .. "|" .. table.concat(f, ",")
+		end
+
+		local function renderCards(cards)
+			clearResults()
+			for i, c in ipairs(cards) do
+				makeCard(c, i)
+			end
+			local w = cardWidth()
+			for _, ch in ipairs(Scroll:GetChildren()) do
+				if ch:IsA("Frame") then
+					ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+				end
+			end
+		end
+
+		-- ---------- shared list host for Favorites / History pages ----------
+		local function buildListHost(parentPage)
+			local host = Instance.new("Frame")
+			host.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
+			host.BackgroundTransparency = 0.15
+			host.BorderSizePixel = 0
+			host.Size = UDim2.new(1, 0, 0, 400)
+			host.LayoutOrder = 2
+			host.Parent = parentPage
+			local hc = Instance.new("UICorner"); hc.CornerRadius = UDim.new(0, 8); hc.Parent = host
+			local hs = Instance.new("UIStroke"); hs.Color = Color3.fromRGB(70, 68, 85); hs.Transparency = 0.6; hs.Parent = host
+			local sc = Instance.new("ScrollingFrame")
+			sc.BackgroundTransparency = 1
+			sc.BorderSizePixel = 0
+			sc.Size = UDim2.new(1, -8, 1, -8)
+			sc.Position = UDim2.new(0, 4, 0, 4)
+			sc.ScrollBarThickness = 5
+			sc.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+			sc.CanvasSize = UDim2.new(0, 0, 0, 0)
+			sc.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			sc.ScrollingDirection = Enum.ScrollingDirection.Y
+			sc.Parent = host
+			local ll = Instance.new("UIListLayout")
+			ll.Padding = UDim.new(0, 6)
+			ll.SortOrder = Enum.SortOrder.LayoutOrder
+			ll.Parent = sc
+			local sp = Instance.new("UIPadding")
+			sp.PaddingTop = UDim.new(0, 4)
+			sp.PaddingBottom = UDim.new(0, 8)
+			sp.PaddingLeft = UDim.new(0, 4)
+			sp.PaddingRight = UDim.new(0, 4)
+			sp.Parent = sc
+			return host, sc
+		end
+
+		-- ---------- Favorites sub-page ----------
+		local favCountLbl = favSub:CreateLabel({ Text = "", Style = 2 })
+		local _, favScroll = buildListHost(favSub.Page)
+
+		renderFavorites = function()
+			favCountLbl:Set(#favorites .. " favorite script(s) — use + Fav on a search result to add more.")
+			for _, ch in ipairs(favScroll:GetChildren()) do
+				if ch:IsA("Frame") then ch:Destroy() end
+			end
+			for i, e in ipairs(favorites) do
+				makeCard({
+					title = e.Title, game = e.Game, source = e.Source,
+					link = e.Link, fetchUrl = e.FetchUrl, raw = e.Raw,
+				}, i, favScroll)
+			end
+			local w = math.max(favScroll.AbsoluteSize.X - 12, 220)
+			for _, ch in ipairs(favScroll:GetChildren()) do
+				if ch:IsA("Frame") then
+					ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
+				end
+			end
+		end
+
+		-- ---------- History sub-page ----------
+		local histCountLbl = histSub:CreateLabel({ Text = "", Style = 2 })
+		local _, histScroll = buildListHost(histSub.Page)
+
+		local function makeHistoryRow(e, order)
+			local row = Instance.new("Frame")
+			row.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
+			row.BackgroundTransparency = 0.05
+			row.Size = UDim2.new(1, -8, 0, 32)
+			row.LayoutOrder = order
+			row.Parent = histScroll
+			local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 8); rc.Parent = row
+
+			local qBtn = Instance.new("TextButton")
+			qBtn.BackgroundTransparency = 1
+			qBtn.Position = UDim2.new(0, 10, 0, 0)
+			qBtn.Size = UDim2.new(1, -48, 1, 0)
+			qBtn.Font = Enum.Font.GothamMedium
+			qBtn.TextSize = 12
+			qBtn.TextColor3 = Color3.fromRGB(230, 230, 240)
+			qBtn.TextXAlignment = Enum.TextXAlignment.Left
+			qBtn.TextTruncate = Enum.TextTruncate.AtEnd
+			qBtn.Text = tostring(e.Query) .. "   (" .. tostring(e.Source or "?") .. ")"
+			qBtn.AutoButtonColor = false
+			qBtn.Parent = row
+
+			local xBtn = Instance.new("TextButton")
+			xBtn.AnchorPoint = Vector2.new(1, 0.5)
+			xBtn.Position = UDim2.new(1, -8, 0.5, 0)
+			xBtn.Size = UDim2.new(0, 24, 0, 24)
+			xBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 70)
+			xBtn.Font = Enum.Font.GothamSemibold
+			xBtn.TextSize = 12
+			xBtn.TextColor3 = Color3.new(1, 1, 1)
+			xBtn.Text = "X"
+			xBtn.AutoButtonColor = false
+			xBtn.Parent = row
+			local xc = Instance.new("UICorner"); xc.CornerRadius = UDim.new(0, 6); xc.Parent = xBtn
+
+			qBtn.MouseButton1Click:Connect(function()
+				pcall(function() queryInput:Set(e.Query) end)
+				source = (e.Source == "RScripts") and "RScripts" or "ScriptBlox"
+				pcall(function() sourceDropdown:Set({ CurrentOption = { source } }) end)
+				if updateFilterVisibility then updateFilterVisibility() end
+				searchSub:Activate()
+				runSearch(1)
+			end)
+			xBtn.MouseButton1Click:Connect(function()
+				for i, he in ipairs(history) do
+					if he == e then table.remove(history, i) break end
+				end
+				ssWriteJson(HIST_FILE, history)
+				renderHistory()
+			end)
+		end
+
+		renderHistory = function()
+			histCountLbl:Set(#history .. " recent quer" .. (#history == 1 and "y" or "ies") .. " — click to search again.")
+			for _, ch in ipairs(histScroll:GetChildren()) do
+				if ch:IsA("Frame") then ch:Destroy() end
+			end
+			for i, e in ipairs(history) do
+				makeHistoryRow(e, i)
+			end
+		end
+
+		local function pushHistory(query)
+			for i, e in ipairs(history) do
+				if e.Query == query and e.Source == source then
+					table.remove(history, i)
+					break
+				end
+			end
+			table.insert(history, 1, { Query = query, Source = source, Ts = os.time() })
+			while #history > 12 do table.remove(history) end
+			ssWriteJson(HIST_FILE, history)
+			renderHistory()
+		end
+
+		-- Refresh list pages whenever their pill is pressed.
+		local baseFavActivate = favSub.Activate
+		favSub.Activate = function(self, ...)
+			baseFavActivate(self, ...)
+			renderFavorites()
+		end
+		local baseHistActivate = histSub.Activate
+		histSub.Activate = function(self, ...)
+			baseHistActivate(self, ...)
+			renderHistory()
+		end
+
+		runSearch = function(page)
 			if loading then return end
 			syncSource()
 			local query = getQuery()
@@ -10706,58 +11361,55 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				setStatus("Enter a search term.")
 				return
 			end
+			page = math.max(1, page or 1)
+			pageNum = page
+			lastQuery = query
+
+			local ck = cacheKeyFor(query, page)
+			local cached = resultCache[ck]
+			if cached and (os.time() - cached.ts) < CACHE_TTL then
+				maxPages = cached.maxPages
+				renderCards(cached.cards)
+				updatePageBar()
+				setStatus(#cached.cards .. " results (" .. source .. ", cached)")
+				if #cached.cards > 0 then scrollToResults() end
+				return
+			end
+
 			loading = true
-			pageNum = 1
-			setStatus("Searching " .. source .. "...")
-			clearResults()
+			setStatus("Searching " .. source .. " (page " .. page .. ")...")
+			if page == 1 then clearResults() end
 
 			task.spawn(function()
-				local cards = {}
-				local errMsg = nil
-				if source == "RScripts" then
-					local data, err = LunaHttpJSON(buildRScriptsUrl(query))
-					errMsg = err
-					if data then
-						cards = parseRScripts(data)
-						if #cards == 0 and data.message then
-							errMsg = tostring(data.message)
-						end
-					end
-				else
-					task.wait(1.05)
-					local data, err = LunaHttpJSON(buildScriptBloxUrl(query))
-					errMsg = err
-					if data then
-						cards = parseScriptBlox(data)
-						if #cards == 0 and data.message then
-							errMsg = tostring(data.message)
-						end
-					end
+				local cards, errMsg, mp = fetchCards(query, page)
+				maxPages = math.max(1, mp or 1)
+				if pageNum > maxPages then pageNum = maxPages end
+				cards = annotateCards(sortCards(cards))
+				if #cards > 0 then
+					resultCache[ck] = { cards = cards, maxPages = maxPages, ts = os.time() }
+					pushHistory(query)
 				end
-
 				task.defer(function()
-					for i, c in ipairs(cards) do
-						makeCard(c, i)
-					end
-					local w = cardWidth()
-					for _, ch in ipairs(Scroll:GetChildren()) do
-						if ch:IsA("Frame") then
-							ch.Size = UDim2.fromOffset(w, ch.Size.Y.Offset)
-						end
-					end
+					renderCards(cards)
+					updatePageBar()
 				end)
 				if #cards > 0 then
-					setStatus(#cards .. " results (" .. source .. ")")
+					setStatus(#cards .. " results (" .. source .. ", page " .. pageNum .. ")")
 					scrollToResults()
 				elseif errMsg then
 					setStatus(errMsg)
+					task.defer(clearResults)
 				else
 					setStatus("No scripts found.")
+					task.defer(clearResults)
 				end
 				loading = false
 			end)
 		end
 
+		renderFavorites()
+		renderHistory()
+		updatePageBar()
 		setStatus("Ready — use Search or press Enter in Query.")
 
 		Window._ScriptSearcherTab = hostTab
