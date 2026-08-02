@@ -2805,9 +2805,10 @@ function Luna:CreateWindow(WindowSettings)
 		-- off on mobile because the existing fullscreen layout already fits.
 		Resizable = true,
 
-		-- New: if true, an AI Chat tab is auto-added (uses pollinations.ai - no
-		-- API key required). Set false to skip; the host can still create it
-		-- manually with Window:CreateAiTab().
+		-- New: if true, an AI Chat tab is auto-added (uses pollinations.ai — a free
+		-- API key is required since 2026; the user sets it in-chat with /key).
+		-- Set false to skip; the host can still create it manually with
+		-- Window:CreateAiTab().
 		AiTab = false,
 		AiSettings = nil,
 		ScriptSearcherTab = false,
@@ -7898,7 +7899,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 	end
 
 	-- ============================================================
-	-- AI Chat tab (powered by pollinations.ai, no API key required)
+	-- AI Chat tab (powered by pollinations.ai — free API key required, set via /key)
 	-- ============================================================
 	-- Layout:
 	--   ┌─────────────────────────────────────────────────────────────┐
@@ -7924,7 +7925,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Knowledge = nil,            -- extra context block injected into the system prompt
 			Model = "openai",
 			ShowTitle = true,
-			Endpoint = "https://text.pollinations.ai/openai",
+			Endpoint = "https://gen.pollinations.ai/v1/chat/completions",
 			Webhook = nil,              -- Discord webhook URL for "Send script request" flow
 			SaveFile = "LunaAI_chat.json", -- where to persist chat history (multi-chat v2)
 			AutoSave = true,
@@ -8071,6 +8072,29 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		-- llama, etc.) are unreliable / 404 in practice, so the UI no longer exposes
 		-- a picker. Host can still override via opts.Model if it really wants to.
 		local currentModel = opts.Model or "openai"
+		-- Pollinations API key. Since 2026 pollinations moved text/image generation
+		-- behind gen.pollinations.ai which requires a key (free tier via
+		-- enter.pollinations.ai). The user pastes their own key with /key; it is
+		-- stored locally next to the chat save file.
+		local aiToken = nil
+		local tokenFile = (tostring(opts.SaveFile):gsub("%.%w+$", "")) .. "_Token.txt"
+		local function loadToken()
+			if isfile and readfile and isfile(tokenFile) then
+				local ok, t = pcall(readfile, tokenFile)
+				if ok and type(t) == "string" then
+					t = t:gsub("%s+", "")
+					if t ~= "" then aiToken = t end
+				end
+			end
+		end
+		local function saveToken()
+			if aiToken and writefile then
+				pcall(writefile, tokenFile, aiToken)
+			elseif not aiToken and delfile and isfile and isfile(tokenFile) then
+				pcall(delfile, tokenFile)
+			end
+		end
+		loadToken()
 		-- Generation token: incrementing counter so a Stop / chat-switch cancels
 		-- the in-flight reply (we drop it instead of writing to the UI).
 		local generation = { token = 0, active = false, chatId = nil }
@@ -9284,10 +9308,26 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			t2:SetAttribute("LunaNoTranslate", true)
 			t2.Parent = card
 
+			-- No-key banner: pollinations requires a free API key since 2026.
+			local keyWarnShown = (aiToken == nil)
+			if keyWarnShown then
+				local kw = Instance.new("TextLabel")
+				kw.BackgroundTransparency = 1
+				kw.Position = UDim2.new(0, 54, 0, 58)
+				kw.Size = UDim2.new(1, -70, 0, 16)
+				kw.Text = "Needs a free API key → send /key (see /help)"
+				kw.Font = Enum.Font.GothamMedium
+				kw.TextSize = 11
+				kw.TextColor3 = Color3.fromRGB(255, 200, 90)
+				kw.TextXAlignment = Enum.TextXAlignment.Left
+				kw:SetAttribute("LunaNoTranslate", true)
+				kw.Parent = card
+			end
+
 			local listFrame = Instance.new("Frame")
 			listFrame.BackgroundTransparency = 1
-			listFrame.Position = UDim2.new(0, 18, 0, 80)
-			listFrame.Size = UDim2.new(1, -36, 0, 90)
+			listFrame.Position = UDim2.new(0, 18, 0, keyWarnShown and 96 or 80)
+			listFrame.Size = UDim2.new(1, -36, 0, keyWarnShown and 74 or 90)
 			listFrame.Parent = card
 			local ll = Instance.new("UIListLayout")
 			ll.Padding = UDim.new(0, 6)
@@ -9786,10 +9826,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if not okEnc then
 				return nil, "Failed to JSON-encode the conversation: " .. tostring(payload)
 			end
+			local headers = { ["Content-Type"] = "application/json" }
+			if aiToken then
+				headers["Authorization"] = "Bearer " .. aiToken
+			end
 			local ok, res = pcall(fn, {
 				Url = opts.Endpoint,
 				Method = "POST",
-				Headers = { ["Content-Type"] = "application/json" },
+				Headers = headers,
 				Body = payload,
 			})
 			if not ok then
@@ -9800,6 +9844,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			local code = res.StatusCode or res.Status or 0
 			local body = res.Body or ""
+			if code == 401 or code == 403 then
+				if aiToken then
+					return nil, "pollinations.ai rejected the API key (HTTP " .. tostring(code) .. "). Check it at enter.pollinations.ai/keys and set a fresh one with `/key <token>`."
+				end
+				return nil, "pollinations.ai now requires a (free) API key. Get one at enter.pollinations.ai/keys, then type `/key <your_token>` here."
+			end
+			if code == 402 then
+				return nil, "Out of free Pollen — it refills hourly on the free tier. Wait a bit or check your balance at enter.pollinations.ai."
+			end
+			if code == 429 then
+				return nil, "Rate limited by pollinations.ai — wait a few seconds and resend."
+			end
 			if code >= 400 then
 				return nil, ("pollinations.ai returned HTTP %s — %s"):format(tostring(code), body:sub(1, 240))
 			end
@@ -9975,6 +10031,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Luna:Notification({ Title = "Generating image…", Content = p, Icon = "image", ImageSource = "Material", Duration = 4 })
 			task.spawn(function()
 				local url = "https://image.pollinations.ai/prompt/" .. urlencode(p)
+				if aiToken then url = url .. "?key=" .. urlencode(aiToken) end
 				local fn = getHttpFn()
 				local shown = false
 				local assetFn = getcustomasset or getsynasset or (syn and syn.getcustomasset)
@@ -10034,7 +10091,21 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				cmd = (cmd or ""):lower()
 				rest = rest or ""
 				if cmd == "help" then
-					appendMessage("assistant", "**Slash commands**\n`/clear` new-clear · `/new` new chat · `/model <name>` · `/explain` · `/fix` · `/lasterror` · `/system <text>` set per-chat instructions · `/export` · `/image <prompt>` · `/rerun` · `/history` · `/stream on|off`")
+					appendMessage("assistant", "**Slash commands**\n`/clear` new-clear · `/new` new chat · `/model <name>` · `/explain` · `/fix` · `/lasterror` · `/system <text>` set per-chat instructions · `/export` · `/image <prompt>` · `/rerun` · `/history` · `/stream on|off` · `/key <token>` set pollinations API key (get one free at enter.pollinations.ai/keys)")
+					return
+				elseif cmd == "key" then
+					if rest == "" then
+						appendMessage("assistant", aiToken
+							and ("An API key is set (ends in `…" .. aiToken:sub(-4) .. "`). `/key off` removes it.")
+							or  "No API key set. pollinations.ai now requires one — grab a **free** key at **enter.pollinations.ai/keys**, then send:\n`/key pk_...` (or `sk_...`)")
+					elseif rest:lower() == "off" then
+						aiToken = nil; saveToken()
+						Luna:Notification({ Title = "API key removed", Content = "Requests will be sent anonymously again.", Icon = "key_off", ImageSource = "Material" })
+					else
+						aiToken = rest:gsub("%s+", "")
+						saveToken()
+						Luna:Notification({ Title = "API key saved", Content = "Key stored in " .. tokenFile .. " — AI should work now.", Icon = "key", ImageSource = "Material", Duration = 6 })
+					end
 					return
 				elseif cmd == "clear" then AiTab:Clear(); return
 				elseif cmd == "new" then AiTab:NewChat(); return
