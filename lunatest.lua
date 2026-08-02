@@ -3635,9 +3635,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 			tween(TabButton, {BackgroundTransparency = 0})
 			tween(TabButton.UIStroke, {Transparency = 0.41})
 
-			Elements.UIPageLayout:JumpTo(TabPage)
+		local jumpTarget = TabPage
+		if Tab._ActiveSubTab and Tab._ActiveSubTab._Wrapper then
+			jumpTarget = Tab._ActiveSubTab._Wrapper
+		end
+		Elements.UIPageLayout:JumpTo(jumpTarget)
 
-			task.wait(0.05)
+		task.wait(0.05)
 
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
 				if OtherTabButton.Name ~= "InActive Template" and OtherTabButton.ClassName == "Frame" and OtherTabButton ~= TabButton then
@@ -3674,6 +3678,247 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end)
 
 		FirstTab = false
+
+		-- ==================== Sub-tabs ====================
+		-- Pill-style sub-pages inside a tab. Each sub-tab owns a wrapper Frame
+		-- (registered as a UIPageLayout page) containing a fixed pill bar on top
+		-- and a full-size content page (clone of the Template page) below it.
+		Tab._SubTabs = {}
+		Tab._ActiveSubTab = nil
+
+		local function refreshSubTabPills()
+			for _, st in ipairs(Tab._SubTabs) do
+				local active = (st == Tab._ActiveSubTab)
+				tween(st._Pill, {BackgroundTransparency = active and 0.1 or 0.55})
+				tween(st._PillStroke, {Transparency = active and 0.35 or 0.75})
+				tween(st._PillLabel, {TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 198, 210)})
+				if st._PillIcon then
+					tween(st._PillIcon, {ImageColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 198, 210)})
+				end
+			end
+		end
+
+		function Tab:CreateSubTab(SubTabSettings)
+			SubTabSettings = Kwargify({
+				Name = "Sub Tab",
+				Icon = nil,
+				ImageSource = "Material",
+				Default = false,
+				Order = nil,
+			}, SubTabSettings or {})
+
+			local SubTab = {}
+			SubTab.Name = SubTabSettings.Name
+
+			-- Wrapper is the actual UIPageLayout page (a plain Frame; UIPageLayout
+			-- would swallow a free-floating bar as its own page otherwise).
+			local wrapper = Instance.new("Frame")
+			wrapper.Name = RandomName()
+			wrapper.BackgroundTransparency = 1
+			wrapper.BorderSizePixel = 0
+			wrapper.Size = UDim2.fromScale(1, 1)
+			wrapper:SetAttribute("LunaTabName", TabSettings.Name)
+			wrapper:SetAttribute("LunaSubPage", SubTabSettings.Name)
+			wrapper.LayoutOrder = TabPage.LayoutOrder
+			wrapper.Visible = true
+			wrapper.Parent = Elements
+			SubTab._Wrapper = wrapper
+
+			-- Pill bar (fixed at the top of the wrapper). One bar per tab: it is
+			-- created for the first sub-tab and re-parented into whichever
+			-- wrapper is active so the pills follow the visible page.
+			local bar
+			if #Tab._SubTabs > 0 then
+				bar = Tab._SubTabs[1]._Bar
+			else
+				bar = Instance.new("Frame")
+				bar.Name = RandomName()
+				bar.BackgroundTransparency = 1
+				bar.BorderSizePixel = 0
+				bar.Position = UDim2.new(0, 12, 0, 8)
+				bar.Size = UDim2.new(1, -24, 0, 32)
+				bar.ZIndex = 5
+				bar.Parent = wrapper
+
+				local barLayout = Instance.new("UIListLayout")
+				barLayout.FillDirection = Enum.FillDirection.Horizontal
+				barLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+				barLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+				barLayout.SortOrder = Enum.SortOrder.LayoutOrder
+				barLayout.Padding = UDim.new(0, 8)
+				barLayout.Parent = bar
+			end
+
+			-- Content page (same Template the tab itself uses).
+			local subPage = Elements.Template:Clone()
+			subPage.Name = RandomName()
+			subPage:SetAttribute("LunaNoTranslate", nil)
+			subPage:SetAttribute("LunaTabName", TabSettings.Name)
+			subPage.Title.Visible = false
+			subPage.Visible = true
+			for _, TemplateElement in ipairs(subPage:GetChildren()) do
+				if TemplateElement.ClassName == "Frame" or TemplateElement.ClassName == "TextLabel" and TemplateElement.Name ~= "Title" then
+					TemplateElement:Destroy()
+				end
+			end
+			if TabSettings.ShowTitle == false then
+				subPage.UIPadding.PaddingTop = UDim.new(0, 10)
+			end
+			subPage.Position = UDim2.new(0, 0, 0, 46)
+			subPage.Size = UDim2.new(1, 0, 1, -46)
+			subPage.Parent = wrapper
+			SubTab.Page = subPage
+			SubTab._Bar = bar
+
+			local pill = Instance.new("Frame")
+			pill.Name = RandomName()
+			pill.BackgroundColor3 = Color3.fromRGB(46, 43, 58)
+			pill.BackgroundTransparency = 0.55
+			pill.BorderSizePixel = 0
+			pill.AutomaticSize = Enum.AutomaticSize.X
+			pill.Size = UDim2.new(0, 0, 0, 30)
+			pill.LayoutOrder = SubTabSettings.Order or (#Tab._SubTabs + 1)
+			pill.ZIndex = 6
+			pill.Parent = bar
+
+			local pillCorner = Instance.new("UICorner")
+			pillCorner.CornerRadius = UDim.new(1, 0)
+			pillCorner.Parent = pill
+
+			local pillStroke = Instance.new("UIStroke")
+			pillStroke.Color = Color3.fromRGB(120, 110, 150)
+			pillStroke.Transparency = 0.75
+			pillStroke.Parent = pill
+
+			local pillPad = Instance.new("UIPadding")
+			pillPad.PaddingLeft = UDim.new(0, 14)
+			pillPad.PaddingRight = UDim.new(0, 14)
+			pillPad.Parent = pill
+
+			local pillLayout = Instance.new("UIListLayout")
+			pillLayout.FillDirection = Enum.FillDirection.Horizontal
+			pillLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+			pillLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			pillLayout.Padding = UDim.new(0, 6)
+			pillLayout.Parent = pill
+
+			local pillIcon
+			if SubTabSettings.Icon then
+				pillIcon = Instance.new("ImageLabel")
+				pillIcon.Name = "Icon"
+				pillIcon.BackgroundTransparency = 1
+				pillIcon.Size = UDim2.fromOffset(16, 16)
+				pillIcon.ImageColor3 = Color3.fromRGB(200, 198, 210)
+				pillIcon.LayoutOrder = 1
+				pillIcon.ZIndex = 7
+				pillIcon.Parent = pill
+				ApplyIcon(pillIcon, GetIcon(SubTabSettings.Icon, SubTabSettings.ImageSource))
+			end
+
+			local pillText = Instance.new("TextLabel")
+			pillText.Name = "Label"
+			pillText.BackgroundTransparency = 1
+			pillText.AutomaticSize = Enum.AutomaticSize.X
+			pillText.Size = UDim2.new(0, 0, 1, 0)
+			pillText.Font = Enum.Font.GothamMedium
+			pillText.TextSize = 13
+			pillText.TextColor3 = Color3.fromRGB(200, 198, 210)
+			pillText.Text = tostring(SubTabSettings.Name)
+			pillText.LayoutOrder = 2
+			pillText.ZIndex = 7
+			pillText.Parent = pill
+
+			local pillInteract = Instance.new("TextButton")
+			pillInteract.Name = "Interact"
+			pillInteract.AutoButtonColor = false
+			pillInteract.BackgroundTransparency = 1
+			pillInteract.Size = UDim2.fromScale(1, 1)
+			pillInteract.Text = ""
+			pillInteract.ZIndex = 8
+			pillInteract.Parent = pill
+
+			SubTab._Pill = pill
+			SubTab._PillStroke = pillStroke
+			SubTab._PillLabel = pillText
+			SubTab._PillIcon = pillIcon
+
+			function SubTab:Activate()
+				Tab._ActiveSubTab = SubTab
+				bar.Parent = wrapper
+				Elements.UIPageLayout:JumpTo(wrapper)
+				Window.CurrentTab = TabSettings.Name
+				refreshSubTabPills()
+			end
+
+			pillInteract.MouseButton1Click:Connect(function()
+				SubTab:Activate()
+			end)
+			pillInteract.MouseEnter:Connect(function()
+				if Tab._ActiveSubTab ~= SubTab then
+					tween(pill, {BackgroundTransparency = 0.35})
+				end
+			end)
+			pillInteract.MouseLeave:Connect(function()
+				if Tab._ActiveSubTab ~= SubTab then
+					tween(pill, {BackgroundTransparency = 0.55})
+				end
+			end)
+
+			table.insert(Tab._SubTabs, SubTab)
+
+			Window._SubPageActivation = Window._SubPageActivation or {}
+			Window._SubPageActivation[wrapper] = function() SubTab:Activate() end
+
+			-- Element API: reuse the Tab element builders by temporarily pointing
+			-- the shared TabPage upvalue at this sub-page's content frame.
+			local elementFns = {
+				"CreateSection", "CreateDivider", "CreateButton", "CreateLabel",
+				"CreateParagraph", "CreateSlider", "CreateToggle", "CreateBind",
+				"CreateKeybind", "CreateInput", "CreateDropdown", "CreateColorPicker",
+			}
+			for _, fnName in ipairs(elementFns) do
+				SubTab[fnName] = function(_, ...)
+					local args = table.pack(...)
+					local prevPage = TabPage
+					TabPage = subPage
+					local results = table.pack(pcall(function()
+						return Tab[fnName](Tab, table.unpack(args, 1, args.n))
+					end))
+					TabPage = prevPage
+					if not results[1] then
+						error(results[2], 2)
+					end
+					return table.unpack(results, 2, results.n)
+				end
+			end
+
+			-- First sub-tab becomes active by default; an explicit Default = true
+			-- steals activation (and the visible page if this tab is showing).
+			if Tab._ActiveSubTab == nil or SubTabSettings.Default then
+				Tab._ActiveSubTab = SubTab
+				bar.Parent = wrapper
+				refreshSubTabPills()
+				if Window.CurrentTab == TabSettings.Name then
+					Elements.UIPageLayout:JumpTo(wrapper)
+				end
+			end
+
+			return SubTab
+		end
+
+		function Tab:GetSubTabs()
+			return Tab._SubTabs
+		end
+
+		function Tab:ActivateSubTab(name)
+			for _, st in ipairs(Tab._SubTabs) do
+				if st.Name == name then
+					st:Activate()
+					return true
+				end
+			end
+			return false
+		end
 
 		-- Section
 		function Tab:CreateSection(name : string)
@@ -7736,7 +7981,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 - **Games:** a game is "supported" only if listed in the host "Supported games" block. Otherwise call it **Game Not Supported** — explicitly — and offer the script-request flow or Discord.
 - **Universal / FE / Executor-UI sections:** do not name a specific button unless host context lists it OR the user just quoted the exact label on screen. Default advice for finding something: "open the section and use **Search Bar** (Ctrl+F by default)".
 - **"Undetected" / "keyless" / "free" claims:** never make them unless the host Description explicitly says so or the user confirmed it from the hub.
-- **Patch notes / stats / counters:** never invent. Always point to **Dashboard → Changelogs** or **Hub Settings And More → Solara Hub Info** so the user reads the live label.
+- **Patch notes / stats / counters:** never invent. Always point to **Dashboard → Changelogs** or **Hub → Settings → Solara Hub Info** so the user reads the live label.
 - **When you are unsure:** one honest sentence + one next step (tab to open, Search Bar, Feedback, script-request). No filler, no made-up workarounds.
 
 ## Script-request flow (missing hub content only)
@@ -10830,6 +11075,24 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local tabRef = Window._Tabs[entry.Tab]
 				if tabRef and tabRef.Activate then
 					tabRef.Activate()
+				end
+
+				-- If the element lives inside a sub-tab page, switch to it so
+				-- the highlight + scroll target is actually visible.
+				do
+					local ancestor = entry.Frame and entry.Frame.Parent
+					local guard = 0
+					while ancestor and ancestor ~= Elements and guard < 12 do
+						if ancestor:GetAttribute("LunaSubPage") ~= nil then
+							local activateSub = Window._SubPageActivation and Window._SubPageActivation[ancestor]
+							if activateSub then
+								pcall(activateSub)
+							end
+							break
+						end
+						ancestor = ancestor.Parent
+						guard += 1
+					end
 				end
 
 				Window.CloseSearch()
