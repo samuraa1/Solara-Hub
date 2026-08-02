@@ -3770,13 +3770,21 @@ function Window:CreateHomeTab(HomeTabSettings)
 			SubTab.Page = subPage
 			SubTab._Bar = bar
 
+			-- Measure the label so the pill gets an explicit width. AutomaticSize
+			-- with a nested UIListLayout collapses to a dot on some executors.
+			local labelText = tostring(SubTabSettings.Name)
+			local textWidth = 40
+			pcall(function()
+				textWidth = game:GetService("TextService"):GetTextSize(labelText, 13, Enum.Font.GothamMedium, Vector2.new(1000, 30)).X
+			end)
+			local pillWidth = math.ceil(textWidth) + 28 + (SubTabSettings.Icon and 24 or 0)
+
 			local pill = Instance.new("Frame")
 			pill.Name = RandomName()
 			pill.BackgroundColor3 = Color3.fromRGB(46, 43, 58)
 			pill.BackgroundTransparency = 0.55
 			pill.BorderSizePixel = 0
-			pill.AutomaticSize = Enum.AutomaticSize.X
-			pill.Size = UDim2.new(0, 0, 0, 30)
+			pill.Size = UDim2.new(0, pillWidth, 0, 30)
 			pill.LayoutOrder = SubTabSettings.Order or (#Tab._SubTabs + 1)
 			pill.ZIndex = 6
 			pill.Parent = bar
@@ -3790,41 +3798,32 @@ function Window:CreateHomeTab(HomeTabSettings)
 			pillStroke.Transparency = 0.75
 			pillStroke.Parent = pill
 
-			local pillPad = Instance.new("UIPadding")
-			pillPad.PaddingLeft = UDim.new(0, 14)
-			pillPad.PaddingRight = UDim.new(0, 14)
-			pillPad.Parent = pill
-
-			local pillLayout = Instance.new("UIListLayout")
-			pillLayout.FillDirection = Enum.FillDirection.Horizontal
-			pillLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-			pillLayout.SortOrder = Enum.SortOrder.LayoutOrder
-			pillLayout.Padding = UDim.new(0, 6)
-			pillLayout.Parent = pill
-
+			local textOffset = 14
 			local pillIcon
 			if SubTabSettings.Icon then
 				pillIcon = Instance.new("ImageLabel")
 				pillIcon.Name = "Icon"
 				pillIcon.BackgroundTransparency = 1
+				pillIcon.AnchorPoint = Vector2.new(0, 0.5)
+				pillIcon.Position = UDim2.new(0, 12, 0.5, 0)
 				pillIcon.Size = UDim2.fromOffset(16, 16)
 				pillIcon.ImageColor3 = Color3.fromRGB(200, 198, 210)
-				pillIcon.LayoutOrder = 1
 				pillIcon.ZIndex = 7
 				pillIcon.Parent = pill
 				ApplyIcon(pillIcon, GetIcon(SubTabSettings.Icon, SubTabSettings.ImageSource))
+				textOffset = 34
 			end
 
 			local pillText = Instance.new("TextLabel")
 			pillText.Name = "Label"
 			pillText.BackgroundTransparency = 1
-			pillText.AutomaticSize = Enum.AutomaticSize.X
-			pillText.Size = UDim2.new(0, 0, 1, 0)
+			pillText.Position = UDim2.new(0, textOffset, 0, 0)
+			pillText.Size = UDim2.new(1, -textOffset - 8, 1, 0)
 			pillText.Font = Enum.Font.GothamMedium
 			pillText.TextSize = 13
 			pillText.TextColor3 = Color3.fromRGB(200, 198, 210)
-			pillText.Text = tostring(SubTabSettings.Name)
-			pillText.LayoutOrder = 2
+			pillText.Text = labelText
+			pillText.TextXAlignment = Enum.TextXAlignment.Left
 			pillText.ZIndex = 7
 			pillText.Parent = pill
 
