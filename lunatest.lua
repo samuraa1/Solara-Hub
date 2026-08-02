@@ -7899,7 +7899,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 	end
 
 	-- ============================================================
-	-- AI Chat tab (powered by pollinations.ai — free API key required, set via /key)
+	-- AI Chat tab (pollinations.ai + keyless OVH fallback; free key via /key)
 	-- ============================================================
 	-- Layout:
 	--   ┌─────────────────────────────────────────────────────────────┐
@@ -9308,14 +9308,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			t2:SetAttribute("LunaNoTranslate", true)
 			t2.Parent = card
 
-			-- No-key banner: pollinations requires a free API key since 2026.
+			-- No-key hint: works via the keyless backup provider, but a free
+			-- pollinations key (/key) unlocks the main model and /image.
 			local keyWarnShown = (aiToken == nil)
 			if keyWarnShown then
 				local kw = Instance.new("TextLabel")
 				kw.BackgroundTransparency = 1
 				kw.Position = UDim2.new(0, 54, 0, 58)
 				kw.Size = UDim2.new(1, -70, 0, 16)
-				kw.Text = "Needs a free API key → send /key (see /help)"
+				kw.Text = "No key: keyless backup mode (~2 msg/min). /key for full speed"
 				kw.Font = Enum.Font.GothamMedium
 				kw.TextSize = 11
 				kw.TextColor3 = Color3.fromRGB(255, 200, 90)
@@ -9815,27 +9816,31 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 
 		-- ---------- HTTP call (wrapped) ----------
+		-- Provider chain, tried in order until one answers:
+		--   1) pollinations.ai with the user's /key (best models)
+		--   2) OVHcloud AI Endpoints — keyless anonymous tier (2 req/min/model,
+		--      no signup; documented by OVH, OpenAI-compatible)
+		--   3) pollinations.ai anonymously, in case their free tier comes back
 		-- Returns (replyText, errReason). replyText is nil on failure; errReason
 		-- is shown inside the chat bubble so the user sees what went wrong.
-		local function callPollinations(conv)
+		local OVH_URL = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions"
+		local OVH_MODEL = "gpt-oss-120b"
+		local usedFallback = false
+
+		local function requestChat(url, model, useToken, conv)
 			local fn = getHttpFn()
 			if not fn then
-				return nil, "Executor missing `request`/`syn.request`/`http_request` — cannot reach pollinations.ai."
+				return nil, "Executor missing `request`/`syn.request`/`http_request`."
 			end
-			local okEnc, payload = pcall(HttpService.JSONEncode, HttpService, { messages = conv, model = currentModel })
+			local okEnc, payload = pcall(HttpService.JSONEncode, HttpService, { messages = conv, model = model })
 			if not okEnc then
 				return nil, "Failed to JSON-encode the conversation: " .. tostring(payload)
 			end
 			local headers = { ["Content-Type"] = "application/json" }
-			if aiToken then
+			if useToken and aiToken then
 				headers["Authorization"] = "Bearer " .. aiToken
 			end
-			local ok, res = pcall(fn, {
-				Url = opts.Endpoint,
-				Method = "POST",
-				Headers = headers,
-				Body = payload,
-			})
+			local ok, res = pcall(fn, { Url = url, Method = "POST", Headers = headers, Body = payload })
 			if not ok then
 				return nil, "HTTP call threw: " .. tostring(res)
 			end
@@ -9844,27 +9849,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			local code = res.StatusCode or res.Status or 0
 			local body = res.Body or ""
-			if code == 401 or code == 403 then
-				if aiToken then
-					return nil, "pollinations.ai rejected the API key (HTTP " .. tostring(code) .. "). Check it at enter.pollinations.ai/keys and set a fresh one with `/key <token>`."
-				end
-				return nil, "pollinations.ai now requires a (free) API key. Get one at enter.pollinations.ai/keys, then type `/key <your_token>` here."
-			end
-			if code == 402 then
-				return nil, "Out of free Pollen — it refills hourly on the free tier. Wait a bit or check your balance at enter.pollinations.ai."
-			end
-			if code == 429 then
-				return nil, "Rate limited by pollinations.ai — wait a few seconds and resend."
-			end
 			if code >= 400 then
-				return nil, ("pollinations.ai returned HTTP %s — %s"):format(tostring(code), body:sub(1, 240))
+				return nil, code, body
 			end
 			if body == "" then
-				return nil, "pollinations.ai returned an empty body."
+				return nil, "empty body"
 			end
 			local okDec, decoded = pcall(HttpService.JSONDecode, HttpService, body)
 			if not okDec then
-				-- Some pollinations endpoints stream as plain text; treat as the reply.
+				-- Some endpoints answer as plain text; treat as the reply.
 				return body, nil
 			end
 			if decoded and decoded.choices and decoded.choices[1] then
@@ -9874,6 +9867,39 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			-- Some models return `text` field instead of `choices[].message`.
 			if decoded and decoded.text then return decoded.text, nil end
 			return nil, "Could not extract `choices[1].message.content` from response."
+		end
+
+		local function callPollinations(conv)
+			if aiToken then
+				local reply = requestChat(opts.Endpoint, currentModel, true, conv)
+				if reply then return reply, nil end
+			end
+			local reply, err, body = requestChat(OVH_URL, OVH_MODEL, false, conv)
+			if reply then
+				if not usedFallback then
+					usedFallback = true
+					Luna:Notification({
+						Title = "Backup AI provider",
+						Content = "Using the keyless OVH endpoint (~2 msg/min). Set a free pollinations key with /key for the main model.",
+						Icon = "swap_horiz", ImageSource = "Material", Duration = 7,
+					})
+				end
+				return reply, nil
+			end
+			if not aiToken then
+				local reply2 = requestChat(opts.Endpoint, currentModel, false, conv)
+				if reply2 then return reply2, nil end
+			end
+			if err == 401 or err == 403 then
+				return nil, "AI providers unavailable. Set a free pollinations key with `/key <token>` (enter.pollinations.ai/keys)."
+			end
+			if err == 429 then
+				return nil, "Rate limited (keyless tier is ~2 msg/min) — wait a few seconds and resend, or set a key with `/key`."
+			end
+			if err == 402 then
+				return nil, "Out of free Pollen — it refills hourly. Wait a bit or check enter.pollinations.ai."
+			end
+			return nil, "AI request failed on all providers: " .. tostring(err) .. (body and (" — " .. tostring(body):sub(1, 200)) or "")
 		end
 
 		local function doSend(prompt, isRegenerate)
@@ -9949,7 +9975,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					if consecutiveFailures >= 2 then
 						Luna:Notification({
 							Title = "AI offline?",
-							Content = "pollinations.ai seems unreachable — wait a minute and try again.",
+							Content = "All AI providers seem unreachable — wait a minute and try again.",
 							Icon = "wifi_off", ImageSource = "Material", Duration = 7,
 						})
 					end
@@ -10097,7 +10123,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					if rest == "" then
 						appendMessage("assistant", aiToken
 							and ("An API key is set (ends in `…" .. aiToken:sub(-4) .. "`). `/key off` removes it.")
-							or  "No API key set. pollinations.ai now requires one — grab a **free** key at **enter.pollinations.ai/keys**, then send:\n`/key pk_...` (or `sk_...`)")
+							or  "No API key set — the chat runs on a slower keyless backup. For the main model + `/image`, grab a **free** key at **enter.pollinations.ai/keys**, then send:\n`/key pk_...` (or `sk_...`)")
 					elseif rest:lower() == "off" then
 						aiToken = nil; saveToken()
 						Luna:Notification({ Title = "API key removed", Content = "Requests will be sent anonymously again.", Icon = "key_off", ImageSource = "Material" })
