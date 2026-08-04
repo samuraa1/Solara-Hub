@@ -45,11 +45,90 @@ by Nebula Softworks
 
 local Release = "Prerelease Beta 6.1"
 
-local Luna = { 
-	Folder = "Luna", 
-	Options = {}, 
-	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))} 
+local Luna = {
+	Folder = "Luna",
+	Options = {},
+	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))}
 }
+
+-- ============================================================
+-- UI Theme presets ("Midnight" design system)
+-- Each preset is a flat token table. The skin engine maps the
+-- legacy hardcoded colours of the rbxasset chrome + element
+-- creation code onto these tokens at runtime (see SkinElement).
+-- ============================================================
+Luna.Themes = {
+	Midnight = {
+		Background = Color3.fromRGB(13, 13, 17),
+		Surface = Color3.fromRGB(22, 22, 28),
+		Elevated = Color3.fromRGB(31, 31, 40),
+		Stroke = Color3.fromRGB(46, 46, 58),
+		TextPrimary = Color3.fromRGB(240, 240, 245),
+		TextSecondary = Color3.fromRGB(160, 160, 172),
+		TextMuted = Color3.fromRGB(110, 110, 124),
+		Accent = Color3.fromRGB(122, 162, 247),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(96, 141, 240)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(148, 176, 250)),
+		},
+		MainTransparency = 0.04,
+	},
+	OLED = {
+		Background = Color3.fromRGB(0, 0, 0),
+		Surface = Color3.fromRGB(12, 12, 15),
+		Elevated = Color3.fromRGB(21, 21, 26),
+		Stroke = Color3.fromRGB(38, 38, 46),
+		TextPrimary = Color3.fromRGB(240, 240, 245),
+		TextSecondary = Color3.fromRGB(158, 158, 170),
+		TextMuted = Color3.fromRGB(108, 108, 122),
+		Accent = Color3.fromRGB(122, 162, 247),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(96, 141, 240)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(148, 176, 250)),
+		},
+		MainTransparency = 0,
+	},
+	Catppuccin = {
+		Background = Color3.fromRGB(30, 30, 46),
+		Surface = Color3.fromRGB(49, 50, 68),
+		Elevated = Color3.fromRGB(69, 71, 90),
+		Stroke = Color3.fromRGB(88, 91, 112),
+		TextPrimary = Color3.fromRGB(205, 214, 244),
+		TextSecondary = Color3.fromRGB(166, 173, 200),
+		TextMuted = Color3.fromRGB(127, 132, 156),
+		Accent = Color3.fromRGB(137, 180, 250),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(137, 180, 250)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 190, 254)),
+		},
+		MainTransparency = 0.04,
+	},
+	Light = {
+		Background = Color3.fromRGB(240, 240, 245),
+		Surface = Color3.fromRGB(255, 255, 255),
+		Elevated = Color3.fromRGB(228, 228, 236),
+		Stroke = Color3.fromRGB(205, 205, 218),
+		TextPrimary = Color3.fromRGB(28, 28, 36),
+		TextSecondary = Color3.fromRGB(92, 92, 106),
+		TextMuted = Color3.fromRGB(140, 140, 154),
+		Accent = Color3.fromRGB(79, 110, 247),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(79, 110, 247)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(109, 140, 250)),
+		},
+		MainTransparency = 0.04,
+	},
+}
+
+-- Active token set (nil until a window applies a theme) and master switch.
+-- Host scripts can force the legacy look with CreateWindow({ ThemeEnabled = false }).
+Luna.ActiveTheme = nil
+Luna.CurrentTheme = "Midnight"
+Luna.ThemeEnabled = true
+
+-- Forward declaration: the skin engine is defined after the UI asset loads,
+-- but RegisterElement (below) runs at element-creation time and hooks it.
+local LunaSkinElement
 
 local function getService(serviceName)
 	local svc = game:GetService(serviceName)
@@ -1937,6 +2016,10 @@ local function RegisterElement(window, frame, displayName, elementType, tabName)
             Tab = tostring(tabName or ""),
         })
     end
+    -- Skin the freshly created element so it matches the active UI theme.
+    if LunaSkinElement then
+        pcall(LunaSkinElement, frame, true)
+    end
 end
 
 -- ============================================================
@@ -2449,6 +2532,194 @@ local KeySystem : Frame = Main.KeySystem
 local NotificationsListLayout = Notifications:FindFirstChild("UIListLayout")
 local NotificationsPaddingOffset = (NotificationsListLayout and NotificationsListLayout.Padding.Offset) or 0
 
+-- ============================================================
+-- Theme skin engine
+-- Maps the legacy hardcoded colours / fonts / corner radii of the
+-- rbxasset chrome and element templates onto the active token set
+-- (Luna.ActiveTheme). Original values are cached per-instance so
+-- switching themes always maps from the pristine asset colours.
+-- ============================================================
+local MainBgTransparency = 0.2 -- legacy default; the active theme overrides this
+
+local function ColorLuminance(c)
+	return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+end
+
+local function ColorSaturation(c)
+	local mx = math.max(c.R, c.G, c.B)
+	if mx <= 0 then return 0 end
+	return (mx - math.min(c.R, c.G, c.B)) / mx
+end
+
+-- Weak keys: entries vanish when the instance is destroyed.
+local OriginalSkin = setmetatable({}, { __mode = "k" })
+
+local function MapBackgroundColor(orig, T)
+	if ColorSaturation(orig) > 0.28 then return orig end -- accent / error colours stay
+	local L = ColorLuminance(orig)
+	if L <= 0.055 then return T.Background end
+	if L <= 0.105 then return T.Surface end
+	if L <= 0.18 then return T.Elevated end
+	return orig
+end
+
+local function MapStrokeColor(orig, T)
+	if ColorSaturation(orig) > 0.28 then return orig end
+	if ColorLuminance(orig) <= 0.55 then return T.Stroke end
+	return orig
+end
+
+local function MapTextColor(orig, T)
+	if ColorSaturation(orig) > 0.22 then return orig end
+	local L = ColorLuminance(orig)
+	if L >= 0.88 then return T.TextPrimary end
+	if L >= 0.45 then return T.TextSecondary end
+	return orig
+end
+
+-- Legacy enum font -> BuilderSans family (modern Roblox standard).
+local BuilderFontMap = {
+	[Enum.Font.Gotham] = Enum.Font.BuilderSans,
+	[Enum.Font.GothamMedium] = Enum.Font.BuilderSansMedium,
+	[Enum.Font.GothamSemibold] = Enum.Font.BuilderSansMedium,
+	[Enum.Font.GothamBold] = Enum.Font.BuilderSansBold,
+	[Enum.Font.GothamBlack] = Enum.Font.BuilderSansExtraBold,
+	[Enum.Font.SourceSans] = Enum.Font.BuilderSans,
+	[Enum.Font.SourceSansLight] = Enum.Font.BuilderSans,
+	[Enum.Font.SourceSansSemibold] = Enum.Font.BuilderSansMedium,
+	[Enum.Font.SourceSansBold] = Enum.Font.BuilderSansBold,
+}
+
+local function HasNoThemeAncestor(obj)
+	local cur = obj
+	while cur and cur ~= LunaUI and cur ~= game do
+		if cur:GetAttribute("LunaNoTheme") then return true end
+		cur = cur.Parent
+	end
+	return false
+end
+
+LunaSkinElement = function(obj, skipAncestorCheck)
+	if not Luna.ThemeEnabled then return end
+	local T = Luna.ActiveTheme
+	if not T then return end
+	if obj:GetAttribute("LunaNoTheme") then return end
+	if not skipAncestorCheck and HasNoThemeAncestor(obj) then return end
+
+	-- Accent-marked instances (tab bars, notification strips) take the token
+	-- accent directly so they follow theme switches.
+	if obj:GetAttribute("LunaAccent") then
+		if obj:IsA("GuiObject") then obj.BackgroundColor3 = T.Accent end
+		if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then obj.ImageColor3 = T.Accent end
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") then obj.TextColor3 = T.Accent end
+		return
+	end
+
+	local orig = OriginalSkin[obj]
+	if not orig then
+		orig = {}
+		if obj:IsA("GuiObject") then orig.BG = obj.BackgroundColor3 end
+		if obj:IsA("UIStroke") then orig.Stroke = obj.Color end
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+			orig.Text = obj.TextColor3
+			orig.Font = obj.Font
+			if obj:IsA("TextBox") then orig.Placeholder = obj.PlaceholderTextColor end
+		end
+		if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then orig.Image = obj.ImageColor3 end
+		if obj:IsA("UICorner") then orig.Radius = obj.CornerRadius end
+		OriginalSkin[obj] = orig
+	end
+
+	if orig.BG and obj:IsA("GuiObject") and not obj:FindFirstChildOfClass("UIGradient") then
+		obj.BackgroundColor3 = MapBackgroundColor(orig.BG, T)
+	end
+	if orig.Stroke and obj:IsA("UIStroke") then
+		obj.Color = MapStrokeColor(orig.Stroke, T)
+	end
+	if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+		if orig.Text then obj.TextColor3 = MapTextColor(orig.Text, T) end
+		if orig.Font and BuilderFontMap[orig.Font] then
+			obj.Font = BuilderFontMap[orig.Font]
+		end
+		if orig.Placeholder and obj:IsA("TextBox") then
+			obj.PlaceholderTextColor = T.TextMuted
+		end
+	end
+	if orig.Image and (obj:IsA("ImageLabel") or obj:IsA("ImageButton")) then
+		obj.ImageColor3 = MapTextColor(orig.Image, T)
+	end
+	if orig.Radius and obj:IsA("UICorner") then
+		local r = orig.Radius
+		if r.Scale == 0 then
+			local parent = obj.Parent
+			local py = (parent and parent:IsA("GuiObject")) and parent.AbsoluteSize.Y or 0
+			-- Snap card/button radii to the 8px token; big surfaces to 10px.
+			-- Round indicators (dots, switch knobs) are skipped via the size guard.
+			if r.Offset >= 4 and r.Offset <= 14 and py >= 26 then
+				obj.CornerRadius = UDim.new(0, 8)
+			elseif r.Offset > 14 and r.Offset <= 24 and py > 100 then
+				obj.CornerRadius = UDim.new(0, 10)
+			end
+		end
+	end
+end
+
+local function LunaSkinTree(root)
+	if not Luna.ThemeEnabled or not Luna.ActiveTheme then return end
+	for _, d in ipairs(root:GetDescendants()) do
+		pcall(LunaSkinElement, d)
+	end
+end
+
+-- Elements created after the initial pass (notifications, dropdown options,
+-- AI chat messages, tab buttons...) get skinned via a debounced queue.
+local SkinQueue = {}
+local SkinFlushPending = false
+LunaUI.DescendantAdded:Connect(function(obj)
+	if not Luna.ThemeEnabled or not Luna.ActiveTheme then return end
+	SkinQueue[obj] = true
+	if not SkinFlushPending then
+		SkinFlushPending = true
+		task.delay(0.12, function()
+			SkinFlushPending = false
+			for inst in pairs(SkinQueue) do
+				SkinQueue[inst] = nil
+				if inst.Parent then pcall(LunaSkinElement, inst) end
+			end
+		end)
+	end
+end)
+
+local function ApplyLunaTheme(nameOrTokens)
+	if not Luna.ThemeEnabled then return false end
+	local tokens
+	if type(nameOrTokens) == "string" then
+		tokens = Luna.Themes[nameOrTokens]
+		if not tokens then return false end
+		Luna.CurrentTheme = nameOrTokens
+	elseif type(nameOrTokens) == "table" then
+		tokens = nameOrTokens
+		Luna.CurrentTheme = "Custom"
+	else
+		return false
+	end
+	Luna.ActiveTheme = tokens
+	MainBgTransparency = tokens.MainTransparency or 0.04
+	if tokens.Gradient then
+		Luna.ThemeGradient = tokens.Gradient
+		pcall(function()
+			LunaUI.ThemeRemote.Value = not LunaUI.ThemeRemote.Value
+		end)
+	end
+	pcall(LunaSkinTree, LunaUI)
+	if Main.Visible then
+		pcall(function() Main.BackgroundTransparency = MainBgTransparency end)
+	end
+	return true
+end
+
+Luna.ApplyTheme = ApplyLunaTheme
+
 --[[ local function LoadConfiguration(Configuration, autoload)
  	local Data = HttpService:JSONDecode(Configuration)
  	local changed
@@ -2636,6 +2907,43 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		newNotification.Description.Text = data.Content
 		ApplyIcon(newNotification.Icon, GetIcon(data.Icon, data.ImageSource))
 
+		-- Midnight design: accent strip on the left edge + lifetime progress
+		-- bar along the bottom. Both follow theme switches via LunaAccent.
+		local notifAccent, notifProgress
+		if Luna.ThemeEnabled and Luna.ActiveTheme then
+			notifAccent = Instance.new("Frame")
+			notifAccent.Name = "LunaAccentStrip"
+			notifAccent:SetAttribute("LunaAccent", true)
+			notifAccent:SetAttribute("LunaNoTranslate", true)
+			notifAccent.AnchorPoint = Vector2.new(0, 0.5)
+			notifAccent.Position = UDim2.new(0, 0, 0.5, 0)
+			notifAccent.Size = UDim2.new(0, 3, 1, -14)
+			notifAccent.BackgroundColor3 = Luna.ActiveTheme.Accent
+			notifAccent.BackgroundTransparency = 1
+			notifAccent.BorderSizePixel = 0
+			notifAccent.ZIndex = newNotification.ZIndex + 2
+			local stripCorner = Instance.new("UICorner")
+			stripCorner.CornerRadius = UDim.new(1, 0)
+			stripCorner.Parent = notifAccent
+			notifAccent.Parent = newNotification
+
+			notifProgress = Instance.new("Frame")
+			notifProgress.Name = "LunaProgressBar"
+			notifProgress:SetAttribute("LunaAccent", true)
+			notifProgress:SetAttribute("LunaNoTranslate", true)
+			notifProgress.AnchorPoint = Vector2.new(0, 1)
+			notifProgress.Position = UDim2.new(0, 10, 1, -4)
+			notifProgress.Size = UDim2.new(1, -20, 0, 2)
+			notifProgress.BackgroundColor3 = Luna.ActiveTheme.Accent
+			notifProgress.BackgroundTransparency = 1
+			notifProgress.BorderSizePixel = 0
+			notifProgress.ZIndex = newNotification.ZIndex + 2
+			local progressCorner = Instance.new("UICorner")
+			progressCorner.CornerRadius = UDim.new(1, 0)
+			progressCorner.Parent = notifProgress
+			notifProgress.Parent = newNotification
+		end
+
 		-- Set initial transparency values
 		newNotification.BackgroundTransparency = 1
 		newNotification.Title.TextTransparency = 1
@@ -2673,9 +2981,17 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		TweenService:Create(newNotification.Description, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0.35}):Play()
 		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 0.95}):Play()
 		TweenService:Create(newNotification.Shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 0.82}):Play()
+		if notifAccent then
+			TweenService:Create(notifAccent, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.1}):Play()
+		end
 
 		local waitDuration = math.min(math.max((#newNotification.Description.Text * 0.1) + 2.5, 3), 10)
-		task.wait(data.Duration or waitDuration)
+		local lifeDuration = data.Duration or waitDuration
+		if notifProgress then
+			TweenService:Create(notifProgress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.45}):Play()
+			TweenService:Create(notifProgress, TweenInfo.new(lifeDuration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 2)}):Play()
+		end
+		task.wait(lifeDuration)
 
 		newNotification.Icon.Visible = false
 		TweenService:Create(newNotification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
@@ -2683,6 +2999,12 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		TweenService:Create(newNotification.Shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play()
 		TweenService:Create(newNotification.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 1}):Play()
 		TweenService:Create(newNotification.Description, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 1}):Play()
+		if notifAccent then
+			TweenService:Create(notifAccent, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
+		end
+		if notifProgress then
+			TweenService:Create(notifProgress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
+		end
 
 		TweenService:Create(newNotification, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, -90, 0, 0)}):Play()
 
@@ -2710,7 +3032,7 @@ local function Unhide(Window, currentTab)
 		Window.Parent.ShadowHolder.Visible = true
 	end
 	task.wait()
-	tween(Window, {BackgroundTransparency = 0.2})
+	tween(Window, {BackgroundTransparency = MainBgTransparency})
 	tween(Window.Elements, {BackgroundTransparency = 0.08})
 	tween(Window.Line, {BackgroundTransparency = 0})
 	tween(Window.Title.Title, {TextTransparency = 0})
@@ -2730,11 +3052,17 @@ local function Unhide(Window, currentTab)
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "InActive Template" then
 			-- Anti-cheat: tabs may have randomized Instance.Name. We tag the original
 			-- display name via attribute so lookups still work after renaming.
-			local displayName = tabbtn:GetAttribute("LunaTabName") or tabbtn.Name
-			if displayName == currentTab then
-				TweenService:Create(tabbtn, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
-				TweenService:Create(tabbtn.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.41}):Play()
-			end
+				local displayName = tabbtn:GetAttribute("LunaTabName") or tabbtn.Name
+				local accentBar = tabbtn:FindFirstChild("LunaAccentBar")
+				if displayName == currentTab then
+					TweenService:Create(tabbtn, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
+					TweenService:Create(tabbtn.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.41}):Play()
+					if accentBar then
+						TweenService:Create(accentBar, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
+					end
+				elseif accentBar then
+					accentBar.BackgroundTransparency = 1
+				end
 			TweenService:Create(tabbtn.ImageLabel, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 0}):Play()
 			TweenService:Create(tabbtn.DropShadowHolder.DropShadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play()
 		end
@@ -2820,6 +3148,12 @@ function Luna:CreateWindow(WindowSettings)
 		-- New: enables Ctrl + / Ctrl - in-window zoom. Disable if the host
 		-- already remaps those shortcuts.
 		ZoomEnabled = true,
+
+		-- UI theme ("Midnight" design system). Pass a preset name from
+		-- Luna.Themes or a custom token table. ThemeEnabled = false restores
+		-- the legacy asset look entirely.
+		Theme = "Midnight",
+		ThemeEnabled = true,
 	}, WindowSettings or {})
 
 	WindowSettings.ConfigSettings = Kwargify({
@@ -2844,6 +3178,9 @@ function Luna:CreateWindow(WindowSettings)
 	}, WindowSettings.KeySettings.SecondAction)
 
 	local Passthrough = false
+
+	-- Per-window theme switch: ThemeEnabled = false keeps the legacy asset look.
+	Luna.ThemeEnabled = WindowSettings.ThemeEnabled ~= false
 
 	local Window = {
 		Bind = Enum.KeyCode.K,
@@ -3081,7 +3418,7 @@ function Luna:CreateWindow(WindowSettings)
 		TweenService:Create(LoadingFrame, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
 	end
 
-	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {BackgroundTransparency = 0.2, Size = MainSize}):Play()
+	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {BackgroundTransparency = MainBgTransparency, Size = MainSize}):Play()
 	TweenService:Create(Main.Parent.ShadowHolder, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = MainSize}):Play()
 	TweenService:Create(Main.Title.Title, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
 	TweenService:Create(Main.Title.subtitle, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
@@ -3608,6 +3945,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 			TabButton.LayoutOrder = TabSettings.NavLayoutOrder
 		end
 
+		-- Accent bar on the left edge of the active tab (Midnight design).
+		-- Tagged with LunaAccent so the skin engine keeps it in sync on
+		-- theme switches.
+		local TabAccentBar = Instance.new("Frame")
+		TabAccentBar.Name = "LunaAccentBar"
+		TabAccentBar:SetAttribute("LunaAccent", true)
+		TabAccentBar:SetAttribute("LunaNoTranslate", true)
+		TabAccentBar.AnchorPoint = Vector2.new(0, 0.5)
+		TabAccentBar.Position = UDim2.new(0, 5, 0.5, 0)
+		TabAccentBar.Size = UDim2.new(0, 3, 0.55, 0)
+		TabAccentBar.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+		TabAccentBar.BackgroundTransparency = 1
+		TabAccentBar.BorderSizePixel = 0
+		TabAccentBar.ZIndex = TabButton.ZIndex + 2
+		local TabAccentCorner = Instance.new("UICorner")
+		TabAccentCorner.CornerRadius = UDim.new(1, 0)
+		TabAccentCorner.Parent = TabAccentBar
+		TabAccentBar.Parent = TabButton
+
 		local TabPage = Elements.Template:Clone()
 		TabPage.Name = RandomName()
 		TabPage:SetAttribute("LunaNoTranslate", nil)
@@ -3635,6 +3991,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			tween(TabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
 			tween(TabButton, {BackgroundTransparency = 0})
 			tween(TabButton.UIStroke, {Transparency = 0.41})
+			tween(TabAccentBar, {BackgroundTransparency = 0})
 
 		local jumpTarget = TabPage
 		if Tab._ActiveSubTab and Tab._ActiveSubTab._Wrapper then
@@ -3649,6 +4006,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
 					tween(OtherTabButton, {BackgroundTransparency = 1})
 					tween(OtherTabButton.UIStroke, {Transparency = 1})
+					local otherBar = OtherTabButton:FindFirstChild("LunaAccentBar")
+					if otherBar then
+						tween(otherBar, {BackgroundTransparency = 1})
+					end
 				end
 
 			end
@@ -7694,6 +8055,27 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Title.Parent = TabPage
 			Title.TextTransparency = 1
 			TweenService:Create(Title, TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+
+			Tab:CreateSection("UI Theme")
+
+			Tab:CreateDropdown({
+				Name = "Interface Theme",
+				Description = "Full UI skin (colours, fonts, radii). Preset gradients below only affect toggles and sliders.",
+				Options = Window.GetThemeList(),
+				CurrentOption = Luna.CurrentTheme,
+				MultipleOptions = false,
+				Callback = function(choice)
+					local name = type(choice) == "table" and choice[1] or choice
+					if type(name) == "string" then
+						Window.SetTheme(name)
+						Luna:Notification({
+							Title = "Theme Applied",
+							Content = "Interface theme switched to " .. name .. ".",
+							Icon = "palette",
+						})
+					end
+				end,
+			})
 
 			Tab:CreateSection("Custom Editor")
 
@@ -12265,6 +12647,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				Window:ApplyNavTabOrder(navOrder)
 			end)
 		end
+		-- Apply the UI theme once the host script has finished building its
+		-- tabs (this defer runs after the synchronous element creation).
+		pcall(function() Window.SetTheme(Window._ThemeName) end)
+		task.delay(0.5, function() pcall(function() Window.RefreshTheme() end) end)
+
 		local function focusStartup()
 			Window:ActivateStartupTab(WindowSettings.StartupTab)
 		end
@@ -12288,6 +12675,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Accent = Color3.fromRGB(110, 102, 153),
 			Background = nil, -- nil = keep the original frame colour
 		}
+		Window._ThemeName = WindowSettings.Theme
 		Window._StrokeOriginals = {}
 
 		-- Returns true if a UIStroke / Frame is part of the "chrome" we want to
@@ -12390,6 +12778,38 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			table.sort(names)
 			return names
+		end
+
+		-- ========================================================
+		-- UI Theme API ("Midnight" design system presets)
+		-- ========================================================
+		Window.SetTheme = function(nameOrTokens)
+			local ok = ApplyLunaTheme(nameOrTokens)
+			if ok then
+				Window._ThemeName = Luna.CurrentTheme
+			end
+			return ok
+		end
+
+		Window.RefreshTheme = function()
+			if not Luna.ThemeEnabled then return end
+			pcall(LunaSkinTree, LunaUI)
+			if Main.Visible then
+				pcall(function() Main.BackgroundTransparency = MainBgTransparency end)
+			end
+		end
+
+		Window.GetThemeList = function()
+			local names = {}
+			for name in pairs(Luna.Themes) do
+				table.insert(names, name)
+			end
+			table.sort(names)
+			return names
+		end
+
+		Window.GetActiveTheme = function()
+			return Luna.CurrentTheme
 		end
 
 		Window.GetTabNames = function()
