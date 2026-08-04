@@ -2408,8 +2408,13 @@ local LunaUI = isStudio and script.Parent:WaitForChild("Luna UI") or game:GetObj
 
 local SizeBleh = nil
 
+-- Forward declaration: the glass engine is defined below (after the theme
+-- engine), Hide/Unhide hook it to toggle the background blur.
+local SetGlassBlur
+
 local function Hide(Window, bind, notif)
 	SizeBleh = Window.Size
+	if SetGlassBlur then SetGlassBlur(false) end
 	bind = string.split(tostring(bind), "Enum.KeyCode.")
 	bind = bind[2]
 	if notif then
@@ -2662,6 +2667,34 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 			end
 		end
 	end
+
+	-- iOS slider: white knob pinned to the end of the progress fill. It
+	-- follows the fill width automatically, so the drag code needs no changes.
+	if obj:IsA("Frame") and obj.Name == "Progress" then
+		local main = obj.Parent
+		local root = main and main.Parent
+		if main and main.Name == "Main"
+			and root and root:FindFirstChild("Value") and root:FindFirstChild("Interact")
+			and not obj:FindFirstChild("LunaSliderKnob") then
+			local knob = Instance.new("Frame")
+			knob.Name = "LunaSliderKnob"
+			knob:SetAttribute("LunaNoTranslate", true)
+			knob.AnchorPoint = Vector2.new(0.5, 0.5)
+			knob.Position = UDim2.new(1, 0, 0.5, 0)
+			knob.Size = UDim2.new(0, 13, 0, 13)
+			knob.BackgroundColor3 = Color3.new(1, 1, 1)
+			knob.BorderSizePixel = 0
+			knob.ZIndex = obj.ZIndex + 2
+			local knobCorner = Instance.new("UICorner")
+			knobCorner.CornerRadius = UDim.new(1, 0)
+			knobCorner.Parent = knob
+			local knobStroke = Instance.new("UIStroke")
+			knobStroke.Color = Color3.new(1, 1, 1)
+			knobStroke.Transparency = 0.8
+			knobStroke.Parent = knob
+			knob.Parent = obj
+		end
+	end
 end
 
 local function LunaSkinTree(root)
@@ -2704,7 +2737,7 @@ local function ApplyLunaTheme(nameOrTokens)
 		return false
 	end
 	Luna.ActiveTheme = tokens
-	MainBgTransparency = tokens.MainTransparency or 0.04
+	MainBgTransparency = (tokens.MainTransparency or 0.04) + (Luna.GlassMode and 0.08 or 0)
 	if tokens.Gradient then
 		Luna.ThemeGradient = tokens.Gradient
 		pcall(function()
@@ -2719,6 +2752,95 @@ local function ApplyLunaTheme(nameOrTokens)
 end
 
 Luna.ApplyTheme = ApplyLunaTheme
+
+-- ============================================================
+-- Liquid Glass mode
+-- Real background blur (BlurEffect in Lighting while the UI is
+-- visible) + a top-light sheen overlay on the window. Toggleable;
+-- games that wipe Lighting children simply get the blur re-added
+-- on the next Unhide.
+-- ============================================================
+Luna.GlassMode = true
+
+local Lighting = getService("Lighting")
+local GlassBlur = nil
+local GlassSheen = nil
+
+SetGlassBlur = function(enabled)
+	if not Luna.GlassMode then enabled = false end
+	if enabled then
+		if not GlassBlur or not GlassBlur.Parent then
+			GlassBlur = Instance.new("BlurEffect")
+			GlassBlur.Name = RandomName()
+			GlassBlur:SetAttribute("LunaGlassBlur", true)
+			GlassBlur.Size = 14
+			GlassBlur.Parent = Lighting
+		end
+	elseif GlassBlur then
+		pcall(function() GlassBlur:Destroy() end)
+		GlassBlur = nil
+	end
+end
+
+local function EnsureGlassSheen()
+	if GlassSheen and GlassSheen.Parent then
+		GlassSheen.Visible = Luna.GlassMode
+		return
+	end
+	GlassSheen = Instance.new("Frame")
+	GlassSheen.Name = "LunaGlassSheen"
+	GlassSheen:SetAttribute("LunaNoTheme", true)
+	GlassSheen:SetAttribute("LunaNoTranslate", true)
+	GlassSheen.BackgroundColor3 = Color3.new(1, 1, 1)
+	GlassSheen.BorderSizePixel = 0
+	GlassSheen.Size = UDim2.fromScale(1, 1)
+	GlassSheen.ZIndex = 1
+	GlassSheen.Active = false
+	GlassSheen.Visible = Luna.GlassMode
+	local sheenGradient = Instance.new("UIGradient")
+	sheenGradient.Rotation = 90
+	sheenGradient.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.88),
+		NumberSequenceKeypoint.new(0.35, 0.97),
+		NumberSequenceKeypoint.new(1, 1),
+	}
+	sheenGradient.Parent = GlassSheen
+	local sheenCorner = Instance.new("UICorner")
+	sheenCorner.CornerRadius = UDim.new(0, 10)
+	sheenCorner.Parent = GlassSheen
+	GlassSheen.Parent = Main
+
+	-- Glass edge: vertical gradient on the window stroke (bright top,
+	-- fading down) if the window template has a stroke.
+	pcall(function()
+		local stroke = Main:FindFirstChildOfClass("UIStroke")
+		if stroke and not stroke:FindFirstChildOfClass("UIGradient") then
+			stroke.Color = Color3.new(1, 1, 1)
+			local strokeGradient = Instance.new("UIGradient")
+			strokeGradient.Rotation = 90
+			strokeGradient.Transparency = NumberSequence.new{
+				NumberSequenceKeypoint.new(0, 0.55),
+				NumberSequenceKeypoint.new(0.5, 0.85),
+				NumberSequenceKeypoint.new(1, 0.97),
+			}
+			strokeGradient.Parent = stroke
+		end
+	end)
+end
+
+local function SetGlassMode(enabled)
+	Luna.GlassMode = enabled and true or false
+	EnsureGlassSheen()
+	if Luna.ActiveTheme then
+		MainBgTransparency = (Luna.ActiveTheme.MainTransparency or 0.04) + (Luna.GlassMode and 0.08 or 0)
+		if Main.Visible then
+			pcall(function() Main.BackgroundTransparency = MainBgTransparency end)
+		end
+	end
+	SetGlassBlur(Luna.GlassMode and Main.Visible and Main.BackgroundTransparency < 1)
+end
+
+Luna.SetGlassMode = SetGlassMode
 
 --[[ local function LoadConfiguration(Configuration, autoload)
  	local Data = HttpService:JSONDecode(Configuration)
@@ -3068,6 +3190,10 @@ local function Unhide(Window, currentTab)
 		end
 	end
 
+	if SetGlassBlur and Luna.GlassMode then
+		SetGlassBlur(true)
+	end
+
 end
 
 local MainSize
@@ -3154,6 +3280,9 @@ function Luna:CreateWindow(WindowSettings)
 		-- the legacy asset look entirely.
 		Theme = "Midnight",
 		ThemeEnabled = true,
+
+		-- Liquid Glass: background blur + window sheen while the UI is open.
+		GlassMode = true,
 	}, WindowSettings or {})
 
 	WindowSettings.ConfigSettings = Kwargify({
@@ -3181,6 +3310,7 @@ function Luna:CreateWindow(WindowSettings)
 
 	-- Per-window theme switch: ThemeEnabled = false keeps the legacy asset look.
 	Luna.ThemeEnabled = WindowSettings.ThemeEnabled ~= false
+	Luna.GlassMode = WindowSettings.GlassMode ~= false
 
 	local Window = {
 		Bind = Enum.KeyCode.K,
@@ -4824,18 +4954,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 						tween(Toggle.toggle, {BackgroundTransparency = 0})
 
 						Toggle.toggle.UIStroke.color.Enabled = true
-						tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255)})
+						tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255), Transparency = 1})
 
-						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0.45})
+						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0})
 					else
 						Toggle.toggle.color.Enabled = false
 						Toggle.toggle.UIStroke.color.Enabled = false
 
 						Toggle.toggle.UIStroke.Color = Color3.fromRGB(97,97,97)
+						tween(Toggle.toggle.UIStroke, {Transparency = 1})
 
-						tween(Toggle.toggle, {BackgroundTransparency = 1})
+						Toggle.toggle.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(60, 60, 72)
+						tween(Toggle.toggle, {BackgroundTransparency = 0.55})
 
-						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(97,97,97), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
+						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 					end
 
 					ToggleV.CurrentValue = bool
@@ -6477,18 +6609,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 					tween(Toggle.toggle, {BackgroundTransparency = 0})
 
 					Toggle.toggle.UIStroke.color.Enabled = true
-					tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255)})
+					tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255), Transparency = 1})
 
-					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0.45})
+					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0})
 				else
 					Toggle.toggle.color.Enabled = false
 					Toggle.toggle.UIStroke.color.Enabled = false
 
 					Toggle.toggle.UIStroke.Color = Color3.fromRGB(97,97,97)
+					tween(Toggle.toggle.UIStroke, {Transparency = 1})
 
-					tween(Toggle.toggle, {BackgroundTransparency = 1})
+					Toggle.toggle.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(60, 60, 72)
+					tween(Toggle.toggle, {BackgroundTransparency = 0.55})
 
-					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(97,97,97), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
+					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 				end
 
 				ToggleV.CurrentValue = bool
@@ -12652,6 +12786,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		pcall(function() Window.SetTheme(Window._ThemeName) end)
 		task.delay(0.5, function() pcall(function() Window.RefreshTheme() end) end)
 
+		-- Liquid Glass: sheen overlay + background blur once the window is up.
+		pcall(EnsureGlassSheen)
+		pcall(function() SetGlassBlur(Luna.GlassMode and Main.Visible) end)
+
 		local function focusStartup()
 			Window:ActivateStartupTab(WindowSettings.StartupTab)
 		end
@@ -12810,6 +12948,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 
 		Window.GetActiveTheme = function()
 			return Luna.CurrentTheme
+		end
+
+		Window.SetGlassMode = function(enabled)
+			SetGlassMode(enabled)
+		end
+
+		Window.GetGlassMode = function()
+			return Luna.GlassMode
 		end
 
 		Window.GetTabNames = function()
@@ -13066,6 +13212,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 end
 
 function Luna:Destroy()
+	if SetGlassBlur then SetGlassBlur(false) end
 	Main.Visible = false
 	for _, Notification in ipairs(Notifications:GetChildren()) do
 		if Notification.ClassName == "Frame" then
