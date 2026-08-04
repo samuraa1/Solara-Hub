@@ -42,21 +42,12 @@ Luna Interface Suite
 by Nebula Softworks
 
 ]]
-
 local Release = "Prerelease Beta 6.1"
-
 local Luna = {
 	Folder = "Luna",
 	Options = {},
 	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))}
 }
-
--- ============================================================
--- UI Theme presets ("Midnight" design system)
--- Each preset is a flat token table. The skin engine maps the
--- legacy hardcoded colours of the rbxasset chrome + element
--- creation code onto these tokens at runtime (see SkinElement).
--- ============================================================
 Luna.Themes = {
 	Midnight = {
 		Background = Color3.fromRGB(13, 13, 17),
@@ -119,17 +110,10 @@ Luna.Themes = {
 		MainTransparency = 0.04,
 	},
 }
-
--- Active token set (nil until a window applies a theme) and master switch.
--- Host scripts can force the legacy look with CreateWindow({ ThemeEnabled = false }).
 Luna.ActiveTheme = nil
 Luna.CurrentTheme = "Midnight"
 Luna.ThemeEnabled = true
-
--- Forward declaration: the skin engine is defined after the UI asset loads,
--- but RegisterElement (below) runs at element-creation time and hooks it.
 local LunaSkinElement
-
 local function getService(serviceName)
 	local svc = game:GetService(serviceName)
 	if cloneref then
@@ -137,7 +121,6 @@ local function getService(serviceName)
 	end
 	return svc
 end
-
 local UserInputService = getService("UserInputService")
 local TweenService = getService("TweenService")
 local HttpService = getService("HttpService")
@@ -150,15 +133,11 @@ local CoreGui = getService("CoreGui")
 local GuiService = getService("GuiService")
 local MarketplaceService = getService("MarketplaceService")
 local Stats = getService("Stats")
-
 local isStudio
 local website = "github.com/Nebula-Softworks"
-
 if RunService:IsStudio() then
 	isStudio = true
 end
-
--- Credits To Latte Softworks And qweery for Lucide And Material Icons Respectively
 local IconModule = {
 	Lucide = nil,
 	Material = {
@@ -1648,11 +1627,7 @@ local IconModule = {
 		["sparkle"] = "http://www.roblox.com/asset/?id=4483362748"
 	}
 }
-
--- Other Variables
 local request = (syn and syn.request) or (http and http.request) or http_request or nil
-
--- Resolve executor globals (writefile/getcustomasset live on _G / getgenv / syn, not always as locals).
 local function LunaResolveExecFn(...)
 	local names = {...}
 	for i = 1, #names do
@@ -1693,19 +1668,15 @@ local function LunaResolveExecFn(...)
 	end
 	return nil
 end
-
 local LunaWriteFile = LunaResolveExecFn("writefile", "write_file")
 local LunaReadFile = LunaResolveExecFn("readfile", "read_file")
 local LunaGetCustomAsset = LunaResolveExecFn("getcustomasset", "getsynasset", "getsynasset_async")
-
 local function LunaHttpHeaders()
 	return {
 		["Accept"] = "application/json, text/plain, */*",
 		["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
 end
-
--- Safe HTTP for Script Searcher / Music Player (avoids JSONDecode on HTML error pages).
 local function LunaHttpRequest(url)
 	if request then
 		local ok, res = pcall(function()
@@ -1728,12 +1699,10 @@ local function LunaHttpRequest(url)
 	end
 	return nil, nil
 end
-
 local function LunaHttpGet(url)
 	local body = LunaHttpRequest(url)
 	return body
 end
-
 local function LunaHttpJSON(url)
 	local body, code = LunaHttpRequest(url)
 	if not body then
@@ -1756,7 +1725,6 @@ local function LunaHttpJSON(url)
 	end
 	return nil, "JSON parse: " .. tostring(decoded)
 end
-
 local function LunaDownloadBytes(url)
 	if request then
 		local ok, res = pcall(function()
@@ -1775,7 +1743,6 @@ local function LunaDownloadBytes(url)
 	if ok and body then return body end
 	return nil
 end
-
 local function LunaPlaySoundFromUrl(sound, url, cacheName)
 	cacheName = cacheName or "SolaraHub_track.mp3"
 	local writeFn = LunaWriteFile or LunaResolveExecFn("writefile", "write_file")
@@ -1799,13 +1766,11 @@ local function LunaPlaySoundFromUrl(sound, url, cacheName)
 	sound:Play()
 	return true
 end
-
 local PIPED_API_HOSTS = {
 	"https://pipedapi.kavin.rocks",
 	"https://pipedapi.adminforge.de",
 	"https://api.piped.projectsegfau.lt",
 }
-
 local tweeninfo = TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 local PresetGradients = {
 	["Nightlight (Classic)"] = {Color3.fromRGB(147, 255, 239), Color3.fromRGB(201,211,233), Color3.fromRGB(255, 167, 227)},
@@ -1830,57 +1795,45 @@ local PresetGradients = {
 	Toxic = {Color3.fromRGB(166, 255, 0), Color3.fromRGB(99, 255, 132), Color3.fromRGB(0, 255, 198)},
 	Royal = {Color3.fromRGB(100, 115, 255), Color3.fromRGB(140, 100, 255), Color3.fromRGB(190, 110, 255)},
 }
-
 local IconCache = {}
-
--- Lucide loader: fetch once, cache forever (avoid hot-loop HTTP allocations)
 local LucideIconSet = nil
 local LucideTriedLoad = false
 local function GetLucideIconSet()
     if LucideIconSet then return LucideIconSet end
     if LucideTriedLoad then return nil end
     LucideTriedLoad = true
-
     if isStudio then
         LucideIconSet = IconModule.Lucide
         return LucideIconSet
     end
-
     local ok, fetched = pcall(function()
         return game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
     end)
     if not ok or type(fetched) ~= "string" or #fetched == 0 then
         return nil
     end
-
     local okLoad, loaded = pcall(function()
         return loadstring(fetched)()
     end)
     if not okLoad or type(loaded) ~= "table" then
         return nil
     end
-
     LucideIconSet = loaded
     return LucideIconSet
 end
-
 local function GetIcon(icon, source)
     if not icon or not source then
         return nil
     end
-
     local cacheKey = tostring(icon) .. "_" .. tostring(source)
     if IconCache[cacheKey] then
         return IconCache[cacheKey]
     end
-
     local result
-
     if source == "Custom" then
         result = "rbxassetid://" .. tostring(icon)
     elseif source == "Lucide" then
-        -- Credit: Latte Softworks
-        local icons = GetLucideIconSet()
+                local icons = GetLucideIconSet()
         if icons then
             local key = string.match(string.lower(tostring(icon)), "^%s*(.*)%s*$")
             local sizedicons = icons['48px']
@@ -1889,15 +1842,12 @@ local function GetIcon(icon, source)
                 warn("Lucide Icons: Failed to find icon by the name of \"" .. tostring(icon) .. "\"")
                 return nil
             end
-
             local rirs = r[2]
             local riro = r[3]
-
             if type(r[1]) ~= "number" or type(rirs) ~= "table" or type(riro) ~= "table" then
                 warn("Lucide Icons: Invalid asset entry for \"" .. tostring(icon) .. "\"")
                 return nil
             end
-
             result = {
                 id = r[1],
                 imageRectSize = Vector2.new(rirs[1], rirs[2]),
@@ -1914,15 +1864,11 @@ local function GetIcon(icon, source)
             result = nil
         end
     end
-
     if result then
         IconCache[cacheKey] = result
     end
-
     return result
 end
-
--- Applies an icon result (string id or Lucide rect table) to an ImageLabel/ImageButton
 local function ApplyIcon(imageLabel, iconData)
     if not imageLabel or not iconData then return end
     if type(iconData) == "table" then
@@ -1935,9 +1881,6 @@ local function ApplyIcon(imageLabel, iconData)
         imageLabel.ImageRectOffset = Vector2.new(0, 0)
     end
 end
-
--- Generates a random, generic instance name to reduce anti-cheat name-scan footprint.
--- We avoid keywords like "ESP", "Aimbot" leaking via Instance.Name.
 local _LunaRandom = Random.new()
 local function RandomName()
     local hex = "0123456789abcdef"
@@ -1948,17 +1891,8 @@ local function RandomName()
     end
     return "_" .. table.concat(out)
 end
-
--- Forward-declared at module scope so the callback-error path (which references
--- all possible Settings tables via _LunaErrName) doesn't produce "undefined global"
--- diagnostics. Each Create* function shadows these with its local parameter of
--- the same name, so the actual lookup still resolves to the correct table.
 local BindSettings, ButtonSettings, SliderSettings, ToggleSettings,
     InputSettings, DropdownSettings, ColorPickerSettings
-
--- Returns the first non-nil Settings.Name from the provided argument list.
--- Used by the callback-error path so that the Notification works regardless of
--- which element (Button/Slider/Toggle/Bind/Input/Dropdown/ColorPicker) triggered it.
 local function _LunaErrName(...)
     local n = select("#", ...)
     for i = 1, n do
@@ -1969,10 +1903,7 @@ local function _LunaErrName(...)
     end
     return "Unknown"
 end
-
--- Shown on every callback failure so users know where to report bugs.
 local LUNA_CALLBACK_ERR_FOOTER = " Report this in Discord: discord.gg/DPCKQRJmdF"
-
 local function LunaCallbackErrorNotification(response, ...)
     local elementName = _LunaErrName(...)
     Luna:Notification({
@@ -1980,24 +1911,13 @@ local function LunaCallbackErrorNotification(response, ...)
         Content = "Luna Interface Suite | " .. elementName .. " | " .. tostring(response) .. LUNA_CALLBACK_ERR_FOOTER,
         Icon = "error",
     })
-    -- Optional host hook: lets the hub forward callback/script errors elsewhere
-    -- (e.g. a Discord webhook). Set Luna.CallbackErrorReporter = function(err, name) end
-    if type(Luna.CallbackErrorReporter) == "function" then
+            if type(Luna.CallbackErrorReporter) == "function" then
         pcall(Luna.CallbackErrorReporter, tostring(response), elementName)
     end
 end
-
--- Detect "PC-like" environment: has a keyboard AND mouse. Phones/tablets typically
--- lack both. Laptops with a touchscreen still pass because they have keyboard+mouse.
 local function IsDesktop()
     return UserInputService.KeyboardEnabled and UserInputService.MouseEnabled
 end
-
--- Registers an element with the Window so SearchBar can find it. Also handles
--- the anti-cheat instance rename so the user-supplied display name doesn't
--- leak via Instance.Name. Safe to call multiple times for the same frame -
--- the search index is populated only once, but the random name + attribute
--- are refreshed on every call (useful when :Set() updates display name).
 local function RegisterElement(window, frame, displayName, elementType, tabName)
     if not frame then return end
     pcall(function()
@@ -2016,35 +1936,19 @@ local function RegisterElement(window, frame, displayName, elementType, tabName)
             Tab = tostring(tabName or ""),
         })
     end
-    -- Skin the freshly created element so it matches the active UI theme.
-    if LunaSkinElement then
+        if LunaSkinElement then
         pcall(LunaSkinElement, frame, true)
     end
 end
-
--- ============================================================
--- Translator (whole-UI translation)
--- ============================================================
--- Uses Google Translate's free unofficial endpoint via game:HttpGet (or the
--- executor's request() if available). We snapshot every text element's
--- original English content into an attribute on first translation, then
--- replace it with the localised version. Switching back to "en" restores
--- the originals from the cached attribute.
 local LunaTranslator = {
     Target = "en",
-    Cache = {},      -- [targetCode][originalText] = translated
-    External = nil,  -- optional user-supplied translator fn(text, target) -> string
+    Cache = {},
+    External = nil,
     Watching = false,
 }
-
--- Returns true if `obj` exposes a text property we should translate. Excludes
--- TextBoxes (typing fields) so the user's input isn't replaced mid-keystroke,
--- and any descendant explicitly marked LunaNoTranslate (e.g. AI chat bubbles).
 local function _isTranslatableText(obj)
     if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-        -- Walk parents looking for the opt-out flag so a single attribute on
-        -- a container excludes the whole subtree.
-        local cur = obj
+                        local cur = obj
         while cur and cur ~= game do
             if cur:GetAttribute("LunaNoTranslate") then return false end
             cur = cur.Parent
@@ -2053,8 +1957,6 @@ local function _isTranslatableText(obj)
     end
     return false
 end
-
--- Template placeholder strings that must never be snapshotted as "originals".
 local LUNA_TEMPLATE_PLACEHOLDERS = {
     ["button"] = true,
     ["slider"] = true,
@@ -2071,7 +1973,6 @@ local LUNA_TEMPLATE_PLACEHOLDERS = {
     ["section"] = true,
     ["tab"] = true,
 }
-
 local function _isStaleTemplateOriginal(orig, currentText)
     if type(orig) ~= "string" or type(currentText) ~= "string" then return false end
     if orig == currentText then return false end
@@ -2080,9 +1981,6 @@ local function _isStaleTemplateOriginal(orig, currentText)
     if orig:lower():find("lorem ipsum", 1, true) then return true end
     return false
 end
-
--- Should we skip translating a specific value? Numbers, single chars, URLs,
--- whitespace and asset IDs are pointless to send through the API.
 local function _shouldTranslateValue(text)
     if type(text) ~= "string" then return false end
     local trimmed = text:gsub("%s+", "")
@@ -2094,29 +1992,23 @@ local function _shouldTranslateValue(text)
     if LUNA_TEMPLATE_PLACEHOLDERS[trimmed:lower()] then return false end
     return true
 end
-
--- Writes UI text and stamps the canonical English original for the translator.
 local function LunaFindTitle(widget)
 	if not widget then return nil end
 	return widget:FindFirstChild("Title") or widget:FindFirstChild("TextLabel")
 end
-
 local function LunaFindBodyText(widget)
 	if not widget then return nil end
 	return widget:FindFirstChild("Text") or widget:FindFirstChild("InputBox")
 		or widget:FindFirstChildWhichIsA("TextBox")
 end
-
 local function LunaFindStroke(widget)
 	if not widget then return nil end
 	return widget:FindFirstChildOfClass("UIStroke")
 end
-
 local function LunaTweenStroke(widget, props)
 	local stroke = LunaFindStroke(widget)
 	if stroke then tween(stroke, props) end
 end
-
 local function LunaSetText(obj, text)
     if not obj then return end
     text = tostring(text or "")
@@ -2129,22 +2021,17 @@ local function LunaSetText(obj, text)
         obj:SetAttribute("LunaTranslated", nil)
     end
 end
-
 local _LunaHttpRequest = (syn and syn.request) or (http and http.request) or http_request or request
-
--- Synchronous translation through Google Translate. Cached per-target.
 local function _googleTranslate(text, target)
     if target == "en" then return text end
     if not _shouldTranslateValue(text) then return text end
     LunaTranslator.Cache[target] = LunaTranslator.Cache[target] or {}
     local cached = LunaTranslator.Cache[target][text]
     if cached then return cached end
-
     local url = string.format(
         "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=%s&dt=t&q=%s",
         target, HttpService:UrlEncode(text)
     )
-
     local body
     if _LunaHttpRequest then
         local ok, res = pcall(function()
@@ -2159,10 +2046,8 @@ local function _googleTranslate(text, target)
         if ok then body = res end
     end
     if not body then return text end
-
     local okDec, decoded = pcall(function() return HttpService:JSONDecode(body) end)
     if not okDec or type(decoded) ~= "table" or type(decoded[1]) ~= "table" then return text end
-
     local parts = {}
     for _, chunk in ipairs(decoded[1]) do
         if type(chunk) == "table" and type(chunk[1]) == "string" then
@@ -2174,9 +2059,6 @@ local function _googleTranslate(text, target)
     LunaTranslator.Cache[target][text] = result
     return result
 end
-
--- Public translate. Uses External fn if set (lets the host script pick a
--- different provider) and falls back to Google Translate.
 local function LunaTranslate(text, target)
     target = target or LunaTranslator.Target or "en"
     if target == "en" then return text end
@@ -2186,14 +2068,6 @@ local function LunaTranslate(text, target)
     end
     return _googleTranslate(text, target)
 end
-
--- Translate a single GUI text instance in place. Stores the original in an
--- attribute so we can restore it without re-querying. We also track the LAST
--- translation we wrote ("LunaTranslated"): if obj.Text differs from it AND
--- from the original, external code has rewritten the label since we last
--- touched it, so re-snapshot the new original. This is what makes labels
--- created from cloned templates (where the clone briefly carries "Button"
--- before the host script writes the real name) translate correctly.
 local function _translateOne(obj, target)
     if not _isTranslatableText(obj) then return end
     local orig = obj:GetAttribute("LunaOriginalText")
@@ -2208,8 +2082,7 @@ local function _translateOne(obj, target)
         if not _shouldTranslateValue(orig) then return end
         obj:SetAttribute("LunaOriginalText", orig)
     elseif lastTranslated and obj.Text ~= lastTranslated and obj.Text ~= orig then
-        -- External rewrite detected. Trust the new text as the real original.
-        orig = obj.Text
+                orig = obj.Text
         if not _shouldTranslateValue(orig) then
             obj:SetAttribute("LunaOriginalText", nil)
             obj:SetAttribute("LunaTranslated", nil)
@@ -2228,26 +2101,17 @@ local function _translateOne(obj, target)
         obj:SetAttribute("LunaTranslated", translated)
     end
 end
-
--- Walks a root Instance and translates every descendant text element.
--- Uses a worker pool to fire many HTTP requests in parallel; on a typical
--- UI this brings a full retranslate from minutes to ~10-20s.
 local LunaTranslateWorkers = 14
 local function _translateTree(root, target)
     if not root then return end
-    -- Pre-collect & dedupe queue. Objects sharing the same source text only
-    -- need the API to translate them once - the cache handles the rest.
-    local queue = {}
+            local queue = {}
     for _, descendant in ipairs(root:GetDescendants()) do
         if _isTranslatableText(descendant) then
             table.insert(queue, descendant)
         end
     end
     if #queue == 0 then return end
-
-    -- If target is English we don't hit the network at all - just restore
-    -- originals in one synchronous sweep.
-    if target == "en" then
+            if target == "en" then
         task.spawn(function()
             for i, obj in ipairs(queue) do
                 if obj and obj.Parent then pcall(_translateOne, obj, target) end
@@ -2256,11 +2120,7 @@ local function _translateTree(root, target)
         end)
         return
     end
-
-    -- Pre-warm the cache by translating each unique English string ONCE in
-    -- parallel. This avoids 5 different copies of "Settings" each issuing
-    -- their own HTTP request.
-    local unique = {}
+                local unique = {}
     for _, obj in ipairs(queue) do
         local orig = obj:GetAttribute("LunaOriginalText") or obj.Text
         if _shouldTranslateValue(orig) and not unique[orig] then
@@ -2269,17 +2129,14 @@ local function _translateTree(root, target)
     end
     local uniqueList = {}
     for text in pairs(unique) do table.insert(uniqueList, text) end
-
     local idx = 0
     local function nextText()
         idx = idx + 1
         return uniqueList[idx]
     end
-
     local doneFlag = Instance.new("BindableEvent")
     local active = math.min(LunaTranslateWorkers, math.max(1, #uniqueList))
     if active == 0 then doneFlag:Fire(); doneFlag:Destroy(); doneFlag = nil end
-
     for w = 1, active do
         task.spawn(function()
             while true do
@@ -2291,11 +2148,7 @@ local function _translateTree(root, target)
             if active == 0 and doneFlag then doneFlag:Fire() end
         end)
     end
-
-    -- Once the cache is hot, applying translations to actual instances is
-    -- effectively free (no HTTP). Stream them out in a small loop so we
-    -- still yield occasionally and don't freeze the game thread.
-    task.spawn(function()
+                task.spawn(function()
         if doneFlag then
             doneFlag.Event:Wait()
             doneFlag:Destroy()
@@ -2308,12 +2161,6 @@ local function _translateTree(root, target)
         end
     end)
 end
-
--- Catch newly added UI elements so they get translated too. Connected once
--- the first time SetLanguage activates a non-English target. We wait a few
--- frames before snapshotting so the host script's clone+Text-assignment can
--- finish - otherwise we'd cache the template's placeholder ("Button") as the
--- "original" and forever replace real labels with the translated placeholder.
 local function _watchNewText(rootGui)
     if LunaTranslator.Watching then return end
     LunaTranslator.Watching = true
@@ -2325,7 +2172,6 @@ local function _watchNewText(rootGui)
         end)
     end)
 end
-
 local function RemoveTable(tablre, value)
     for i = #tablre, 1, -1 do
         if tostring(tablre[i]) == tostring(value) then
@@ -2334,7 +2180,6 @@ local function RemoveTable(tablre, value)
         end
     end
 end
-
 local function Kwargify(defaults, passed)
 	for i, v in pairs(defaults) do
 		if passed[i] == nil then
@@ -2343,21 +2188,17 @@ local function Kwargify(defaults, passed)
 	end
 	return passed
 end
-
 local function PackColor(Color)
 	return {R = Color.R * 255, G = Color.G * 255, B = Color.B * 255}
-end    
-
+end
 local function UnpackColor(Color)
 	return Color3.fromRGB(Color.R, Color.G, Color.B)
 end
-
 function tween(object, goal, callback, tweenin)
 	local tween = TweenService:Create(object,tweenin or tweeninfo, goal)
 	tween.Completed:Connect(callback or function() end)
 	tween:Play()
 end
-
 local function LunaTweenDropdownOption(list, optionName, props)
 	if type(optionName) ~= "string" or optionName == "" or not list then return end
 	local item = list:FindFirstChild(optionName)
@@ -2365,7 +2206,6 @@ local function LunaTweenDropdownOption(list, optionName, props)
 		tween(item, props)
 	end
 end
-
 local function LunaSanitizeDropdownCurrent(options, current, multiple)
 	local optSet = {}
 	if type(options) == "table" then
@@ -2402,16 +2242,9 @@ local function LunaSanitizeDropdownCurrent(options, current, multiple)
 	end
 	return names[1]
 end
-
--- Interface Management
 local LunaUI = isStudio and script.Parent:WaitForChild("Luna UI") or game:GetObjects("rbxassetid://86467455075715")[1]
-
 local SizeBleh = nil
-
--- Forward declaration: the glass engine is defined below (after the theme
--- engine), Hide/Unhide hook it to toggle the background blur.
 local SetGlassBlur
-
 local function Hide(Window, bind, notif)
 	SizeBleh = Window.Size
 	if SetGlassBlur then SetGlassBlur(false) end
@@ -2427,7 +2260,6 @@ local function Hide(Window, bind, notif)
 	tween(Window.Title.subtitle, {TextTransparency = 1})
 	tween(Window.Logo, {ImageTransparency = 1})
 	tween(Window.Navigation.Line, {BackgroundTransparency = 1})
-
 	for _, TopbarButton in ipairs(Window.Controls:GetChildren()) do
 		if TopbarButton.ClassName == "Frame" then
 			tween(TopbarButton, {BackgroundTransparency = 1})
@@ -2444,7 +2276,6 @@ local function Hide(Window, bind, notif)
 			TweenService:Create(tabbtn.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
 		end
 	end
-
 	task.wait(0.28)
 	Window.Size = UDim2.new(0,0,0,0)
 	Window.Parent.ShadowHolder.Visible = false
@@ -2452,10 +2283,6 @@ local function Hide(Window, bind, notif)
 	Window.Elements.Parent.Visible = false
 	Window.Visible = false
 end
-
--- Anti-cheat: clean up any previous instance(s) of our UI before reparenting the new one.
--- We match by the original ScreenGui name from the rbxasset ("Luna UI") because random
--- names can't be discovered across executions.
 local OriginalUIName = LunaUI.Name
 if gethui then
 	for _, Interface in ipairs(gethui():GetChildren()) do
@@ -2476,12 +2303,8 @@ elseif not isStudio then
 		end
 	end
 end
-
--- Tag the new ScreenGui with a non-string attribute (still discoverable to us, harder
--- to spot via simple name scans) and give it a random Instance.Name.
 LunaUI:SetAttribute("LunaUI", true)
 LunaUI.Name = RandomName()
-
 if gethui then
 	LunaUI.Parent = gethui()
 elseif syn and syn.protect_gui then
@@ -2492,30 +2315,22 @@ elseif not isStudio and CoreGui:FindFirstChild("RobloxGui") then
 elseif not isStudio then
 	LunaUI.Parent = CoreGui
 end
-
 LunaUI.Enabled = false
 LunaUI.SmartWindow.Visible = false
 LunaUI.Notifications.Template.Visible = false
 LunaUI.DisplayOrder = 1000000000
-
 local Main : Frame = LunaUI.SmartWindow
 local Dragger = Main.Drag
 local dragBar = LunaUI.Drag
 local dragInteract = dragBar and dragBar.Interact or nil
 local dragBarCosmetic = dragBar and dragBar.Drag or nil
--- Keep rescue handle at ScreenGui root (sibling of SmartWindow), never inside Main.
 if dragBar and dragBar.Parent ~= LunaUI then
 	dragBar.Parent = LunaUI
 end
-
--- Rayfield-style offset: half the window height + padding (scales on resize).
 local function getDragBarYOffset(mainFrame)
 	if not mainFrame then return 255 end
 	return math.floor(mainFrame.AbsoluteSize.Y * 0.5) + 14
 end
-
--- Rescue handle tracks Main.Position. Only move the dragBar frame — never reposition
--- dragInteract with parent's UDim2 (that breaks hit-testing and made the handle dead).
 local function syncDragBarPosition(mainFrame)
 	if not dragBar or not mainFrame then return end
 	local mp = mainFrame.Position
@@ -2532,48 +2347,31 @@ local Navigation = Main.Navigation
 local Tabs = Navigation.Tabs
 local Notifications = LunaUI.Notifications
 local KeySystem : Frame = Main.KeySystem
-
--- Cached, repeatedly used in Luna:Notification hot path
 local NotificationsListLayout = Notifications:FindFirstChild("UIListLayout")
 local NotificationsPaddingOffset = (NotificationsListLayout and NotificationsListLayout.Padding.Offset) or 0
-
--- ============================================================
--- Theme skin engine
--- Maps the legacy hardcoded colours / fonts / corner radii of the
--- rbxasset chrome and element templates onto the active token set
--- (Luna.ActiveTheme). Original values are cached per-instance so
--- switching themes always maps from the pristine asset colours.
--- ============================================================
-local MainBgTransparency = 0.2 -- legacy default; the active theme overrides this
-
+local MainBgTransparency = 0.2
 local function ColorLuminance(c)
 	return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
 end
-
 local function ColorSaturation(c)
 	local mx = math.max(c.R, c.G, c.B)
 	if mx <= 0 then return 0 end
 	return (mx - math.min(c.R, c.G, c.B)) / mx
 end
-
--- Weak keys: entries vanish when the instance is destroyed.
 local OriginalSkin = setmetatable({}, { __mode = "k" })
-
 local function MapBackgroundColor(orig, T)
-	if ColorSaturation(orig) > 0.28 then return orig end -- accent / error colours stay
+	if ColorSaturation(orig) > 0.28 then return orig end
 	local L = ColorLuminance(orig)
 	if L <= 0.055 then return T.Background end
 	if L <= 0.105 then return T.Surface end
 	if L <= 0.18 then return T.Elevated end
 	return orig
 end
-
 local function MapStrokeColor(orig, T)
 	if ColorSaturation(orig) > 0.28 then return orig end
 	if ColorLuminance(orig) <= 0.55 then return T.Stroke end
 	return orig
 end
-
 local function MapTextColor(orig, T)
 	if ColorSaturation(orig) > 0.22 then return orig end
 	local L = ColorLuminance(orig)
@@ -2581,8 +2379,6 @@ local function MapTextColor(orig, T)
 	if L >= 0.45 then return T.TextSecondary end
 	return orig
 end
-
--- Legacy enum font -> BuilderSans family (modern Roblox standard).
 local BuilderFontMap = {
 	[Enum.Font.Gotham] = Enum.Font.BuilderSans,
 	[Enum.Font.GothamMedium] = Enum.Font.BuilderSansMedium,
@@ -2594,7 +2390,6 @@ local BuilderFontMap = {
 	[Enum.Font.SourceSansSemibold] = Enum.Font.BuilderSansMedium,
 	[Enum.Font.SourceSansBold] = Enum.Font.BuilderSansBold,
 }
-
 local function HasNoThemeAncestor(obj)
 	local cur = obj
 	while cur and cur ~= LunaUI and cur ~= game do
@@ -2603,23 +2398,18 @@ local function HasNoThemeAncestor(obj)
 	end
 	return false
 end
-
 LunaSkinElement = function(obj, skipAncestorCheck)
 	if not Luna.ThemeEnabled then return end
 	local T = Luna.ActiveTheme
 	if not T then return end
 	if obj:GetAttribute("LunaNoTheme") then return end
 	if not skipAncestorCheck and HasNoThemeAncestor(obj) then return end
-
-	-- Accent-marked instances (tab bars, notification strips) take the token
-	-- accent directly so they follow theme switches.
-	if obj:GetAttribute("LunaAccent") then
+			if obj:GetAttribute("LunaAccent") then
 		if obj:IsA("GuiObject") then obj.BackgroundColor3 = T.Accent end
 		if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then obj.ImageColor3 = T.Accent end
 		if obj:IsA("TextLabel") or obj:IsA("TextButton") then obj.TextColor3 = T.Accent end
 		return
 	end
-
 	local orig = OriginalSkin[obj]
 	if not orig then
 		orig = {}
@@ -2634,7 +2424,6 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 		if obj:IsA("UICorner") then orig.Radius = obj.CornerRadius end
 		OriginalSkin[obj] = orig
 	end
-
 	if orig.BG and obj:IsA("GuiObject") and not obj:FindFirstChildOfClass("UIGradient") then
 		obj.BackgroundColor3 = MapBackgroundColor(orig.BG, T)
 	end
@@ -2658,19 +2447,14 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 		if r.Scale == 0 then
 			local parent = obj.Parent
 			local py = (parent and parent:IsA("GuiObject")) and parent.AbsoluteSize.Y or 0
-			-- Snap card/button radii to the 8px token; big surfaces to 10px.
-			-- Round indicators (dots, switch knobs) are skipped via the size guard.
-			if r.Offset >= 4 and r.Offset <= 14 and py >= 26 then
+									if r.Offset >= 4 and r.Offset <= 14 and py >= 26 then
 				obj.CornerRadius = UDim.new(0, 8)
 			elseif r.Offset > 14 and r.Offset <= 24 and py > 100 then
 				obj.CornerRadius = UDim.new(0, 10)
 			end
 		end
 	end
-
-	-- iOS slider: white knob pinned to the end of the progress fill. It
-	-- follows the fill width automatically, so the drag code needs no changes.
-	if obj:IsA("Frame") and obj.Name == "Progress" then
+			if obj:IsA("Frame") and obj.Name == "Progress" then
 		local main = obj.Parent
 		local root = main and main.Parent
 		if main and main.Name == "Main"
@@ -2696,16 +2480,12 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 		end
 	end
 end
-
 local function LunaSkinTree(root)
 	if not Luna.ThemeEnabled or not Luna.ActiveTheme then return end
 	for _, d in ipairs(root:GetDescendants()) do
 		pcall(LunaSkinElement, d)
 	end
 end
-
--- Elements created after the initial pass (notifications, dropdown options,
--- AI chat messages, tab buttons...) get skinned via a debounced queue.
 local SkinQueue = {}
 local SkinFlushPending = false
 LunaUI.DescendantAdded:Connect(function(obj)
@@ -2722,7 +2502,6 @@ LunaUI.DescendantAdded:Connect(function(obj)
 		end)
 	end
 end)
-
 local function ApplyLunaTheme(nameOrTokens)
 	if not Luna.ThemeEnabled then return false end
 	local tokens
@@ -2750,22 +2529,11 @@ local function ApplyLunaTheme(nameOrTokens)
 	end
 	return true
 end
-
 Luna.ApplyTheme = ApplyLunaTheme
-
--- ============================================================
--- Liquid Glass mode
--- Real background blur (BlurEffect in Lighting while the UI is
--- visible) + a top-light sheen overlay on the window. Toggleable;
--- games that wipe Lighting children simply get the blur re-added
--- on the next Unhide.
--- ============================================================
 Luna.GlassMode = true
-
 local Lighting = getService("Lighting")
 local GlassBlur = nil
 local GlassSheen = nil
-
 SetGlassBlur = function(enabled)
 	if not Luna.GlassMode then enabled = false end
 	if enabled then
@@ -2781,7 +2549,6 @@ SetGlassBlur = function(enabled)
 		GlassBlur = nil
 	end
 end
-
 local function EnsureGlassSheen()
 	if GlassSheen and GlassSheen.Parent then
 		GlassSheen.Visible = Luna.GlassMode
@@ -2809,10 +2576,7 @@ local function EnsureGlassSheen()
 	sheenCorner.CornerRadius = UDim.new(0, 10)
 	sheenCorner.Parent = GlassSheen
 	GlassSheen.Parent = Main
-
-	-- Glass edge: vertical gradient on the window stroke (bright top,
-	-- fading down) if the window template has a stroke.
-	pcall(function()
+			pcall(function()
 		local stroke = Main:FindFirstChildOfClass("UIStroke")
 		if stroke and not stroke:FindFirstChildOfClass("UIGradient") then
 			stroke.Color = Color3.new(1, 1, 1)
@@ -2827,7 +2591,6 @@ local function EnsureGlassSheen()
 		end
 	end)
 end
-
 local function SetGlassMode(enabled)
 	Luna.GlassMode = enabled and true or false
 	EnsureGlassSheen()
@@ -2839,99 +2602,10 @@ local function SetGlassMode(enabled)
 	end
 	SetGlassBlur(Luna.GlassMode and Main.Visible and Main.BackgroundTransparency < 1)
 end
-
 Luna.SetGlassMode = SetGlassMode
-
---[[ local function LoadConfiguration(Configuration, autoload)
- 	local Data = HttpService:JSONDecode(Configuration)
- 	local changed
- 	local notified = false
-
- 	-- Iterate through current UI elements' flags
- 	for FlagName, Flag in pairs(Luna.Flags) do
- 		local FlagValue = Data[FlagName]
-
- 		if FlagValue then
- 			task.spawn(function()
- 				if Flag.Type == "ColorPicker" then
- 					changed = true
- 					Flag:Set(UnpackColor(FlagValue))
-				else
- 					if (Flag.CurrentValue or Flag.CurrentKeybind or Flag.CurrentOption or Flag.Color) ~= FlagValue then 
- 						changed = true
- 						Flag:Set(FlagValue) 	
- 					end
- 				end
- 			end)
- 		else
- 			notified = true
- 			Luna:Notification({Title = "Config Error", Content = "Luna was unable to load or find '"..FlagName.. "'' in the current script. Check ".. website .." for help.", Icon = "flag"})
- 		end
- 	end
- 	if autoload and notified == false then
- 		Luna:Notification({
- 			Title = "Config Autoloaded",
- 			Content = "The Configuration Has Been Automatically Loaded. Thank You For Using Luna Library",
- 			Icon = "file-code-2",
- 			ImageSource = "Lucide"
- 		})
- 	elseif notified == false then
- 		Luna:Notification({
- 			Title = "Config Loaded",
- 			Content = "The Configuration Has Been Loaded. Thank You For Using Luna Library",
- 			Icon = "file-code-2",
- 			ImageSource = "Lucide"
- 		})
- 	end
-
- 	return changed
- end
-
- local function SaveConfiguration(Configuration, ConfigFolder, hasRoot)
- 	local Data = {}
- 	for i,v in pairs(Luna.Flags) do
- 		if v.Type == "ColorPicker" then
- 			Data[i] = PackColor(v.Color)
- 		else
- 			Data[i] = v.CurrentValue or v.CurrentBind or v.CurrentOption or v.Color
- 		end
- 	end	
- 	if hasRoot then
- 		writefile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. Configuration .. ConfigurationExtension, tostring(HttpService:JSONEncode(Data)))
- 	else
- 		writefile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. Configuration .. ConfigurationExtension, tostring(HttpService:JSONEncode(Data)))
- 	end
- end
-
- local function SetAutoload(ConfigName, ConfigFolder, hasRoot)
- 	if hasRoot then
- 		writefile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt", tostring(ConfigName) .. ConfigurationExtension)
- 	else
- 		writefile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. "autoload.txt", tostring(ConfigName) .. ConfigurationExtension)
- 	end
- end
-
- local function LoadAutoLoad(ConfigFolder, hasRoot)
- 	local autoload = isfile(ConfigurationFolder .. "/" .. "/" .. ConfigFolder .. "autoload.txt")
- 	if hasRoot then
- 		autoload = isfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt")
- 	end
-
- 	if autoload then
- 		if hasRoot then
- 			LoadConfiguration(readfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. readfile(ConfigurationFolder .. "/" .. hasRoot .. "/" .. ConfigFolder .. "/" .. "autoload.txt")), true)
- 		else
- 			LoadConfiguration(readfile(ConfigurationFolder .. "/" .. ConfigFolder .. "/" .. readfile(ConfigurationFolder .. "/" .. ConfigFolder .. "/" .. "autoload.txt")), true)
- 		end
- 	end
- end ]]
-
--- Shared window drag (top bar + rescue handle). Rayfield-style: RenderStepped while
--- LMB held, global InputEnded so release always stops the drag (no cursor stick).
 local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 	pcall(function()
 		if not Bar or not Window then return end
-
 		local dragging = false
 		local relative = nil
 		local inset = Vector2.zero
@@ -2939,12 +2613,10 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 		if screenGui and screenGui.IgnoreGuiInset then
 			inset = GuiService:GetGuiInset()
 		end
-
 		local function isPointerDown(input)
 			local n = input.UserInputType.Name
 			return n == "MouseButton1" or n == "Touch"
 		end
-
 		local function beginDrag()
 			dragging = true
 			relative = Window.AbsolutePosition + Window.AbsoluteSize * Window.AnchorPoint - UserInputService:GetMouseLocation()
@@ -2952,7 +2624,6 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 				TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
 			end
 		end
-
 		local function endDrag()
 			if not dragging then return end
 			dragging = false
@@ -2961,7 +2632,6 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 				syncDragBarPosition(Window)
 			end
 		end
-
 		if enableTaptic and dragBar then
 			dragBar.MouseEnter:Connect(function()
 				if not dragging and dragBarCosmetic then
@@ -2974,7 +2644,6 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 				end
 			end)
 		end
-
 		local function hookDragTarget(gui)
 			if not gui then return end
 			gui.InputBegan:Connect(function(input)
@@ -2982,19 +2651,16 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 				beginDrag()
 			end)
 		end
-
 		hookDragTarget(Bar)
 		if enableTaptic and dragBar and Bar ~= dragBar then
 			hookDragTarget(dragBar)
 		end
-
 		UserInputService.InputEnded:Connect(function(input)
 			if not dragging then return end
 			if isPointerDown(input) then
 				endDrag()
 			end
 		end)
-
 		local dragTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 		RunService.RenderStepped:Connect(function()
 			if not dragging then return end
@@ -3007,8 +2673,7 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 		end)
 	end)
 end
-
-function Luna:Notification(data) -- Action e.g Open Messages
+function Luna:Notification(data)
 	task.spawn(function()
 		data = Kwargify({
 			Title = "Missing Title",
@@ -3016,22 +2681,15 @@ function Luna:Notification(data) -- Action e.g Open Messages
 			Icon = "view_in_ar",
 			ImageSource = "Material"
 		}, data or {})
-
-		-- Notification Object Creation
-		local newNotification = Notifications.Template:Clone()
+				local newNotification = Notifications.Template:Clone()
 		newNotification.Name = data.Title
 		newNotification.Parent = Notifications
 		newNotification.LayoutOrder = #Notifications:GetChildren()
 		newNotification.Visible = false
-
-		-- Set Data
-		newNotification.Title.Text = data.Title
+				newNotification.Title.Text = data.Title
 		newNotification.Description.Text = data.Content
 		ApplyIcon(newNotification.Icon, GetIcon(data.Icon, data.ImageSource))
-
-		-- Midnight design: accent strip on the left edge + lifetime progress
-		-- bar along the bottom. Both follow theme switches via LunaAccent.
-		local notifAccent, notifProgress
+						local notifAccent, notifProgress
 		if Luna.ThemeEnabled and Luna.ActiveTheme then
 			notifAccent = Instance.new("Frame")
 			notifAccent.Name = "LunaAccentStrip"
@@ -3048,7 +2706,6 @@ function Luna:Notification(data) -- Action e.g Open Messages
 			stripCorner.CornerRadius = UDim.new(1, 0)
 			stripCorner.Parent = notifAccent
 			notifAccent.Parent = newNotification
-
 			notifProgress = Instance.new("Frame")
 			notifProgress.Name = "LunaProgressBar"
 			notifProgress:SetAttribute("LunaAccent", true)
@@ -3065,40 +2722,28 @@ function Luna:Notification(data) -- Action e.g Open Messages
 			progressCorner.Parent = notifProgress
 			notifProgress.Parent = newNotification
 		end
-
-		-- Set initial transparency values
-		newNotification.BackgroundTransparency = 1
+				newNotification.BackgroundTransparency = 1
 		newNotification.Title.TextTransparency = 1
 		newNotification.Description.TextTransparency = 1
 		newNotification.UIStroke.Transparency = 1
 		newNotification.Shadow.ImageTransparency = 1
 		newNotification.Icon.ImageTransparency = 1
 		newNotification.Icon.BackgroundTransparency = 1
-
 		task.wait()
-
-		-- Calculate textbounds and set initial values
-		newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
-
+				newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
 		newNotification.Icon.Size = UDim2.new(0, 28, 0, 28)
 		newNotification.Icon.Position = UDim2.new(0, 16, 0.5, -1)
-
 		newNotification.Visible = true
-
 		newNotification.Description.Size = UDim2.new(1, -65, 0, math.huge)
 		local bounds = newNotification.Description.TextBounds.Y + 55
 		newNotification.Description.Size = UDim2.new(1,-65,0, bounds - 35)
 		newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
 		TweenService:Create(newNotification, TweenInfo.new(0.6, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, 0, 0, bounds)}):Play()
-
 		task.wait(0.15)
 		TweenService:Create(newNotification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.45}):Play()
 		TweenService:Create(newNotification.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-
 		task.wait(0.05)
-
 		TweenService:Create(newNotification.Icon, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 0}):Play()
-
 		task.wait(0.05)
 		TweenService:Create(newNotification.Description, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0.35}):Play()
 		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 0.95}):Play()
@@ -3106,7 +2751,6 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		if notifAccent then
 			TweenService:Create(notifAccent, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.1}):Play()
 		end
-
 		local waitDuration = math.min(math.max((#newNotification.Description.Text * 0.1) + 2.5, 3), 10)
 		local lifeDuration = data.Duration or waitDuration
 		if notifProgress then
@@ -3114,7 +2758,6 @@ function Luna:Notification(data) -- Action e.g Open Messages
 			TweenService:Create(notifProgress, TweenInfo.new(lifeDuration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 2)}):Play()
 		end
 		task.wait(lifeDuration)
-
 		newNotification.Icon.Visible = false
 		TweenService:Create(newNotification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
 		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
@@ -3127,30 +2770,21 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		if notifProgress then
 			TweenService:Create(notifProgress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
 		end
-
 		TweenService:Create(newNotification, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, -90, 0, 0)}):Play()
-
 		task.wait(1)
-
 		TweenService:Create(newNotification, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, -90, 0, -NotificationsPaddingOffset)}):Play()
-
 		newNotification.Visible = false
 		newNotification:Destroy()
 	end)
 end
-
 local function Unhide(Window, currentTab)
 	Window.Size = SizeBleh
-	-- Hide() sets Elements.Parent.Visible = false. Restore that here as well as
-	-- Elements.Visible so the panel actually re-appears after a re-open.
-	if Window.Elements and Window.Elements.Parent then
+			if Window.Elements and Window.Elements.Parent then
 		Window.Elements.Parent.Visible = true
 	end
 	Window.Elements.Visible = true
 	Window.Visible = true
-	-- Restore the drop-shadow that Hide() turned off. Without this the window
-	-- appears flat after re-opening with the keybind.
-	if Window.Parent and Window.Parent:FindFirstChild("ShadowHolder") then
+			if Window.Parent and Window.Parent:FindFirstChild("ShadowHolder") then
 		Window.Parent.ShadowHolder.Visible = true
 	end
 	task.wait()
@@ -3161,7 +2795,6 @@ local function Unhide(Window, currentTab)
 	tween(Window.Title.subtitle, {TextTransparency = 0})
 	tween(Window.Logo, {ImageTransparency = 0})
 	tween(Window.Navigation.Line, {BackgroundTransparency = 0})
-
 	for _, TopbarButton in ipairs(Window.Controls:GetChildren()) do
 		if TopbarButton.ClassName == "Frame" and TopbarButton.Name ~= "Theme" then
 			TopbarButton.Visible = true
@@ -3172,9 +2805,7 @@ local function Unhide(Window, currentTab)
 	end
 	for _, tabbtn in ipairs(Window.Navigation.Tabs:GetChildren()) do
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "InActive Template" then
-			-- Anti-cheat: tabs may have randomized Instance.Name. We tag the original
-			-- display name via attribute so lookups still work after renaming.
-				local displayName = tabbtn:GetAttribute("LunaTabName") or tabbtn.Name
+										local displayName = tabbtn:GetAttribute("LunaTabName") or tabbtn.Name
 				local accentBar = tabbtn:FindFirstChild("LunaAccentBar")
 				if displayName == currentTab then
 					TweenService:Create(tabbtn, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
@@ -3189,21 +2820,16 @@ local function Unhide(Window, currentTab)
 			TweenService:Create(tabbtn.DropShadowHolder.DropShadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play()
 		end
 	end
-
 	if SetGlassBlur and Luna.GlassMode then
 		SetGlassBlur(true)
 	end
-
 end
-
 local MainSize
 local MinSize
--- Resize constraints (PC only). Mobile keeps the existing single fixed layout.
 local ResizeMin = Vector2.new(600, 360)
 local ResizeMax
 if IsDesktop() and Camera.ViewportSize.X > 774 and Camera.ViewportSize.Y > 503 then
-	-- Slightly larger default for desktops where there's room
-	MainSize = UDim2.fromOffset(760, 478)
+		MainSize = UDim2.fromOffset(760, 478)
 	MinSize = UDim2.fromOffset(500, 42)
 	ResizeMax = Vector2.new(
 		math.max(ResizeMin.X, math.min(Camera.ViewportSize.X - 40, 1280)),
@@ -3221,23 +2847,19 @@ else
 	MinSize = UDim2.fromOffset(Camera.ViewportSize.X - 275, 42)
 	ResizeMax = Vector2.new(Camera.ViewportSize.X - 40, Camera.ViewportSize.Y - 40)
 end
-
 local function Maximise(Window)
 	Window.Controls.ToggleSize.ImageLabel.Image = "rbxassetid://10137941941"
 	tween(Window, {Size = MainSize})
 	Window.Elements.Visible = true
 	Window.Navigation.Visible = true
 end
-
 local function Minimize(Window)
 	Window.Controls.ToggleSize.ImageLabel.Image = "rbxassetid://11036884234"
 	Window.Elements.Visible = false
 	Window.Navigation.Visible = false
 	tween(Window, {Size = MinSize})
 end
-
 function Luna:CreateWindow(WindowSettings)
-
 	WindowSettings = Kwargify({
 		Name = "Luna UI Example Window",
 		Subtitle = "",
@@ -3245,51 +2867,25 @@ function Luna:CreateWindow(WindowSettings)
 		LoadingEnabled = true,
 		LoadingTitle = "Luna Interface Suite",
 		LoadingSubtitle = "by Nebula Softworks",
-
 		ConfigSettings = {},
-
 		KeySystem = false,
 		KeySettings = {},
-
-		-- New: optional in-window search bar. When true, a search icon appears
-		-- in the top-right controls and opens a centered search modal.
-		SearchBar = false,
-
-		-- New: optional resize handle in the bottom-right (PC only). Forced
-		-- off on mobile because the existing fullscreen layout already fits.
-		Resizable = true,
-
-		-- New: if true, an AI Chat tab is auto-added (uses pollinations.ai — a free
-		-- API key is required since 2026; the user sets it in-chat with /key).
-		-- Set false to skip; the host can still create it manually with
-		-- Window:CreateAiTab().
-		AiTab = false,
+						SearchBar = false,
+						Resizable = true,
+										AiTab = false,
 		AiSettings = nil,
 		ScriptSearcherTab = false,
 		ScriptSearcherSettings = nil,
-
-		-- Sidebar tab to open when the hub loads ("Dashboard", "Home", or any tab name).
-		StartupTab = "Dashboard",
-
-		-- New: enables Ctrl + / Ctrl - in-window zoom. Disable if the host
-		-- already remaps those shortcuts.
-		ZoomEnabled = true,
-
-		-- UI theme ("Midnight" design system). Pass a preset name from
-		-- Luna.Themes or a custom token table. ThemeEnabled = false restores
-		-- the legacy asset look entirely.
-		Theme = "Midnight",
+				StartupTab = "Dashboard",
+						ZoomEnabled = true,
+								Theme = "Midnight",
 		ThemeEnabled = true,
-
-		-- Liquid Glass: background blur + window sheen while the UI is open.
-		GlassMode = true,
+				GlassMode = true,
 	}, WindowSettings or {})
-
 	WindowSettings.ConfigSettings = Kwargify({
 		RootFolder = nil,
 		ConfigFolder = "Big Hub"
 	}, WindowSettings.ConfigSettings or {})
-
 	WindowSettings.KeySettings = Kwargify({
 		Title = WindowSettings.Name,
 		Subtitle = "Key System",
@@ -3297,37 +2893,28 @@ function Luna:CreateWindow(WindowSettings)
 		SaveInRoot = false,
 		SaveKey = true,
 		Key = {""},
-		SecondAction = {}	
+		SecondAction = {}
 	}, WindowSettings.KeySettings or {})
-
 	WindowSettings.KeySettings.SecondAction = Kwargify({
 		Enabled = false,
 		Type = "Discord",
 		Parameter = ""
 	}, WindowSettings.KeySettings.SecondAction)
-
 	local Passthrough = false
-
-	-- Per-window theme switch: ThemeEnabled = false keeps the legacy asset look.
-	Luna.ThemeEnabled = WindowSettings.ThemeEnabled ~= false
+		Luna.ThemeEnabled = WindowSettings.ThemeEnabled ~= false
 	Luna.GlassMode = WindowSettings.GlassMode ~= false
-
 	local Window = {
 		Bind = Enum.KeyCode.K,
 		CurrentTab = nil,
 		State = true,
 		Size = false,
 		Settings = nil,
-
-		-- Search registry. Populated by Create* element helpers.
-		-- Each entry: { Name=str, Type=str, Frame=Instance, Tab=str, Activate=fn() }
-		_SearchIndex = {},
-		_Tabs = {}, -- name -> { Activate = function }
-		_TabRegistry = {}, -- name -> { Button, Page, Activate, Hidden }
-		_TabCreationOrder = {}, -- tab name -> creation sequence (for nav sorting)
+						_SearchIndex = {},
+		_Tabs = {},
+		_TabRegistry = {},
+		_TabCreationOrder = {},
 		_TabCreationCounter = 0,
 	}
-
 	Main.Title.Title.Text = WindowSettings.Name
 	Main.Title.subtitle.Text = WindowSettings.Subtitle
 	Main.Logo.Image = "rbxassetid://" .. WindowSettings.LogoID
@@ -3340,22 +2927,17 @@ function Luna:CreateWindow(WindowSettings)
 	LoadingFrame.Frame.Frame.Subtitle.TextTransparency = 1
 	LoadingFrame.Version.TextTransparency = 1
 	LoadingFrame.Frame.ImageLabel.ImageTransparency = 1
-
 	tween(Elements.Parent, {BackgroundTransparency = 1})
 	Elements.Parent.Visible = false
-
 	LoadingFrame.Frame.Frame.Title.Text = WindowSettings.LoadingTitle
 	LoadingFrame.Frame.Frame.Subtitle.Text = WindowSettings.LoadingSubtitle
 	LoadingFrame.Version.Text = LoadingFrame.Frame.Frame.Title.Text == "Luna Interface Suite" and Release or "Luna UI"
-
 	Navigation.Player.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
 	Navigation.Player.Namez.Text = Players.LocalPlayer.DisplayName
 	Navigation.Player.TextLabel.Text = Players.LocalPlayer.Name
-
 	for i,v in pairs(Main.Controls:GetChildren()) do
 		v.Visible = false
 	end
-
 	Main:GetPropertyChangedSignal("Position"):Connect(function()
 		Main.Parent.ShadowHolder.Position = Main.Position
 		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
@@ -3370,49 +2952,20 @@ function Luna:CreateWindow(WindowSettings)
 	Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if dragBar and dragBar.Visible then syncDragBarPosition(Main) end
 	end)
-
 	LoadingFrame.Visible = true
-
-	--[[ pcall(function()
-	 	if not isfolder(ConfigurationFolder) then
-	 		makefolder(ConfigurationFolder)
-	 	end
-	 	if WindowSettings.ConfigSettings.RootFolder then
-	 		if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder) then
-	 			makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder)
-	 			if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder .. WindowSettings.ConfigSettings.ConfigFolder) then
-	 				makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.RootFolder .. WindowSettings.ConfigSettings.ConfigFolder)
-	 			end
-	 		end
-	 	else
-	 		if not isfolder(ConfigurationFolder .. WindowSettings.ConfigSettings.ConfigFolder) then
-	 			makefolder(ConfigurationFolder .. WindowSettings.ConfigSettings.ConfigFolder)
-	 		end
-	 	end
-
-	 	LoadAutoLoad(WindowSettings.ConfigSettings.ConfigFolder, WindowSettings.ConfigSettings.RootFolder)
-	 end) ]]
-
-	LunaUI.Enabled = true
-
+		LunaUI.Enabled = true
 	if WindowSettings.KeySystem then
 		local KeySettings = WindowSettings.KeySettings
-		
-		Draggable(Dragger, Main)
+				Draggable(Dragger, Main)
 		Draggable(LunaUI.MobileSupport, LunaUI.MobileSupport)
 		if dragBar then Draggable(dragInteract, Main, true, 255) end
-
 		if not WindowSettings.KeySettings then
 			Passthrough = true
 			return
 		end
-		
-		WindowSettings.KeySettings.FileName = "key"
-
+				WindowSettings.KeySettings.FileName = "key"
 		if typeof(WindowSettings.KeySettings.Key) == "string" then WindowSettings.KeySettings.Key = {WindowSettings.KeySettings.Key} end
-
 		local direc = WindowSettings.KeySettings.SaveInRoot and "Luna/Configurations/" .. WindowSettings.ConfigSettings.RootFolder .. "/" .. WindowSettings.ConfigSettings.ConfigFolder .. "/Key System/" or "Luna/Configurations/" ..  WindowSettings.ConfigSettings.ConfigFolder .. "/Key System/"
-
 		if isfile and isfile(direc .. WindowSettings.KeySettings.FileName .. ".luna") then
 			for i, Key in ipairs(WindowSettings.KeySettings.Key) do
 				if string.find(readfile(direc .. WindowSettings.KeySettings.FileName .. ".luna"), Key) then
@@ -3421,28 +2974,21 @@ function Luna:CreateWindow(WindowSettings)
 				end
 			end
 		end
-
 		if not Passthrough then
-
 			local Btn = KeySystem.Action.Copy
 			local typesys = KeySettings.SecondAction.Type
-			
-			if typesys == "Discord" then
+						if typesys == "Discord" then
 				Btn = KeySystem.Action.Discord
 			end
-
 			local AttemptsRemaining = math.random(2, 5)
-
 			KeySystem.Visible = true
 			KeySystem.Title.Text = WindowSettings.KeySettings.Title
 			KeySystem.Subtitle.Text = WindowSettings.KeySettings.Subtitle
 			KeySystem.textshit.Text = WindowSettings.KeySettings.Note
-
 			if KeySettings.SecondAction.Enabled == true then
 				Btn.Visible = true
 			end
-			
-			Btn.Interact.MouseButton1Click:Connect(function()
+						Btn.Interact.MouseButton1Click:Connect(function()
 				if typesys == "Discord" then
 					setclipboard(tostring("https://discord.gg/"..KeySettings.SecondAction.Parameter))
 					if request then
@@ -3464,7 +3010,6 @@ function Luna:CreateWindow(WindowSettings)
 					setclipboard(tostring(KeySettings.SecondAction.Parameter))
 				end
 			end)
-
 			KeySystem.Action.Submit.Interact.MouseButton1Click:Connect(function()
 				if #KeySystem.Input.InputBox.Text == 0 then return end
 				local KeyFound = false
@@ -3476,7 +3021,7 @@ function Luna:CreateWindow(WindowSettings)
 						break
 					end
 				end
-				if KeyFound then 
+				if KeyFound then
 					for _, instance in pairs(KeySystem:GetDescendants()) do
 						if instance.ClassName ~= "UICorner" and instance.ClassName ~= "UIPadding" then
 							if instance.ClassName ~= "UIStroke" and instance.ClassName ~= "UIListLayout" then
@@ -3505,7 +3050,6 @@ function Luna:CreateWindow(WindowSettings)
 					end
 				else
 					if AttemptsRemaining == 0 then
-
 						game.Players.LocalPlayer:Kick("No Attempts Remaining")
 						game:Shutdown()
 					end
@@ -3515,18 +3059,14 @@ function Luna:CreateWindow(WindowSettings)
 					KeySystem.Input.InputBox.Text = ""
 				end
 			end)
-
 			KeySystem.Close.MouseButton1Click:Connect(function()
-				
-				Luna:Destroy()
+								Luna:Destroy()
 			end)
 		end
 	end
-
 	if WindowSettings.KeySystem then
 		repeat task.wait() until Passthrough
 	end
-
 	if WindowSettings.LoadingEnabled then
 		task.wait(0.3)
 		TweenService:Create(LoadingFrame.Frame.Frame.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
@@ -3536,9 +3076,7 @@ function Luna:CreateWindow(WindowSettings)
 		TweenService:Create(LoadingFrame.Version, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 		task.wait(0.29)
 		TweenService:Create(LoadingFrame.Frame.ImageLabel, TweenInfo.new(1.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 2, false, 0.2), {Rotation = 450}):Play()
-
 		task.wait(3.32)
-
 		TweenService:Create(LoadingFrame.Frame.Frame.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 1}):Play()
 		TweenService:Create(LoadingFrame.Frame.ImageLabel, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play()
 		task.wait(0.05)
@@ -3547,7 +3085,6 @@ function Luna:CreateWindow(WindowSettings)
 		wait(0.3)
 		TweenService:Create(LoadingFrame, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
 	end
-
 	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {BackgroundTransparency = MainBgTransparency, Size = MainSize}):Play()
 	TweenService:Create(Main.Parent.ShadowHolder, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = MainSize}):Play()
 	TweenService:Create(Main.Title.Title, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
@@ -3558,88 +3095,60 @@ function Luna:CreateWindow(WindowSettings)
 	TweenService:Create(Main.Line, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
 	wait(0.4)
 	LoadingFrame.Visible = false
-
 	Draggable(Dragger, Main)
 	Draggable(LunaUI.MobileSupport, LunaUI.MobileSupport)
 	if dragBar then Draggable(dragInteract, Main, true, 255) end
-
 	Elements.Template.LayoutOrder = 1000000000
 	Elements.Template.Visible = false
 	Navigation.Tabs["InActive Template"].LayoutOrder = 1000000000
 	Navigation.Tabs["InActive Template"].Visible = false
-
-	-- Do NOT mark the whole Elements.Template as LunaNoTranslate: Clone() copies
-	-- attributes onto every TabPage, which would block translation for ALL tab
-	-- content. Placeholder strings are filtered via LUNA_TEMPLATE_PLACEHOLDERS
-	-- and the deferred DescendantAdded watcher instead.
-
-	-- UIPageLayout listens to mouse-wheel input by default and swaps tabs when
-	-- the user scrolls. That's terrible for our AI tab (and any scroll-heavy
-	-- tab). Disable wheel/touch input completely; tab navigation is button-only.
-	if Elements:FindFirstChild("UIPageLayout") then
+								if Elements:FindFirstChild("UIPageLayout") then
 		Elements.UIPageLayout.ScrollWheelInputEnabled = false
 		Elements.UIPageLayout.TouchInputEnabled = false
 		Elements.UIPageLayout.GamepadInputEnabled = false
 	end
-
 	local FirstTab = true
-
 function Window:CreateHomeTab(HomeTabSettings)
-
 		HomeTabSettings = Kwargify({
 			Icon = 1,
-			SupportedExecutors = {"Vega X", "Delta", "Nihon", "Xeno"}, -- THESE DEFAULTS ARE PLACEHOLDERS!! I DO NOT ADVERTISE THESE, THEY ARE JUS THE FIRST THAT CAME TO MIND. I HAVE NO IDEA WHETHER THEYA RE RATS (they prob are) AND IM NOT RESPONSIBLE IF U GET VIRUSES FROM INSTALLING AFTER SEEING THIS LIST
+			SupportedExecutors = {"Vega X", "Delta", "Nihon", "Xeno"},
 			DiscordInvite = "noinvitelink"
 		}, HomeTabSettings or {})
-
 		local HomeTab = {}
-
 		local HomeTabButton = Navigation.Tabs.Home
 		HomeTabButton.Visible = true
 		HomeTabButton.LayoutOrder = 1
 		if HomeTabSettings.Icon == 2 then
 			ApplyIcon(HomeTabButton.ImageLabel, GetIcon("dashboard", "Material"))
 		end
-
 		local HomeTabPage = Elements.Home
 		HomeTabPage.Visible = true
-
 		function HomeTab:Activate()
 			tween(HomeTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
 			tween(HomeTabButton, {BackgroundTransparency = 0})
 			tween(HomeTabButton.UIStroke, {Transparency = 0.41})
-
 			Elements.UIPageLayout:JumpTo(HomeTabPage)
-
 			task.wait(0.05)
-
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
 				if OtherTabButton.Name ~= "InActive Template" and OtherTabButton.ClassName == "Frame" and OtherTabButton ~= HomeTabButton then
 					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
 					tween(OtherTabButton, {BackgroundTransparency = 1})
 					tween(OtherTabButton.UIStroke, {Transparency = 1})
 				end
-
 			end
-
 			Window.CurrentTab = "Home"
 		end
-
-		-- Register Home in the tab registry for search results
-		HomeTabButton:SetAttribute("LunaTabName", "Home")
+				HomeTabButton:SetAttribute("LunaTabName", "Home")
 		Window._Tabs["Home"] = { Activate = function() HomeTab:Activate() end, Page = HomeTabPage }
 		Window._HomeTabButton = HomeTabButton
-
 		HomeTab:Activate()
 		FirstTab = false
 		HomeTabButton.Interact.MouseButton1Click:Connect(function()
 			HomeTab:Activate()
 		end)
-
 		HomeTabPage.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
 		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
 		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
-
 		local dashRoot = HomeTabPage.detailsholder.dashboard
 		Window._ProfileRefs = {
 			NavIcon = Navigation.Player.icon.ImageLabel,
@@ -3656,7 +3165,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ServerLatency = dashRoot.Server.Latency.Value,
 		}
 		Window._AnonymousMode = false
-
 		HomeTabPage.detailsholder.dashboard.Client.Title.Text = (isStudio and "Debugging (Studio)" or identifyexecutor()) or "Your Executor Does Not Support identifyexecutor."
         for i,v in pairs(HomeTabSettings.SupportedExecutors) do
                 if isStudio then HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Luna Interface Suite - Debugging Mode" break end
@@ -3665,10 +3173,7 @@ function Window:CreateHomeTab(HomeTabSettings)
                         break
                 end
         end
-
-		-- Stolen From Sirius Stuff Begins Here
-
-		HomeTabPage.detailsholder.dashboard.Discord.Interact.MouseButton1Click:Connect(function()
+				HomeTabPage.detailsholder.dashboard.Discord.Interact.MouseButton1Click:Connect(function()
 			setclipboard(tostring("https://discord.gg/"..HomeTabSettings.DiscordInvite))
 			if request then
 				request({
@@ -3686,57 +3191,46 @@ function Window:CreateHomeTab(HomeTabSettings)
 				})
 			end
 		end)
-
 		local friendsCooldown = 0
 		local function getPing() return math.clamp(Stats.Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
-
 		local function checkFriends()
 			if friendsCooldown == 0 then
-
 				friendsCooldown = 25
-
 				local playersFriends = {}
 				local friendsInTotal = 0
-				local onlineFriends = 0 
-				local friendsInGame = 0 
-
+				local onlineFriends = 0
+				local friendsInGame = 0
 				local list = Players:GetFriendsAsync(Player.UserId)
 				while true do
 					for _, data in list:GetCurrentPage() do
 						friendsInTotal +=1
 						table.insert(playersFriends, Data)
 					end
-
 					if list.IsFinished then
 						break
-					else 
+					else
 						list:AdvanceToNextPageAsync()
 					end
 				end
 				for i, v in pairs(Player:GetFriendsOnline()) do
 					onlineFriends += 1
 				end
-
 				for i,v in pairs(playersFriends) do
 					if Players:FindFirstChild(v.Username) then
 						friendsInGame = friendsInGame + 1
 					end
 				end
-
 				HomeTabPage.detailsholder.dashboard.Friends.All.Value.Text = tostring(friendsInTotal).." friends"
 				HomeTabPage.detailsholder.dashboard.Friends.Offline.Value.Text = tostring(friendsInTotal - onlineFriends).." friends"
 				HomeTabPage.detailsholder.dashboard.Friends.Online.Value.Text = tostring(onlineFriends).." friends"
 				HomeTabPage.detailsholder.dashboard.Friends.InGame.Value.Text = tostring(friendsInGame).." friends"
-
 			else
 				friendsCooldown -= 1
 			end
 		end
-
 		local function format(Int)
 			return string.format("%02i", Int)
 		end
-
 		local function convertToHMS(Seconds)
 			local Minutes = (Seconds - Seconds%60)/60
 			Seconds = Seconds - Minutes*60
@@ -3744,7 +3238,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Minutes = Minutes - Hours*60
 			return format(Hours)..":"..format(Minutes)..":"..format(Seconds)
 		end
-
 		coroutine.wrap(function()
 			while task.wait() do
 				local dash = HomeTabPage.detailsholder.dashboard
@@ -3752,7 +3245,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				dash.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
 				dash.Server.Time.Value.Text = convertToHMS(time())
 				dash.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
-
 				if Window._AnonymousMode then
 					dash.Server.Region.Value.Text = "Hidden"
 				else
@@ -3761,14 +3253,103 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 		end)()
-
-		-- Stolen From Sirius Stuff ends here
-
-		-- Holder for our extra dashboard cards. HomeTabPage doesn't use a
-		-- UIListLayout - its children (icon, player, detailsholder) are absolutely
-		-- positioned. So we anchor manually directly below detailsholder and keep
-		-- the position in sync whenever the dashboard resizes.
-		local ExtraCards
+						local function RestyleDashboard()
+			local theme = Luna.ActiveTheme or Luna.Themes[Luna.CurrentTheme] or {}
+			local surface = theme.Surface or Color3.fromRGB(22, 22, 28)
+			local strokeCol = theme.Stroke or Color3.fromRGB(46, 46, 58)
+			local accent = theme.Accent or Color3.fromRGB(122, 162, 247)
+			local textPri = theme.TextPrimary or Color3.fromRGB(240, 240, 245)
+			local textSec = theme.TextSecondary or Color3.fromRGB(160, 160, 172)
+			local textMut = theme.TextMuted or Color3.fromRGB(110, 110, 124)
+			local iconFrame = HomeTabPage:FindFirstChild("icon")
+			local avatar = iconFrame and iconFrame:FindFirstChild("ImageLabel")
+			if avatar then
+				local c = avatar:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+				c.CornerRadius = UDim.new(1, 0)
+				c.Parent = avatar
+				local ring = avatar:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+				ring.Thickness = 2
+				ring.Transparency = 0.1
+				ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+				ring.Color = accent
+				ring.Parent = avatar
+				if theme.Gradient and not ring:FindFirstChildOfClass("UIGradient") then
+					local g = Instance.new("UIGradient")
+					g.Rotation = 45
+					g.Color = theme.Gradient
+					g.Parent = ring
+				end
+			end
+			local playerFrame = HomeTabPage:FindFirstChild("player")
+			local greet = playerFrame and playerFrame:FindFirstChild("Text")
+			if greet then
+				greet.TextColor3 = textPri
+				greet.Font = Enum.Font.GothamBold
+				if greet.TextSize < 20 then greet.TextSize = 20 end
+			end
+			local userLine = playerFrame and playerFrame:FindFirstChild("user")
+			if userLine then userLine.TextColor3 = textMut end
+			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
+			local dash = detailsholder and detailsholder:FindFirstChild("dashboard")
+			if not dash then return end
+			for _, cardName in ipairs({"Client", "Discord", "Friends", "Server"}) do
+				local card = dash:FindFirstChild(cardName)
+				if card and card:IsA("GuiObject") then
+					local isDiscord = cardName == "Discord"
+					card.BackgroundColor3 = isDiscord and Color3.fromRGB(88, 101, 242) or surface
+					card.BackgroundTransparency = 0.05
+					local corner = card:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+					corner.CornerRadius = UDim.new(0, 12)
+					corner.Parent = card
+					local stroke = card:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+					stroke.Color = isDiscord and Color3.fromRGB(140, 150, 250) or strokeCol
+					stroke.Transparency = isDiscord and 0.5 or 0.45
+					stroke.Thickness = 1
+					stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					stroke.Parent = card
+					local sheen = card:FindFirstChildOfClass("UIGradient") or Instance.new("UIGradient")
+					sheen.Rotation = isDiscord and 135 or 100
+					if isDiscord then
+						sheen.Color = ColorSequence.new{
+							ColorSequenceKeypoint.new(0, Color3.fromRGB(104, 117, 250)),
+							ColorSequenceKeypoint.new(1, Color3.fromRGB(66, 76, 200)),
+						}
+					else
+						sheen.Transparency = NumberSequence.new{
+							NumberSequenceKeypoint.new(0, 0.92),
+							NumberSequenceKeypoint.new(0.45, 1),
+							NumberSequenceKeypoint.new(1, 0.97),
+						}
+					end
+					sheen.Parent = card
+					for _, d in ipairs(card:GetDescendants()) do
+						if d:IsA("TextLabel") or d:IsA("TextButton") then
+							if isDiscord then
+								d.TextColor3 = Color3.fromRGB(255, 255, 255)
+								if d.Name == "Title" then d.Font = Enum.Font.GothamBold end
+							elseif d.Name == "Title" then
+								d.TextColor3 = accent
+								d.Font = Enum.Font.GothamBold
+							elseif d.Name == "Value" then
+								d.TextColor3 = textPri
+							elseif d.Name == "Subtitle" then
+								d.TextColor3 = textMut
+							elseif d.Name ~= "Interact" then
+								d.TextColor3 = textSec
+							end
+						end
+					end
+				end
+			end
+		end
+		task.defer(RestyleDashboard)
+		task.delay(0.5, RestyleDashboard)
+		pcall(function()
+			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
+				task.defer(RestyleDashboard)
+			end)
+		end)
+										local ExtraCards
 		local function ensureExtraCards()
 			if ExtraCards and ExtraCards.Parent then return ExtraCards end
 			ExtraCards = Instance.new("Frame")
@@ -3776,13 +3357,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ExtraCards.BackgroundTransparency = 1
 			ExtraCards.BorderSizePixel = 0
 			ExtraCards.Size = UDim2.new(1, -20, 0, 0)
-			ExtraCards.Position = UDim2.new(0, 10, 0, 240) -- updated below once detailsholder lays out
+			ExtraCards.Position = UDim2.new(0, 10, 0, 240)
 			ExtraCards.AutomaticSize = Enum.AutomaticSize.Y
 			ExtraCards.ZIndex = 1
 			ExtraCards.Parent = HomeTabPage
-
-			-- UIGridLayout lets us put 2 cards per row, wrapping cleanly.
-			local grid = Instance.new("UIGridLayout")
+						local grid = Instance.new("UIGridLayout")
 			grid.SortOrder = Enum.SortOrder.LayoutOrder
 			grid.CellPadding = UDim2.fromOffset(10, 10)
 			grid.CellSize = UDim2.new(0.5, -8, 0, 76)
@@ -3790,25 +3369,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 			grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			grid.StartCorner = Enum.StartCorner.TopLeft
 			grid.Parent = ExtraCards
-
 			local padding = Instance.new("UIPadding")
 			padding.PaddingTop = UDim.new(0, 14)
 			padding.PaddingBottom = UDim.new(0, 14)
 			padding.Parent = ExtraCards
-
-			-- Snap our holder right under the dashboard rows (Discord / Server /
-			-- Friends / Client). HomeTabPage uses absolute positioning - its
-			-- `detailsholder` is sized to the whole page, so we can't use its
-			-- bottom or the cards land at the canvas floor. Instead we track
-			-- `detailsholder.dashboard`, the inner frame whose AbsoluteSize is
-			-- the actual content height of the dashboard cards.
-			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
+																					local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
 			local dashboard = detailsholder and detailsholder:FindFirstChild("dashboard")
 			if dashboard then
 				local function reposition()
 					if not dashboard or not dashboard.Parent then return end
-					-- Convert dashboard's bottom into HomeTabPage-local coords.
-					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
+										local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
 					local relY = dashboard.AbsolutePosition.Y - pageAbsY + dashboard.AbsoluteSize.Y
 					if relY > 0 then
 						ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(relY) + 12)
@@ -3818,12 +3388,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 				dashboard:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
 				dashboard:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
 				HomeTabPage:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-				-- Wait a couple of frames for the asset's layouts to settle.
-				task.defer(function() task.wait(0.05); reposition() end)
+								task.defer(function() task.wait(0.05); reposition() end)
 				task.delay(0.4, reposition)
 			elseif detailsholder then
-				-- Fallback to detailsholder's TOP edge (better than its bottom).
-				local function reposition()
+								local function reposition()
 					if not detailsholder or not detailsholder.Parent then return end
 					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
 					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + 200
@@ -3832,14 +3400,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 				reposition()
 				detailsholder:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
 			end
-
 			return ExtraCards
 		end
-
-		-- Adds a self-contained styled card below the original dashboard cards.
-		-- We intentionally do NOT touch the existing Discord/Server/Client/Friends
-		-- cards so the home tab keeps its original behaviour.
-		function HomeTab:CreateButton(opts)
+								function HomeTab:CreateButton(opts)
 			opts = Kwargify({
 				Name = "Button",
 				Description = "",
@@ -3849,9 +3412,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Color2 = Color3.fromRGB(40, 30, 100),
 				Callback = function() end,
 			}, opts or {})
-
 			local holder = ensureExtraCards()
-
 			local card = Instance.new("Frame")
 			card.Name = RandomName()
 			card.BackgroundColor3 = opts.Color
@@ -3859,25 +3420,18 @@ function Window:CreateHomeTab(HomeTabSettings)
 			card.BorderSizePixel = 0
 			card.Size = UDim2.new(0.5, -8, 0, 76)
 			card.Parent = holder
-
 			local corner = Instance.new("UICorner")
 			corner.CornerRadius = UDim.new(0, 10)
 			corner.Parent = card
-
-			-- Gradient gives the Discord-card vibrant look without relying on the
-			-- original asset's internal structure.
-			local gradient = Instance.new("UIGradient")
+									local gradient = Instance.new("UIGradient")
 			gradient.Rotation = 135
 			gradient.Color = ColorSequence.new(opts.Color, opts.Color2)
 			gradient.Parent = card
-
 			local stroke = Instance.new("UIStroke")
 			stroke.Color = Color3.fromRGB(255, 255, 255)
 			stroke.Transparency = 0.85
 			stroke.Parent = card
-
-			-- Icon (optional)
-			local iconLabel
+						local iconLabel
 			if opts.Icon then
 				iconLabel = Instance.new("ImageLabel")
 				iconLabel.Name = "Icon"
@@ -3890,9 +3444,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				iconLabel.Parent = card
 				ApplyIcon(iconLabel, GetIcon(opts.Icon, opts.ImageSource))
 			end
-
 			local titleOffset = iconLabel and 52 or 16
-
 			local title = Instance.new("TextLabel")
 			title.Name = "Title"
 			title.BackgroundTransparency = 1
@@ -3904,7 +3456,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			title.TextSize = 18
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Parent = card
-
 			local subtitle = Instance.new("TextLabel")
 			subtitle.Name = "Subtitle"
 			subtitle.BackgroundTransparency = 1
@@ -3919,7 +3470,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			subtitle.TextYAlignment = Enum.TextYAlignment.Top
 			subtitle.TextWrapped = true
 			subtitle.Parent = card
-
 			local interact = Instance.new("TextButton")
 			interact.Name = "Interact"
 			interact.AutoButtonColor = false
@@ -3927,7 +3477,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			interact.Size = UDim2.fromScale(1, 1)
 			interact.Text = ""
 			interact.Parent = card
-
 			interact.MouseEnter:Connect(function()
 				tween(stroke, {Transparency = 0.4})
 				tween(card, {BackgroundTransparency = 0.05})
@@ -3946,19 +3495,14 @@ function Window:CreateHomeTab(HomeTabSettings)
 					})
 				end
 			end)
-
 			return card
 		end
-
 		return HomeTab
 	end
-	
-	-- Pin tabs at the top of the sidebar (Dashboard, AI, Script Searcher, then the rest).
-	function Window:ApplyNavTabOrder(priorityNames)
+			function Window:ApplyNavTabOrder(priorityNames)
 		if type(priorityNames) ~= "table" then
 			priorityNames = {"Home", "Solara Hub AI", "Scripts"}
 		end
-
 		local pinned = {}
 		for _, name in ipairs(priorityNames) do
 			pinned[name] = true
@@ -3967,7 +3511,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				pinned.Home = true
 			end
 		end
-
 		local function setOrder(reg, order)
 			if reg and reg.Button then
 				reg.Button.LayoutOrder = order
@@ -3976,7 +3519,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				reg.Page.LayoutOrder = order
 			end
 		end
-
 		local order = 1
 		if self._HomeTabButton then
 			self._HomeTabButton.LayoutOrder = order
@@ -3985,7 +3527,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 			order = order + 1
 		end
-
 		for _, name in ipairs(priorityNames) do
 			if name ~= "Home" and name ~= "Dashboard" then
 				setOrder(self._TabRegistry and self._TabRegistry[name], order)
@@ -3994,7 +3535,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 		end
-
 		local rest = {}
 		for name, reg in pairs(self._TabRegistry or {}) do
 			if not pinned[name] and reg.Button then
@@ -4011,13 +3551,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 			return a.name < b.name
 		end)
-
 		for _, item in ipairs(rest) do
 			setOrder(item.reg, order)
 			order = order + 1
 		end
 	end
-
 	function Window:SetStartupTab(tabName)
 		if tabName == nil or tabName == "" then
 			WindowSettings.StartupTab = "Dashboard"
@@ -4025,11 +3563,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 			WindowSettings.StartupTab = tostring(tabName)
 		end
 	end
-
 	function Window:GetStartupTab()
 		return WindowSettings.StartupTab or "Dashboard"
 	end
-
 	function Window:ActivateStartupTab(tabName)
 		tabName = tabName or WindowSettings.StartupTab or "Dashboard"
 		if tabName == "Dashboard" then
@@ -4046,11 +3582,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end
 		return false
 	end
-
 	function Window:CreateTab(TabSettings)
-
 		local Tab = {}
-
 		TabSettings = Kwargify({
 			Name = "Tab",
 			ShowTitle = true,
@@ -4058,27 +3591,18 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ImageSource = "Material",
 			NavLayoutOrder = nil,
 		}, TabSettings or {})
-
 		local TabButton = Navigation.Tabs["InActive Template"]:Clone()
-
-		-- Anti-cheat: use a random Instance.Name. The display name lives in TextLabel
-		-- and in the "LunaTabName" attribute used by internal lookups.
-		TabButton.Name = RandomName()
+						TabButton.Name = RandomName()
 		TabButton:SetAttribute("LunaNoTranslate", nil)
 		TabButton:SetAttribute("LunaTabName", TabSettings.Name)
 		TabButton.TextLabel.Text = TabSettings.Name
 		TabButton.Parent = Navigation.Tabs
 		ApplyIcon(TabButton.ImageLabel, GetIcon(TabSettings.Icon, TabSettings.ImageSource))
-
 		TabButton.Visible = true
 		if TabSettings.NavLayoutOrder ~= nil then
 			TabButton.LayoutOrder = TabSettings.NavLayoutOrder
 		end
-
-		-- Accent bar on the left edge of the active tab (Midnight design).
-		-- Tagged with LunaAccent so the skin engine keeps it in sync on
-		-- theme switches.
-		local TabAccentBar = Instance.new("Frame")
+								local TabAccentBar = Instance.new("Frame")
 		TabAccentBar.Name = "LunaAccentBar"
 		TabAccentBar:SetAttribute("LunaAccent", true)
 		TabAccentBar:SetAttribute("LunaNoTranslate", true)
@@ -4093,7 +3617,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 		TabAccentCorner.CornerRadius = UDim.new(1, 0)
 		TabAccentCorner.Parent = TabAccentBar
 		TabAccentBar.Parent = TabButton
-
 		local TabPage = Elements.Template:Clone()
 		TabPage.Name = RandomName()
 		TabPage:SetAttribute("LunaNoTranslate", nil)
@@ -4101,36 +3624,28 @@ function Window:CreateHomeTab(HomeTabSettings)
 		TabPage.Title.Visible = TabSettings.ShowTitle
 		TabPage.Title.Text = TabSettings.Name
 		TabPage.Visible = true
-
 		Tab.Page = TabPage
-
 		if TabSettings.ShowTitle == false then
 			TabPage.UIPadding.PaddingTop = UDim.new(0,10)
 		end
-
 		TabPage.LayoutOrder = TabSettings.NavLayoutOrder or Window._TabCreationCounter
-
 		for _, TemplateElement in ipairs(TabPage:GetChildren()) do
 			if TemplateElement.ClassName == "Frame" or TemplateElement.ClassName == "TextLabel" and TemplateElement.Name ~= "Title" then
 				TemplateElement:Destroy()
 			end
 		end
 		TabPage.Parent = Elements
-
 		function Tab:Activate()
 			tween(TabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
 			tween(TabButton, {BackgroundTransparency = 0})
 			tween(TabButton.UIStroke, {Transparency = 0.41})
 			tween(TabAccentBar, {BackgroundTransparency = 0})
-
 		local jumpTarget = TabPage
 		if Tab._ActiveSubTab and Tab._ActiveSubTab._Wrapper then
 			jumpTarget = Tab._ActiveSubTab._Wrapper
 		end
 		Elements.UIPageLayout:JumpTo(jumpTarget)
-
 		task.wait(0.05)
-
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
 				if OtherTabButton.Name ~= "InActive Template" and OtherTabButton.ClassName == "Frame" and OtherTabButton ~= TabButton then
 					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
@@ -4141,43 +3656,28 @@ function Window:CreateHomeTab(HomeTabSettings)
 						tween(otherBar, {BackgroundTransparency = 1})
 					end
 				end
-
 			end
-
 			Window.CurrentTab = TabSettings.Name
 		end
-
-		-- Register in search index for SearchBar (used to jump back to a tab)
-		Window._Tabs[TabSettings.Name] = { Activate = function() Tab:Activate() end, Page = TabPage }
+				Window._Tabs[TabSettings.Name] = { Activate = function() Tab:Activate() end, Page = TabPage }
 		Window._TabCreationCounter = (Window._TabCreationCounter or 0) + 1
 		Window._TabCreationOrder[TabSettings.Name] = Window._TabCreationCounter
-
 		Window._TabRegistry[TabSettings.Name] = {
 			Button = TabButton,
 			Page = TabPage,
 			Activate = function() Tab:Activate() end,
 			Hidden = false,
 		}
-
 		if FirstTab then
 			Tab:Activate()
 		end
-
 		task.wait(0.01)
-
 		TabButton.Interact.MouseButton1Click:Connect(function()
 			Tab:Activate()
 		end)
-
 		FirstTab = false
-
-		-- ==================== Sub-tabs ====================
-		-- Pill-style sub-pages inside a tab. Each sub-tab owns a wrapper Frame
-		-- (registered as a UIPageLayout page) containing a fixed pill bar on top
-		-- and a full-size content page (clone of the Template page) below it.
-		Tab._SubTabs = {}
+										Tab._SubTabs = {}
 		Tab._ActiveSubTab = nil
-
 		local function refreshSubTabPills()
 			for _, st in ipairs(Tab._SubTabs) do
 				local active = (st == Tab._ActiveSubTab)
@@ -4189,7 +3689,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 		end
-
 		function Tab:CreateSubTab(SubTabSettings)
 			SubTabSettings = Kwargify({
 				Name = "Sub Tab",
@@ -4198,13 +3697,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Default = false,
 				Order = nil,
 			}, SubTabSettings or {})
-
 			local SubTab = {}
 			SubTab.Name = SubTabSettings.Name
-
-			-- Wrapper is the actual UIPageLayout page (a plain Frame; UIPageLayout
-			-- would swallow a free-floating bar as its own page otherwise).
-			local wrapper = Instance.new("Frame")
+									local wrapper = Instance.new("Frame")
 			wrapper.Name = RandomName()
 			wrapper.BackgroundTransparency = 1
 			wrapper.BorderSizePixel = 0
@@ -4215,11 +3710,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			wrapper.Visible = true
 			wrapper.Parent = Elements
 			SubTab._Wrapper = wrapper
-
-			-- Pill bar (fixed at the top of the wrapper). One bar per tab: it is
-			-- created for the first sub-tab and re-parented into whichever
-			-- wrapper is active so the pills follow the visible page.
-			local bar
+												local bar
 			if #Tab._SubTabs > 0 then
 				bar = Tab._SubTabs[1]._Bar
 			else
@@ -4231,7 +3722,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				bar.Size = UDim2.new(1, -24, 0, 32)
 				bar.ZIndex = 5
 				bar.Parent = wrapper
-
 				local barLayout = Instance.new("UIListLayout")
 				barLayout.FillDirection = Enum.FillDirection.Horizontal
 				barLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -4240,9 +3730,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				barLayout.Padding = UDim.new(0, 8)
 				barLayout.Parent = bar
 			end
-
-			-- Content page (same Template the tab itself uses).
-			local subPage = Elements.Template:Clone()
+						local subPage = Elements.Template:Clone()
 			subPage.Name = RandomName()
 			subPage:SetAttribute("LunaNoTranslate", nil)
 			subPage:SetAttribute("LunaTabName", TabSettings.Name)
@@ -4261,16 +3749,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 			subPage.Parent = wrapper
 			SubTab.Page = subPage
 			SubTab._Bar = bar
-
-			-- Measure the label so the pill gets an explicit width. AutomaticSize
-			-- with a nested UIListLayout collapses to a dot on some executors.
-			local labelText = tostring(SubTabSettings.Name)
+									local labelText = tostring(SubTabSettings.Name)
 			local textWidth = 40
 			pcall(function()
 				textWidth = game:GetService("TextService"):GetTextSize(labelText, 13, Enum.Font.GothamMedium, Vector2.new(1000, 30)).X
 			end)
 			local pillWidth = math.ceil(textWidth) + 28 + (SubTabSettings.Icon and 24 or 0)
-
 			local pill = Instance.new("Frame")
 			pill.Name = RandomName()
 			pill.BackgroundColor3 = Color3.fromRGB(46, 43, 58)
@@ -4280,16 +3764,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 			pill.LayoutOrder = SubTabSettings.Order or (#Tab._SubTabs + 1)
 			pill.ZIndex = 6
 			pill.Parent = bar
-
 			local pillCorner = Instance.new("UICorner")
 			pillCorner.CornerRadius = UDim.new(1, 0)
 			pillCorner.Parent = pill
-
 			local pillStroke = Instance.new("UIStroke")
 			pillStroke.Color = Color3.fromRGB(120, 110, 150)
 			pillStroke.Transparency = 0.75
 			pillStroke.Parent = pill
-
 			local textOffset = 14
 			local pillIcon
 			if SubTabSettings.Icon then
@@ -4305,7 +3786,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				ApplyIcon(pillIcon, GetIcon(SubTabSettings.Icon, SubTabSettings.ImageSource))
 				textOffset = 34
 			end
-
 			local pillText = Instance.new("TextLabel")
 			pillText.Name = "Label"
 			pillText.BackgroundTransparency = 1
@@ -4318,7 +3798,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			pillText.TextXAlignment = Enum.TextXAlignment.Left
 			pillText.ZIndex = 7
 			pillText.Parent = pill
-
 			local pillInteract = Instance.new("TextButton")
 			pillInteract.Name = "Interact"
 			pillInteract.AutoButtonColor = false
@@ -4327,12 +3806,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 			pillInteract.Text = ""
 			pillInteract.ZIndex = 8
 			pillInteract.Parent = pill
-
 			SubTab._Pill = pill
 			SubTab._PillStroke = pillStroke
 			SubTab._PillLabel = pillText
 			SubTab._PillIcon = pillIcon
-
 			function SubTab:Activate()
 				Tab._ActiveSubTab = SubTab
 				bar.Parent = wrapper
@@ -4340,7 +3817,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Window.CurrentTab = TabSettings.Name
 				refreshSubTabPills()
 			end
-
 			pillInteract.MouseButton1Click:Connect(function()
 				SubTab:Activate()
 			end)
@@ -4354,15 +3830,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 					tween(pill, {BackgroundTransparency = 0.55})
 				end
 			end)
-
 			table.insert(Tab._SubTabs, SubTab)
-
 			Window._SubPageActivation = Window._SubPageActivation or {}
 			Window._SubPageActivation[wrapper] = function() SubTab:Activate() end
-
-			-- Element API: reuse the Tab element builders by temporarily pointing
-			-- the shared TabPage upvalue at this sub-page's content frame.
-			local elementFns = {
+									local elementFns = {
 				"CreateSection", "CreateDivider", "CreateButton", "CreateLabel",
 				"CreateParagraph", "CreateSlider", "CreateToggle", "CreateBind",
 				"CreateKeybind", "CreateInput", "CreateDropdown", "CreateColorPicker",
@@ -4382,10 +3853,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					return table.unpack(results, 2, results.n)
 				end
 			end
-
-			-- First sub-tab becomes active by default; an explicit Default = true
-			-- steals activation (and the visible page if this tab is showing).
-			if Tab._ActiveSubTab == nil or SubTabSettings.Default then
+									if Tab._ActiveSubTab == nil or SubTabSettings.Default then
 				Tab._ActiveSubTab = SubTab
 				bar.Parent = wrapper
 				refreshSubTabPills()
@@ -4393,14 +3861,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Elements.UIPageLayout:JumpTo(wrapper)
 				end
 			end
-
 			return SubTab
 		end
-
 		function Tab:GetSubTabs()
 			return Tab._SubTabs
 		end
-
 		function Tab:ActivateSubTab(name)
 			for _, st in ipairs(Tab._SubTabs) do
 				if st.Name == name then
@@ -4410,59 +3875,41 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 			return false
 		end
-
-		-- Section
-		function Tab:CreateSection(name : string)
-
+				function Tab:CreateSection(name : string)
 			local Section = {}
-
 			if name == nil then name = "Section" end
-
 			Section.Name = name
-
 			local Sectiont = Elements.Template.Section:Clone()
 			Sectiont.Text = name
 			Sectiont.Visible = true
 			Sectiont.Parent = TabPage
 			local TabPage = Sectiont.Frame
-
 			Sectiont.TextTransparency = 1
 			tween(Sectiont, {TextTransparency = 0})
-
 			function Section:Set(NewSection)
 				Sectiont.Text = NewSection
 			end
-
 			function Section:Destroy()
 				Sectiont:Destroy()
 			end
-
-			-- Divider (optional centered label)
-			function Section:CreateDivider(DividerSettings)
+						function Section:CreateDivider(DividerSettings)
 				TabPage.Position = UDim2.new(0,0,0,28)
-				-- Backwards-compat: accept either a settings table or a plain string,
-				-- and stay valid when called with no arguments.
-				local text
+												local text
 				if type(DividerSettings) == "string" then
 					text = DividerSettings
 				elseif type(DividerSettings) == "table" then
 					text = DividerSettings.Text
 				end
-
 				local b = Elements.Template.Divider:Clone()
 				b.Parent = TabPage
 				b.Size = UDim2.new(1,0,0,18)
 				b.Line.BackgroundTransparency = 1
 				tween(b.Line, {BackgroundTransparency = 0})
-
 				if text and text ~= "" then
 					local line = b.Line
-					-- Match the divider's full-width line, then split it visually by
-					-- shrinking the original and adding a mirrored line + centered label.
-					line.AnchorPoint = Vector2.new(0, 0.5)
+															line.AnchorPoint = Vector2.new(0, 0.5)
 					line.Position = UDim2.new(0, 0, 0.5, 0)
 					line.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
-
 					local rightLine = line:Clone()
 					rightLine.Name = RandomName()
 					rightLine.AnchorPoint = Vector2.new(1, 0.5)
@@ -4471,7 +3918,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					rightLine.Parent = b
 					rightLine.BackgroundTransparency = 1
 					tween(rightLine, {BackgroundTransparency = 0})
-
 					local label = Instance.new("TextLabel")
 					label.Name = RandomName()
 					label.BackgroundTransparency = 1
@@ -4487,28 +3933,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 					label.Parent = b
 					tween(label, {TextTransparency = 0.15})
 				end
-
 				return b
 			end
-
-			-- Button
-			function Section:CreateButton(ButtonSettings)
+						function Section:CreateButton(ButtonSettings)
 				TabPage.Position = UDim2.new(0,0,0,28)
-
 				ButtonSettings = Kwargify({
 					Name = "Button",
 					Description = nil,
 					Callback = function()
-
 					end,
 				}, ButtonSettings or {})
-
 				local ButtonV = {
 					Hover = false,
 					Settings = ButtonSettings
 				}
-
-
 				local hasDesc = type(ButtonSettings.Description) == "string" and ButtonSettings.Description ~= ""
 				local Button = hasDesc and Elements.Template.ButtonDesc:Clone() or Elements.Template.Button:Clone()
 				RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
@@ -4520,23 +3958,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 				Button.Visible = true
 				Button.Parent = TabPage
-
 				Button.UIStroke.Transparency = 1
 				Button.Title.TextTransparency = 1
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
 					Button.Desc.TextTransparency = 1
 				end
-
 				TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 				TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-				TweenService:Create(Button.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+				TweenService:Create(Button.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
-					TweenService:Create(Button.Desc, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+					TweenService:Create(Button.Desc, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				end
-
 				Button.Interact["MouseButton1Click"]:Connect(function()
 					local Success,Response = pcall(ButtonSettings.Callback)
-
 					if not Success then
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
@@ -4558,55 +3992,42 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 					end
 				end)
-
 				Button["MouseEnter"]:Connect(function()
 					ButtonV.Hover = true
 					tween(Button.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 				end)
-
 				Button["MouseLeave"]:Connect(function()
 					ButtonV.Hover = false
 					tween(Button.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
-
 				function ButtonV:Set(ButtonSettings2)
 					ButtonSettings2 = Kwargify({
 						Name = ButtonSettings.Name,
 						Description = ButtonSettings.Description,
 						Callback = ButtonSettings.Callback
 					}, ButtonSettings2 or {})
-
 					ButtonSettings = ButtonSettings2
 					ButtonV.Settings = ButtonSettings2
-
 					RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
 					Button.Title.Text = ButtonSettings.Name
 					if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
 						Button.Desc.Text = ButtonSettings.Description
 					end
 				end
-
 				function ButtonV:Destroy()
 					Button.Visible = false
 					Button:Destroy()
 				end
-
 				return ButtonV
 			end
-
-			-- Label
-			function Section:CreateLabel(LabelSettings)
+						function Section:CreateLabel(LabelSettings)
 				TabPage.Position = UDim2.new(0,0,0,28)
-
 				local LabelV = {}
-
 				LabelSettings = Kwargify({
 					Text = "Label",
 					Style = 1
-				}, LabelSettings or {}) 
-
+				}, LabelSettings or {})
 				LabelV.Settings = LabelSettings
-
 				local Label
 				if LabelSettings.Style == 1 then
 					Label = Elements.Template.Label:Clone()
@@ -4615,155 +4036,117 @@ function Window:CreateHomeTab(HomeTabSettings)
 				elseif LabelSettings.Style == 3 then
 					Label = Elements.Template.Warn:Clone()
 				end
-
 				LunaSetText(Label.Text, LabelSettings.Text)
 				Label.Visible = true
 				Label.Parent = TabPage
-
 				Label.BackgroundTransparency = 1
 				Label.UIStroke.Transparency = 1
 				Label.Text.TextTransparency = 1
-
 				if LabelSettings.Style ~= 1 then
 					TweenService:Create(Label, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.8}):Play()
 				else
 					TweenService:Create(Label, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
 				end
 				TweenService:Create(Label.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-				TweenService:Create(Label.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-
+				TweenService:Create(Label.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				function LabelV:Set(NewLabel)
 					LabelSettings.Text = NewLabel
 					LabelV.Settings = LabelSettings
 					LunaSetText(Label.Text, NewLabel)
 				end
-
 				function LabelV:Destroy()
 					Label.Visible = false
 					Label:Destroy()
 				end
-
 				return LabelV
 			end
-
-			-- Paragraph
-			function Section:CreateParagraph(ParagraphSettings)
+						function Section:CreateParagraph(ParagraphSettings)
 				TabPage.Position = UDim2.new(0,0,0,28)
-
 				ParagraphSettings = Kwargify({
 					Title = "Paragraph",
 					Text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus venenatis lacus sed tempus eleifend. Mauris interdum bibendum felis, in tempor augue egestas vel. Praesent tristique consectetur ex, eu pretium sem placerat non. Vestibulum a nisi sit amet augue facilisis consectetur sit amet et nunc. Integer fermentum ornare cursus. Pellentesque sed ultricies metus, ut egestas metus. Vivamus auctor erat ac sapien vulputate, nec ultricies sem tempor. Quisque leo lorem, faucibus nec pulvinar nec, congue eu velit. Duis sodales massa efficitur imperdiet ultrices. Donec eros ipsum, ornare pharetra purus aliquam, tincidunt elementum nisi. Ut mi tortor, feugiat eget nunc vitae, facilisis interdum dui. Vivamus ullamcorper nunc dui, a dapibus nisi pretium ac. Integer eleifend placerat nibh, maximus malesuada tellus. Cras in justo in ligula scelerisque suscipit vel vitae quam."
 				}, ParagraphSettings or {})
-
 				local ParagraphV = {
 					Settings = ParagraphSettings
 				}
-
 				local Paragraph = Elements.Template.Paragraph:Clone()
 				LunaSetText(Paragraph.Title, ParagraphSettings.Title)
 				LunaSetText(Paragraph.Text, ParagraphSettings.Text)
 				Paragraph.Visible = true
 				Paragraph.Parent = TabPage
-
 				Paragraph.BackgroundTransparency = 1
 				Paragraph.UIStroke.Transparency = 1
 				Paragraph.Title.TextTransparency = 1
 				Paragraph.Text.TextTransparency = 1
-
 				TweenService:Create(Paragraph, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
 				TweenService:Create(Paragraph.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-				TweenService:Create(Paragraph.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-				TweenService:Create(Paragraph.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-
+				TweenService:Create(Paragraph.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
+				TweenService:Create(Paragraph.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				function ParagraphV:Update()
 					Paragraph.Text.Size = UDim2.new(Paragraph.Text.Size.X.Scale, Paragraph.Text.Size.X.Offset, 0, math.huge)
 					Paragraph.Text.Size = UDim2.new(Paragraph.Text.Size.X.Scale, Paragraph.Text.Size.X.Offset, 0, Paragraph.Text.TextBounds.Y)
 					tween(Paragraph, {Size = UDim2.new(Paragraph.Size.X.Scale, Paragraph.Size.X.Offset, 0, Paragraph.Text.TextBounds.Y + 40)})
 				end
-
 				function ParagraphV:Set(NewParagraphSettings)
-
 					NewParagraphSettings = Kwargify({
 						Title = ParagraphSettings.Title,
 						Text = ParagraphSettings.Text
 					}, NewParagraphSettings or {})
-
 					ParagraphV.Settings = NewParagraphSettings
-
 					LunaSetText(Paragraph.Title, NewParagraphSettings.Title)
 					LunaSetText(Paragraph.Text, NewParagraphSettings.Text)
-
 					ParagraphV:Update()
-
 				end
-
 				function ParagraphV:Destroy()
 					Paragraph.Visible = false
 					Paragraph:Destroy()
 				end
-
 				ParagraphV:Update()
-
 				return ParagraphV
 			end
-
-			-- Slider
-			function Section:CreateSlider(SliderSettings, Flag)
+						function Section:CreateSlider(SliderSettings, Flag)
 				TabPage.Position = UDim2.new(0,0,0,28)
 				local SliderV = { IgnoreConfig = false, Class = "Slider", Settings = SliderSettings }
-
 				SliderSettings = Kwargify({
 					Name = "Slider",
 					Range = {0, 200},
 					Increment = 1,
 					CurrentValue = 100,
 					Callback = function(Value)
-
 					end,
 				}, SliderSettings or {})
-
 				local SLDragging = false
 				local Slider = Elements.Template.Slider:Clone()
 				RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 				Slider.Title.Text = SliderSettings.Name
 				Slider.Visible = true
 				Slider.Parent = TabPage
-
 				Slider.BackgroundTransparency = 1
 				Slider.UIStroke.Transparency = 1
 				Slider.Title.TextTransparency = 1
-
 				TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 				TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-				TweenService:Create(Slider.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-
+				TweenService:Create(Slider.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				Slider.Main.Progress.Size =	UDim2.new(0, Slider.Main.AbsoluteSize.X * ((SliderSettings.CurrentValue + SliderSettings.Range[1]) / (SliderSettings.Range[2] - SliderSettings.Range[1])) > 5 and Slider.Main.AbsoluteSize.X * (SliderSettings.CurrentValue / (SliderSettings.Range[2] - SliderSettings.Range[1])) or 5, 1, 0)
-
 				Slider.Value.Text = tostring(SliderSettings.CurrentValue)
 				SliderV.CurrentValue = Slider.Value.Text
-
 				SliderSettings.Callback(SliderSettings.CurrentValue)
-
 				Slider["MouseEnter"]:Connect(function()
 					tween(Slider.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 				end)
-
 				Slider["MouseLeave"]:Connect(function()
 					tween(Slider.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
-
 				Slider.Interact.InputBegan:Connect(function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-						SLDragging = true 
-					end 
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+						SLDragging = true
+					end
 				end)
-
-				Slider.Interact.InputEnded:Connect(function(Input) 
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-						SLDragging = false 
-					end 
+				Slider.Interact.InputEnded:Connect(function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+						SLDragging = false
+					end
 				end)
-
 				Slider.Interact.MouseButton1Down:Connect(function()
 					local Current = Slider.Main.Progress.AbsolutePosition.X + Slider.Main.Progress.AbsoluteSize.X
 					local Start = Current
@@ -4772,19 +4155,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 						if SLDragging then
 							Location = UserInputService:GetMouseLocation().X
 							Current = Current + 0.025 * (Location - Start)
-
 							if Location < Slider.Main.AbsolutePosition.X then
 								Location = Slider.Main.AbsolutePosition.X
 							elseif Location > Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X then
 								Location = Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X
 							end
-
 							if Current < Slider.Main.AbsolutePosition.X + 5 then
 								Current = Slider.Main.AbsolutePosition.X + 5
 							elseif Current > Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X then
 								Current = Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X
 							end
-
 							if Current <= Location and (Location - Start) < 0 then
 								Start = Location
 							elseif Current >= Location and (Location - Start) > 0 then
@@ -4792,11 +4172,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 							end
 							Slider.Main.Progress.Size = UDim2.new(0, Location - Slider.Main.AbsolutePosition.X, 1, 0)
 							local NewValue = SliderSettings.Range[1] + (Location - Slider.Main.AbsolutePosition.X) / Slider.Main.AbsoluteSize.X * (SliderSettings.Range[2] - SliderSettings.Range[1])
-
 							NewValue = math.floor(NewValue / SliderSettings.Increment + 0.5) * (SliderSettings.Increment * 10000000) / 10000000
-
 							Slider.Value.Text = tostring(NewValue)
-
 							if SliderSettings.CurrentValue ~= NewValue then
 								local Success, Response = pcall(function()
 									SliderSettings.Callback(NewValue)
@@ -4813,7 +4190,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
 									TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 								end
-
 								SliderSettings.CurrentValue = NewValue
 								SliderV.CurrentValue = SliderSettings.CurrentValue
 							end
@@ -4823,11 +4199,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 					end)
 				end)
-
 				local function Set(NewVal, bleh)
-
 					NewVal = NewVal or SliderSettings.CurrentValue
-
 					TweenService:Create(Slider.Main.Progress, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.InOut), {Size = UDim2.new(0, Slider.Main.AbsoluteSize.X * ((NewVal + SliderSettings.Range[1]) / (SliderSettings.Range[2] - SliderSettings.Range[1])) > 5 and Slider.Main.AbsoluteSize.X * (NewVal / (SliderSettings.Range[2] - SliderSettings.Range[1])) or 5, 1, 0)}):Play()
 					if not bleh then Slider.Value.Text = tostring(NewVal) end
 					local Success, Response = pcall(function()
@@ -4845,16 +4218,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(30, 33, 40)}):Play()
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
-
 					SliderSettings.CurrentValue = NewVal
 					SliderV.CurrentValue = SliderSettings.CurrentValue
-
 				end
-
 				function SliderV:UpdateValue(Value)
 					Set(tonumber(Value))
-				end 
-
+				end
 				Slider.Value:GetPropertyChangedSignal("Text"):Connect(function()
 					local text = Slider.Value.Text
 					if not tonumber(text) and text ~= "." then
@@ -4864,7 +4233,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Slider.Value.Size = UDim2.fromOffset(Slider.Value.TextBounds.X, 23)
 					Set(tonumber(Slider.Value.Text), true)
 				end)
-
 				function SliderV:Set(NewSliderSettings)
 					NewSliderSettings = Kwargify({
 						Name = SliderSettings.Name,
@@ -4873,40 +4241,28 @@ function Window:CreateHomeTab(HomeTabSettings)
 						CurrentValue = SliderSettings.CurrentValue,
 						Callback = SliderSettings.Callback
 					}, NewSliderSettings or {})
-
 					SliderSettings = NewSliderSettings
 					SliderV.Settings = NewSliderSettings
-
 					RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 					Slider.Title.Text = SliderSettings.Name
-
 					Set()
-
 				end
-
 				function SliderV:Destroy()
 					Slider.Visible = false
 					Slider:Destroy()
 				end
-
 				if Flag then
 					Luna.Options[Flag] = SliderV
 				end
-
 				LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 					Slider.Main.color.Color = Luna.ThemeGradient
 					Slider.Main.UIStroke.color.Color = Luna.ThemeGradient
 				end)
-
 				return SliderV
-
 			end
-
-			-- Toggle
-			function Section:CreateToggle(ToggleSettings, Flag)    
+						function Section:CreateToggle(ToggleSettings, Flag)
 				TabPage.Position = UDim2.new(0,0,0,28)
 				local ToggleV = { IgnoreConfig = false, Class = "Toggle" }
-
 				ToggleSettings = Kwargify({
 					Name = "Toggle",
 					Description = nil,
@@ -4914,19 +4270,14 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Callback = function(Value)
 					end,
 				}, ToggleSettings or {})
-
-
 				local Toggle
-
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 					Toggle = Elements.Template.ToggleDesc:Clone()
 				else
 					Toggle = Elements.Template.Toggle:Clone()
 				end
-
 				Toggle.Visible = true
 				Toggle.Parent = TabPage
-
 				RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
 				LunaSetText(Toggle.Title, ToggleSettings.Name)
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle:FindFirstChild("Desc") then
@@ -4934,49 +4285,38 @@ function Window:CreateHomeTab(HomeTabSettings)
 				elseif Toggle:FindFirstChild("Desc") then
 					Toggle.Desc.Visible = false
 				end
-
 				Toggle.UIStroke.Transparency = 1
 				Toggle.Title.TextTransparency = 1
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 					Toggle.Desc.TextTransparency = 1
 				end
-
 				TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 					TweenService:Create(Toggle.Desc, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				end
 				TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-				TweenService:Create(Toggle.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-
+				TweenService:Create(Toggle.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				local function Set(bool)
 					if bool then
 						Toggle.toggle.color.Enabled = true
 						tween(Toggle.toggle, {BackgroundTransparency = 0})
-
 						Toggle.toggle.UIStroke.color.Enabled = true
 						tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255), Transparency = 1})
-
 						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0})
 					else
 						Toggle.toggle.color.Enabled = false
 						Toggle.toggle.UIStroke.color.Enabled = false
-
 						Toggle.toggle.UIStroke.Color = Color3.fromRGB(97,97,97)
 						tween(Toggle.toggle.UIStroke, {Transparency = 1})
-
 						Toggle.toggle.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(60, 60, 72)
 						tween(Toggle.toggle, {BackgroundTransparency = 0.55})
-
 						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 					end
-
 					ToggleV.CurrentValue = bool
 				end
-
 				Toggle.Interact.MouseButton1Click:Connect(function()
 					ToggleSettings.CurrentValue = not ToggleSettings.CurrentValue
 					Set(ToggleSettings.CurrentValue)
-
 					local Success, Response = pcall(function()
 						ToggleSettings.Callback(ToggleSettings.CurrentValue)
 					end)
@@ -4993,15 +4333,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end)
-
 				Toggle["MouseEnter"]:Connect(function()
 					tween(Toggle.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 				end)
-
 				Toggle["MouseLeave"]:Connect(function()
 					tween(Toggle.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
-
 				if ToggleSettings.CurrentValue then
 					Set(ToggleSettings.CurrentValue)
 					local Success, Response = pcall(function()
@@ -5020,34 +4357,26 @@ function Window:CreateHomeTab(HomeTabSettings)
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end
-
 				function ToggleV:UpdateState(State)
 					ToggleSettings.CurrentValue = State
 					Set(ToggleSettings.CurrentValue)
 				end
-
 				function ToggleV:Set(NewToggleSettings)
-
 					NewToggleSettings = Kwargify({
 						Name = ToggleSettings.Name,
 						Description = ToggleSettings.Description,
 						CurrentValue = ToggleSettings.CurrentValue,
 						Callback = ToggleSettings.Callback
 					}, NewToggleSettings or {})
-
 					ToggleV.Settings = NewToggleSettings
 					ToggleSettings = NewToggleSettings
-
 					RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
 					Toggle.Title.Text = ToggleSettings.Name
 					if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle.Desc ~= nil then
 						Toggle.Desc.Text = ToggleSettings.Description
 					end
-
 					Set(ToggleSettings.CurrentValue)
-
 					ToggleV.CurrentValue = ToggleSettings.CurrentValue
-
 					local Success, Response = pcall(function()
 						ToggleSettings.Callback(ToggleSettings.CurrentValue)
 					end)
@@ -5064,62 +4393,46 @@ function Window:CreateHomeTab(HomeTabSettings)
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end
-
 				function ToggleV:Destroy()
 					Toggle.Visible = false
 					Toggle:Destroy()
 				end
-
 				LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 					Toggle.toggle.color.Color = Luna.ThemeGradient
 					Toggle.toggle.UIStroke.color.Color = Luna.ThemeGradient
 				end)
-
 				if Flag then
 					Luna.Options[Flag] = ToggleV
 				end
-
 				return ToggleV
-
 			end
-
-			-- Bind
-			function Section:CreateBind(BindSettings, Flag)
+						function Section:CreateBind(BindSettings, Flag)
 				TabPage.Position = UDim2.new(0,0,0,28)
 				local BindV = { Class = "Keybind", IgnoreConfig = false, Settings = BindSettings, Active = false }
-
 				BindSettings = Kwargify({
 					Name = "Bind",
 					Description = nil,
 					CurrentBind = "Q",
 					HoldToInteract = false,
 					Callback = function(Bind)
-						
-					end,
-
+											end,
 					OnChangedCallback = function(Bind)
-						
-					end,
+											end,
 				}, BindSettings or {})
-
 				local CheckingForKey = false
-
 				local Bind
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 					Bind = Elements.Template.BindDesc:Clone()
 				else
 					Bind = Elements.Template.Bind:Clone()
 				end
-
 				Bind.Visible = true
 				Bind.Parent = TabPage
-
 				RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 				Bind.Title.Text = BindSettings.Name
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 					Bind.Desc.Text = BindSettings.Description
 				end
-
 				Bind.Title.TextTransparency = 1
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 					Bind.Desc.TextTransparency = 1
@@ -5127,7 +4440,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Bind.BindFrame.BackgroundTransparency = 1
 				Bind.BindFrame.UIStroke.Transparency = 1
 				Bind.BindFrame.BindBox.TextTransparency = 1
-
 				TweenService:Create(Bind, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 				TweenService:Create(Bind.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
@@ -5136,32 +4448,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 				TweenService:Create(Bind.BindFrame, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.9}):Play()
 				TweenService:Create(Bind.BindFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 				TweenService:Create(Bind.BindFrame.BindBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-
-
 				Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 				Bind.BindFrame.BindBox.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 20, 0, 42)
-
 				Bind.BindFrame.BindBox.Focused:Connect(function()
 					CheckingForKey = true
 					Bind.BindFrame.BindBox.Text = ""
 				end)
-
 				Bind.BindFrame.BindBox.FocusLost:Connect(function()
 					CheckingForKey = false
 					if Bind.BindFrame.BindBox.Text == (nil or "") then
 						Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 					end
 				end)
-
 				Bind["MouseEnter"]:Connect(function()
 					tween(Bind.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 				end)
-
 				Bind["MouseLeave"]:Connect(function()
 					tween(Bind.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
 				UserInputService.InputBegan:Connect(function(input, processed)
-
 					if CheckingForKey then
 						if input.KeyCode ~= Enum.KeyCode.Unknown and input.KeyCode ~= Window.Bind then
 							local SplitMessage = string.split(tostring(input.KeyCode), ".")
@@ -5185,7 +4490,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							end
 							Bind.BindFrame.BindBox:ReleaseFocus()
 						end
-					elseif BindSettings.CurrentBind ~= nil and (input.KeyCode == Enum.KeyCode[BindSettings.CurrentBind] and not processed) then -- Test
+					elseif BindSettings.CurrentBind ~= nil and (input.KeyCode == Enum.KeyCode[BindSettings.CurrentBind] and not processed) then
 						local Held = true
 						local Connection
 						Connection = input.Changed:Connect(function(prop)
@@ -5194,7 +4499,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 								Held = false
 							end
 						end)
-
 						if not BindSettings.HoldToInteract then
 							BindV.Active = not BindV.Active
 							local Success, Response = pcall(function()
@@ -5231,7 +4535,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-										end 
+										end
 										Loop:Disconnect()
 									else
 										local Success, Response = pcall(function()
@@ -5250,18 +4554,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 										end
 									end
-								end)	
+								end)
 							end
 						end
 					end
 				end)
-
 				Bind.BindFrame.BindBox:GetPropertyChangedSignal("Text"):Connect(function()
 					TweenService:Create(Bind.BindFrame, TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 20, 0, 30)}):Play()
 				end)
-
 				function BindV:Set(NewBindSettings)
-
 					NewBindSettings = Kwargify({
 						Name = BindSettings.Name,
 						Description = BindSettings.Description,
@@ -5269,41 +4570,29 @@ function Window:CreateHomeTab(HomeTabSettings)
 						HoldToInteract = BindSettings.HoldToInteract,
 						Callback = BindSettings.Callback
 					}, NewBindSettings or {})
-
 					BindV.Settings = NewBindSettings
 					BindSettings = NewBindSettings
-
 					RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 					Bind.Title.Text = BindSettings.Name
 					if BindSettings.Description ~= nil and BindSettings.Description ~= "" and Bind.Desc ~= nil then
 						Bind.Desc.Text = BindSettings.Description
 					end
-
 					Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 					Bind.BindFrame.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 20, 0, 42)
-
-
 					BindV.CurrentBind = BindSettings.CurrentBind
 				end
-
 				function BindV:Destroy()
 					Bind.Visible = false
 					Bind:Destroy()
 				end
-
 				if Flag then
 					Luna.Options[Flag] = BindV
 				end
-
 				return BindV
-
 			end
-
-			-- Dynamic Input
-			function Section:CreateInput(InputSettings, Flag)
+						function Section:CreateInput(InputSettings, Flag)
 				TabPage.Position = UDim2.new(0,0,0,28)
 				local InputV = { IgnoreConfig = false, Class = "Input", Settings = InputSettings }
-
 				InputSettings = Kwargify({
 					Name = "Dynamic Input",
 					Description = nil,
@@ -5314,30 +4603,24 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Enter = false,
 					MaxCharacters = nil,
 					Callback = function(Text)
-
 					end,
 				}, InputSettings or {})
-
 				InputV.CurrentValue = InputSettings.CurrentValue
-
 				local descriptionbool
 				if InputSettings.Description ~= nil and InputSettings.Description ~= "" then
 					descriptionbool = true
 				end
-
-				local Input 
+				local Input
 				if descriptionbool then
 					Input = Elements.Template.InputDesc:Clone()
 				else
 					Input = Elements.Template.Input:Clone()
 				end
-
 				RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 				Input.Title.Text = InputSettings.Name
 				if descriptionbool then LunaSetText(Input.Desc, InputSettings.Description) end
 				Input.Visible = true
 				Input.Parent = TabPage
-
 				Input.BackgroundTransparency = 1
 				Input.UIStroke.Transparency = 1
 				Input.Title.TextTransparency = 1
@@ -5345,20 +4628,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Input.InputFrame.BackgroundTransparency = 1
 				Input.InputFrame.UIStroke.Transparency = 1
 				Input.InputFrame.InputBox.TextTransparency = 1
-
 				TweenService:Create(Input, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 				TweenService:Create(Input.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-				TweenService:Create(Input.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+				TweenService:Create(Input.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				if descriptionbool then TweenService:Create(Input.Desc, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play() end
 				TweenService:Create(Input.InputFrame, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.9}):Play()
 				TweenService:Create(Input.InputFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 				TweenService:Create(Input.InputFrame.InputBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-
 				Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
 				Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 30)
-
 				Input.InputFrame.InputBox.FocusLost:Connect(function(bleh)
-
 					if InputSettings.Enter then
 						if bleh then
 							local Success, Response = pcall(function()
@@ -5379,13 +4658,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 							end
 						end
 					end
-
 					if InputSettings.RemoveTextAfterFocusLost then
 						Input.InputFrame.InputBox.Text = ""
 					end
-
 				end)
-
 				if InputSettings.Numeric then
 					Input.InputFrame.InputBox:GetPropertyChangedSignal("Text"):Connect(function()
 						local text = Input.InputFrame.InputBox.Text
@@ -5394,7 +4670,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 					end)
 				end
-
 				Input.InputFrame.InputBox:GetPropertyChangedSignal("Text"):Connect(function()
 					if tonumber(InputSettings.MaxCharacters) then
 						if (#Input.InputFrame.InputBox.Text - 1) == InputSettings.MaxCharacters then
@@ -5419,56 +4694,41 @@ function Window:CreateHomeTab(HomeTabSettings)
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 						end
 					end
-					InputV.CurrentValue = Input.InputFrame.InputBox.Text				
+					InputV.CurrentValue = Input.InputFrame.InputBox.Text
 				end)
-
 				Input["MouseEnter"]:Connect(function()
 					tween(Input.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 				end)
-
 				Input["MouseLeave"]:Connect(function()
 					tween(Input.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
-
 				function InputV:Set(NewInputSettings)
-
 					NewInputSettings = Kwargify(InputSettings, NewInputSettings or {})
-
 					InputV.Settings = NewInputSettings
 					InputSettings = NewInputSettings
-
 					RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 					Input.Title.Text = InputSettings.Name
 					if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 						Input.Desc.Text = InputSettings.Description
 					end
-
 					Input.InputFrame.InputBox:CaptureFocus()
 					Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue)
 					Input.InputFrame.InputBox:ReleaseFocus()
 					Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 42)
-
 					InputV.CurrentValue = InputSettings.CurrentValue
 				end
-
 				function InputV:Destroy()
 					Input.Visible = false
 					Input:Destroy()
 				end
-
 				if Flag then
 					Luna.Options[Flag] = InputV
 				end
-
 				return InputV
-
 			end
-
-			-- Dropdown
-			function Section:CreateDropdown(DropdownSettings, Flag)
+						function Section:CreateDropdown(DropdownSettings, Flag)
 				TabPage.Position = UDim2.new(0,0,0,28)
 				local DropdownV = { IgnoreConfig = false, Class = "Dropdown", Settings = DropdownSettings}
-
 				DropdownSettings = Kwargify({
 					Name = "Dropdown",
 					Description = nil,
@@ -5477,12 +4737,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 					MultipleOptions = false,
 					SpecialType = nil,
 					Callback = function(Options)
-						
-					end,
+											end,
 				}, DropdownSettings or {})
-
 				DropdownV.CurrentOption = DropdownSettings.CurrentOption
-
 				local descriptionbool = false
 				if DropdownSettings.Description ~= nil and DropdownSettings.Description ~= "" then
 					descriptionbool = true
@@ -5497,17 +4754,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 					openedsize = 160
 				end
 				local opened = false
-
 				local Dropdown
 				if descriptionbool then Dropdown = Elements.Template.DropdownDesc:Clone() else Dropdown = Elements.Template.Dropdown:Clone() end
-
 				RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 				Dropdown.Title.Text = DropdownSettings.Name
 				if descriptionbool then LunaSetText(Dropdown.Desc, DropdownSettings.Description) end
-
 				Dropdown.Parent = TabPage
 				Dropdown.Visible = true
-
 				local function Toggle()
 					opened = not opened
 					if opened then
@@ -5518,7 +4771,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						tween(Dropdown, {Size = UDim2.new(1, -25, 0, closedsize)})
 					end
 				end
-
 				local function SafeCallback(param, c2)
 					local Success, Response = pcall(function()
 						DropdownSettings.Callback(param)
@@ -5539,9 +4791,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						c2()
 					end
 				end
-
-				-- Fixed By justhey
-				Dropdown.Selected:GetPropertyChangedSignal("Text"):Connect(function()
+								Dropdown.Selected:GetPropertyChangedSignal("Text"):Connect(function()
 					local text = Dropdown.Selected.Text:lower()
 					for _, Item in ipairs(Dropdown.List:GetChildren()) do
 						if Item:IsA("TextLabel") and Item.Name ~= "Template" then
@@ -5549,7 +4799,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 					end
 				end)
-
 				local function Clear()
 					for _, option in ipairs(Dropdown.List:GetChildren()) do
 						if option.ClassName == "TextLabel" and option.Name ~= "Template" then
@@ -5557,18 +4806,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 					end
 				end
-
 				local function ActivateColorSingle(name)
 					for _, Option in pairs(Dropdown.List:GetChildren()) do
 						if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
 							tween(Option, {BackgroundTransparency = 0.98})
 						end
 					end
-
 					Toggle()
 					LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
 				end
-
 				local function Refresh()
 					Clear()
 					for i,v in pairs(DropdownSettings.Options) do
@@ -5599,7 +4845,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 								DropdownV.CurrentOption = bleh
 								ActivateColorSingle(v)
 							end
-
 							SafeCallback(bleh, function()
 								if DropdownSettings.MultipleOptions then
 									if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
@@ -5638,47 +4883,36 @@ function Window:CreateHomeTab(HomeTabSettings)
 							else
 								tween(Option, {TextColor3 = Color3.fromRGB(200,200,200)})
 							end
-						end)	
+						end)
 					end
 				end
-
 				local function PlayerTableRefresh()
 					for i,v in pairs(DropdownSettings.Options) do
 						table.remove(DropdownSettings.Options, i)
 					end
-
 					for i,v in pairs(Players:GetChildren()) do
 						table.insert(DropdownSettings.Options, v.Name)
 					end
 				end
-
 				Dropdown.Interact.MouseButton1Click:Connect(function()
 					Toggle()
 				end)
-
 				Dropdown["MouseEnter"]:Connect(function()
 					tween(Dropdown.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 				end)
-
 				Dropdown["MouseLeave"]:Connect(function()
 					tween(Dropdown.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
-
 				if DropdownSettings.SpecialType == "Player" then
-
 					for i,v in pairs(DropdownSettings.Options) do
 						table.remove(DropdownSettings.Options, i)
 					end
 					PlayerTableRefresh()
 					DropdownSettings.CurrentOption = DropdownSettings.Options[1]
-
 					Players.PlayerAdded:Connect(function() PlayerTableRefresh() end)
 					Players.PlayerRemoving:Connect(function() PlayerTableRefresh() end)
-
 				end
-
 				Refresh()
-
 				if DropdownSettings.MultipleOptions then
 					DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
 						DropdownSettings.Options,
@@ -5693,7 +4927,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					)
 					DropdownSettings.CurrentOption = single and {single} or {}
 				end
-
 				local bleh, ind = nil,0
 				for i,v in pairs(DropdownSettings.CurrentOption) do
 					ind = ind + 1
@@ -5712,7 +4945,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				else
 					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 				end
-
 				if DropdownSettings.MultipleOptions then
 					if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
 						if #DropdownSettings.CurrentOption == 1 then
@@ -5730,33 +4962,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
 				end
 				Dropdown.Selected.Text = ""
-
 				function DropdownV:Set(NewDropdownSettings)
 					NewDropdownSettings = Kwargify(DropdownSettings, NewDropdownSettings or {})
-
 					DropdownV.Settings = NewDropdownSettings
 					DropdownSettings = NewDropdownSettings
-
 					RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 					Dropdown.Title.Text = DropdownSettings.Name
 					if DropdownSettings.Description ~= nil and DropdownSettings.Description ~= "" and Dropdown.Desc ~= nil then
 						Dropdown.Desc.Text = DropdownSettings.Description
 					end
-
 					if DropdownSettings.SpecialType == "Player" then
-
 						for i,v in pairs(DropdownSettings.Options) do
 							table.remove(DropdownSettings.Options, i)
 						end
 						PlayerTableRefresh()
-						DropdownSettings.CurrentOption = DropdownSettings.Options[1]                    
+						DropdownSettings.CurrentOption = DropdownSettings.Options[1]
 						Players.PlayerAdded:Connect(function() PlayerTableRefresh() end)
 						Players.PlayerRemoving:Connect(function() PlayerTableRefresh() end)
-
 					end
-
 					Refresh()
-
 					if DropdownSettings.MultipleOptions then
 						DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
 							DropdownSettings.Options,
@@ -5771,7 +4995,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						)
 						DropdownSettings.CurrentOption = single and {single} or {}
 					end
-
 					local bleh, ind = nil,0
 					for i,v in pairs(DropdownSettings.CurrentOption) do
 						ind = ind + 1
@@ -5790,7 +5013,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					else
 						LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 					end
-
 					if DropdownSettings.MultipleOptions then
 						if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
 							if #DropdownSettings.CurrentOption == 1 then
@@ -5808,50 +5030,36 @@ function Window:CreateHomeTab(HomeTabSettings)
 						Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
 					end
 					Dropdown.Selected.Text = ""
-
 				end
-
 				function DropdownV:Destroy()
 					Dropdown.Visible = false
 					Dropdown:Destroy()
 				end
-
 				if Flag then
 					Luna.Options[Flag] = DropdownV
 				end
-
 				return DropdownV
-
 			end
-
-			-- Color Picker
-			function Section:CreateColorPicker(ColorPickerSettings, Flag) -- by Rayfield/Throit
+						function Section:CreateColorPicker(ColorPickerSettings, Flag)
 				TabPage.Position = UDim2.new(0,0,0,28)
 				local ColorPickerV = {IgnoreClass = false, Class = "Colorpicker", Settings = ColorPickerSettings}
-
 				ColorPickerSettings = Kwargify({
 					Name = "Color Picker",
 					Color = Color3.fromRGB(255,255,255),
 					Callback = function(Value)
-						
-					end
+											end
 				}, ColorPickerSettings or {})
-
 				local function Color3ToHex(color)
 					return string.format("#%02X%02X%02X", math.floor(color.R * 255), math.floor(color.G * 255), math.floor(color.B * 255))
 				end
-
 				ColorPickerV.Color = Color3ToHex(ColorPickerSettings.Color)
-
 				local closedsize = UDim2.new(0, 75, 0, 22)
 				local openedsize = UDim2.new(0, 219, 0, 129)
-
 				local ColorPicker = Elements.Template.ColorPicker:Clone()
 				local Background = ColorPicker.CPBackground
 				local Display = Background.Display
 				local Main = Background.MainCP
 				local Slider = ColorPicker.ColorSlider
-
 				RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 				ColorPicker.Title.Text = ColorPickerSettings.Name
 				ColorPicker.Visible = true
@@ -5859,14 +5067,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 				ColorPicker.Size = UDim2.new(1.042, -25,0, 38)
 				Background.Size = closedsize
 				Display.BackgroundTransparency = 0
-
 				ColorPicker["MouseEnter"]:Connect(function()
 					tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 				end)
 				ColorPicker["MouseLeave"]:Connect(function()
 					tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 				end)
-
 				local function SafeCallback(param, c2)
 					local Success, Response = pcall(function()
 						ColorPickerSettings.Callback(param)
@@ -5887,16 +5093,14 @@ function Window:CreateHomeTab(HomeTabSettings)
 						c2()
 					end
 				end
-
 				local opened = false
-
 				local mouse = game.Players.LocalPlayer:GetMouse()
 				Main.Image = "http://www.roblox.com/asset/?id=11415645739"
-				local mainDragging = false 
-				local sliderDragging = false 
+				local mainDragging = false
+				local sliderDragging = false
 				ColorPicker.Interact.MouseButton1Down:Connect(function()
 					if not opened then
-						opened = true 
+						opened = true
 						tween(ColorPicker, {Size = UDim2.new( 1.042, -25,0, 165)}, nil, TweenInfo.new(0.6, Enum.EasingStyle.Exponential))
 						tween(Background, {Size = openedsize})
 						tween(Display, {BackgroundTransparency = 1})
@@ -5907,42 +5111,40 @@ function Window:CreateHomeTab(HomeTabSettings)
 						tween(Display, {BackgroundTransparency = 0})
 					end
 				end)
-				UserInputService.InputEnded:Connect(function(input, gameProcessed) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+				UserInputService.InputEnded:Connect(function(input, gameProcessed) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 						mainDragging = false
 						sliderDragging = false
 					end end)
 				Main.MouseButton1Down:Connect(function()
 					if opened then
-						mainDragging = true 
+						mainDragging = true
 					end
 				end)
 				Main.MainPoint.MouseButton1Down:Connect(function()
 					if opened then
-						mainDragging = true 
+						mainDragging = true
 					end
 				end)
 				Slider.MouseButton1Down:Connect(function()
-					sliderDragging = true 
+					sliderDragging = true
 				end)
 				Slider.SliderPoint.MouseButton1Down:Connect(function()
-					sliderDragging = true 
+					sliderDragging = true
 				end)
 				local h,s,v = ColorPickerSettings.Color:ToHSV()
-				local color = Color3.fromHSV(h,s,v) 
+				local color = Color3.fromHSV(h,s,v)
 				local r,g,b = math.floor((h*255)+0.5),math.floor((s*255)+0.5),math.floor((v*255)+0.5)
 				local hex = string.format("#%02X%02X%02X",color.R*0xFF,color.G*0xFF,color.B*0xFF)
 				ColorPicker.HexInput.InputBox.Text = hex
 				local function setDisplay(hp,sp,vp)
-					--Main
-					Main.MainPoint.Position = UDim2.new(s,-Main.MainPoint.AbsoluteSize.X/2,1-v,-Main.MainPoint.AbsoluteSize.Y/2)
+										Main.MainPoint.Position = UDim2.new(s,-Main.MainPoint.AbsoluteSize.X/2,1-v,-Main.MainPoint.AbsoluteSize.Y/2)
 					Main.MainPoint.ImageColor3 = Color3.fromHSV(hp,sp,vp)
 					Background.BackgroundColor3 = Color3.fromHSV(hp,1,1)
 					Display.BackgroundColor3 = Color3.fromHSV(hp,sp,vp)
-					--Slider 
-					local x = hp * Slider.AbsoluteSize.X
+										local x = hp * Slider.AbsoluteSize.X
 					Slider.SliderPoint.Position = UDim2.new(0,x-Slider.SliderPoint.AbsoluteSize.X/2,0.5,0)
 					Slider.SliderPoint.ImageColor3 = Color3.fromHSV(hp,1,1)
-					local color = Color3.fromHSV(hp,sp,vp) 
+					local color = Color3.fromHSV(hp,sp,vp)
 					local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 					ColorPicker.RInput.InputBox.Text = tostring(r)
 					ColorPicker.GInput.InputBox.Text = tostring(g)
@@ -5959,26 +5161,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 							hex = ColorPicker.HexInput.InputBox.Text
 							setDisplay()
 							ColorPickerSettings.Color = rgbColor
-						end) 
-					then 
-						ColorPicker.HexInput.InputBox.Text = hex 
+						end)
+					then
+						ColorPicker.HexInput.InputBox.Text = hex
 					end
 					local r,g,b = math.floor((h*255)+0.5),math.floor((s*255)+0.5),math.floor((v*255)+0.5)
 					ColorPickerSettings.Color = Color3.fromRGB(r,g,b)
 					SafeCallback( Color3.fromRGB(r,g,b))
 				end)
-				--RGB
-				local function rgbBoxes(box,toChange)
-					local value = tonumber(box.Text) 
-					local color = Color3.fromHSV(h,s,v) 
+								local function rgbBoxes(box,toChange)
+					local value = tonumber(box.Text)
+					local color = Color3.fromHSV(h,s,v)
 					local oldR,oldG,oldB = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
-					local save 
+					local save
 					if toChange == "R" then save = oldR;oldR = value elseif toChange == "G" then save = oldG;oldG = value else save = oldB;oldB = value end
-					if value then 
+					if value then
 						value = math.clamp(value,0,255)
 						h,s,v = Color3.fromRGB(oldR,oldG,oldB):ToHSV()
 						setDisplay()
-					else 
+					else
 						box.Text = tostring(save)
 					end
 					local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
@@ -5997,7 +5198,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					SafeCallback(Color3.fromRGB(r,g,b))
 				end)
 				RunService.RenderStepped:connect(function()
-					if mainDragging then 
+					if mainDragging then
 						local localX = math.clamp(mouse.X-Main.AbsolutePosition.X,0,Main.AbsoluteSize.X)
 						local localY = math.clamp(mouse.Y-Main.AbsolutePosition.Y,0,Main.AbsoluteSize.Y)
 						Main.MainPoint.Position = UDim2.new(0,localX-Main.MainPoint.AbsoluteSize.X/2,0,localY-Main.MainPoint.AbsoluteSize.Y/2)
@@ -6006,7 +5207,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						Display.BackgroundColor3 = Color3.fromHSV(h,s,v)
 						Main.MainPoint.ImageColor3 = Color3.fromHSV(h,s,v)
 						Background.BackgroundColor3 = Color3.fromHSV(h,1,1)
-						local color = Color3.fromHSV(h,s,v) 
+						local color = Color3.fromHSV(h,s,v)
 						local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 						ColorPicker.RInput.InputBox.Text = tostring(r)
 						ColorPicker.GInput.InputBox.Text = tostring(g)
@@ -6016,7 +5217,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						ColorPickerSettings.Color = Color3.fromRGB(r,g,b)
 						ColorPickerV.Color = ColorPickerSettings.Color
 					end
-					if sliderDragging then 
+					if sliderDragging then
 						local localX = math.clamp(mouse.X-Slider.AbsolutePosition.X,0,Slider.AbsoluteSize.X)
 						h = localX / Slider.AbsoluteSize.X
 						Display.BackgroundColor3 = Color3.fromHSV(h,s,v)
@@ -6024,7 +5225,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						Slider.SliderPoint.ImageColor3 = Color3.fromHSV(h,1,1)
 						Background.BackgroundColor3 = Color3.fromHSV(h,1,1)
 						Main.MainPoint.ImageColor3 = Color3.fromHSV(h,s,v)
-						local color = Color3.fromHSV(h,s,v) 
+						local color = Color3.fromHSV(h,s,v)
 						local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 						ColorPicker.RInput.InputBox.Text = tostring(r)
 						ColorPicker.GInput.InputBox.Text = tostring(g)
@@ -6035,66 +5236,49 @@ function Window:CreateHomeTab(HomeTabSettings)
 						ColorPickerV.Color = ColorPickerSettings.Color
 					end
 				end)
-
 				function ColorPickerV:Set(NewColorPickerSettings)
-
 					NewColorPickerSettings = Kwargify(ColorPickerSettings, NewColorPickerSettings or {})
-
 					ColorPickerV.Settings = NewColorPickerSettings
 					ColorPickerSettings = NewColorPickerSettings
-
 					RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 					ColorPicker.Title.Text = ColorPickerSettings.Name
 					ColorPicker.Visible = true
-
 					local h,s,v = ColorPickerSettings.Color:ToHSV()
-					local color = Color3.fromHSV(h,s,v) 
+					local color = Color3.fromHSV(h,s,v)
 					local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 					local hex = string.format("#%02X%02X%02X",color.R*0xFF,color.G*0xFF,color.B*0xFF)
 					ColorPicker.HexInput.InputBox.Text = hex
 					setDisplay(h,s,v)
 					SafeCallback(Color3.fromRGB(r,g,b))
-
 					ColorPickerV.Color = ColorPickerSettings.Color
 				end
-
 				function ColorPickerV:Destroy()
 					ColorPicker:Destroy()
 				end
-
 				if Flag then
 					Luna.Options[Flag] = ColorPickerV
 				end
-
 				SafeCallback(ColorPickerSettings.Color)
-
 				return ColorPickerV
 			end
-
 			return Section
-
 		end
-
-		-- Divider (optional centered label)
-		function Tab:CreateDivider(DividerSettings)
+				function Tab:CreateDivider(DividerSettings)
 			local text
 			if type(DividerSettings) == "string" then
 				text = DividerSettings
 			elseif type(DividerSettings) == "table" then
 				text = DividerSettings.Text
 			end
-
 			local b = Elements.Template.Divider:Clone()
 			b.Parent = TabPage
 			b.Line.BackgroundTransparency = 1
 			tween(b.Line, {BackgroundTransparency = 0})
-
 			if text and text ~= "" then
 				local line = b.Line
 				line.AnchorPoint = Vector2.new(0, 0.5)
 				line.Position = UDim2.new(0, 0, 0.5, 0)
 				line.Size = UDim2.new(0.5, -45, 0, line.Size.Y.Offset)
-
 				local rightLine = line:Clone()
 				rightLine.Name = RandomName()
 				rightLine.AnchorPoint = Vector2.new(1, 0.5)
@@ -6103,7 +5287,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				rightLine.Parent = b
 				rightLine.BackgroundTransparency = 1
 				tween(rightLine, {BackgroundTransparency = 0})
-
 				local label = Instance.new("TextLabel")
 				label.Name = RandomName()
 				label.BackgroundTransparency = 1
@@ -6119,27 +5302,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 				label.Parent = b
 				tween(label, {TextTransparency = 0.15})
 			end
-
 			return b
 		end
-
-		-- Button
-		function Tab:CreateButton(ButtonSettings)
-
+				function Tab:CreateButton(ButtonSettings)
 			ButtonSettings = Kwargify({
 				Name = "Button",
 				Description = nil,
 				Callback = function()
-
 				end,
 			}, ButtonSettings or {})
-
 			local ButtonV = {
 				Hover = false,
 				Settings = ButtonSettings
 			}
-
-
 			local hasDesc = type(ButtonSettings.Description) == "string" and ButtonSettings.Description ~= ""
 			local Button = hasDesc and Elements.Template.ButtonDesc:Clone() or Elements.Template.Button:Clone()
 			RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
@@ -6151,7 +5326,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 			Button.Visible = true
 			Button.Parent = TabPage
-
 			local btnStroke = LunaFindStroke(Button)
 			local btnTitle = LunaFindTitle(Button)
 			if btnStroke then btnStroke.Transparency = 1 end
@@ -6160,7 +5334,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				local btnDesc = Button:FindFirstChild("Desc")
 				if btnDesc then btnDesc.TextTransparency = 1 end
 			end
-
 			TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 			if btnStroke then
 				TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
@@ -6174,10 +5347,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					TweenService:Create(btnDescTween, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				end
 			end
-
 			Button.Interact["MouseButton1Click"]:Connect(function()
 				local Success,Response = pcall(ButtonSettings.Callback)
-
 				if not Success then
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(85, 0, 0)}):Play()
@@ -6203,54 +5374,41 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			end)
-
 			Button["MouseEnter"]:Connect(function()
 				ButtonV.Hover = true
 				LunaTweenStroke(Button, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
-
 			Button["MouseLeave"]:Connect(function()
 				ButtonV.Hover = false
 				LunaTweenStroke(Button, {Color = Color3.fromRGB(64,61,76)})
 			end)
-
 			function ButtonV:Set(ButtonSettings2)
 				ButtonSettings2 = Kwargify({
 					Name = ButtonSettings.Name,
 					Description = ButtonSettings.Description,
 					Callback = ButtonSettings.Callback
 				}, ButtonSettings2 or {})
-
 				ButtonSettings = ButtonSettings2
 				ButtonV.Settings = ButtonSettings2
-
 				RegisterElement(Window, Button, ButtonSettings.Name, "Button", TabSettings.Name)
 				LunaSetText(Button.Title, ButtonSettings.Name)
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
 					LunaSetText(Button.Desc, ButtonSettings.Description)
 				end
 			end
-
 			function ButtonV:Destroy()
 				Button.Visible = false
 				Button:Destroy()
 			end
-
 			return ButtonV
 		end
-
-		-- Label
-		function Tab:CreateLabel(LabelSettings)
-
+				function Tab:CreateLabel(LabelSettings)
 			local LabelV = {}
-
 			LabelSettings = Kwargify({
 				Text = "Label",
 				Style = 1
-			}, LabelSettings or {}) 
-
+			}, LabelSettings or {})
 			LabelV.Settings = LabelSettings
-
 			local Label
 			if LabelSettings.Style == 1 then
 				Label = Elements.Template.Label:Clone()
@@ -6259,49 +5417,38 @@ function Window:CreateHomeTab(HomeTabSettings)
 			elseif LabelSettings.Style == 3 then
 				Label = Elements.Template.Warn:Clone()
 			end
-
 			LunaSetText(Label.Text, LabelSettings.Text)
 			Label.Visible = true
 			Label.Parent = TabPage
-
 			Label.BackgroundTransparency = 1
 			Label.UIStroke.Transparency = 1
 			Label.Text.TextTransparency = 1
-
 			if LabelSettings.Style ~= 1 then
 				TweenService:Create(Label, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.8}):Play()
 			else
 				TweenService:Create(Label, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
 			end
 			TweenService:Create(Label.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Label.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-
+			TweenService:Create(Label.Text, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			function LabelV:Set(NewLabel)
 				LabelSettings.Text = NewLabel
 				LabelV.Settings = LabelSettings
 				Label.Text.Text = NewLabel
 			end
-
 			function LabelV:Destroy()
 				Label.Visible = false
 				Label:Destroy()
 			end
-
 			return LabelV
 		end
-
-		-- Paragraph
-		function Tab:CreateParagraph(ParagraphSettings)
-
+				function Tab:CreateParagraph(ParagraphSettings)
 			ParagraphSettings = Kwargify({
 				Title = "Paragraph",
 				Text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus venenatis lacus sed tempus eleifend. Mauris interdum bibendum felis, in tempor augue egestas vel. Praesent tristique consectetur ex, eu pretium sem placerat non. Vestibulum a nisi sit amet augue facilisis consectetur sit amet et nunc. Integer fermentum ornare cursus. Pellentesque sed ultricies metus, ut egestas metus. Vivamus auctor erat ac sapien vulputate, nec ultricies sem tempor. Quisque leo lorem, faucibus nec pulvinar nec, congue eu velit. Duis sodales massa efficitur imperdiet ultrices. Donec eros ipsum, ornare pharetra purus aliquam, tincidunt elementum nisi. Ut mi tortor, feugiat eget nunc vitae, facilisis interdum dui. Vivamus ullamcorper nunc dui, a dapibus nisi pretium ac. Integer eleifend placerat nibh, maximus malesuada tellus. Cras in justo in ligula scelerisque suscipit vel vitae quam."
 			}, ParagraphSettings or {})
-
 			local ParagraphV = {
 				Settings = ParagraphSettings
 			}
-
 			local Paragraph = Elements.Template.Paragraph:Clone()
 			local ParaTitle = LunaFindTitle(Paragraph)
 			local ParaText = LunaFindBodyText(Paragraph)
@@ -6309,13 +5456,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			if ParaText then LunaSetText(ParaText, ParagraphSettings.Text) end
 			Paragraph.Visible = true
 			Paragraph.Parent = TabPage
-
 			Paragraph.BackgroundTransparency = 1
 			local paraStroke = LunaFindStroke(Paragraph)
 			if paraStroke then paraStroke.Transparency = 1 end
 			if ParaTitle then ParaTitle.TextTransparency = 1 end
 			if ParaText then ParaText.TextTransparency = 1 end
-
 			TweenService:Create(Paragraph, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
 			if paraStroke then
 				TweenService:Create(paraStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
@@ -6326,100 +5471,75 @@ function Window:CreateHomeTab(HomeTabSettings)
 			if ParaText then
 				TweenService:Create(ParaText, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			end
-
 			function ParagraphV:Update()
 				if not ParaText then return end
 				ParaText.Size = UDim2.new(ParaText.Size.X.Scale, ParaText.Size.X.Offset, 0, math.huge)
 				ParaText.Size = UDim2.new(ParaText.Size.X.Scale, ParaText.Size.X.Offset, 0, ParaText.TextBounds.Y)
 				tween(Paragraph, {Size = UDim2.new(Paragraph.Size.X.Scale, Paragraph.Size.X.Offset, 0, ParaText.TextBounds.Y + 40)})
 			end
-
 			function ParagraphV:Set(NewParagraphSettings)
-
 				NewParagraphSettings = Kwargify({
 					Title = ParagraphSettings.Title,
 					Text = ParagraphSettings.Text
 				}, NewParagraphSettings or {})
-
 				ParagraphV.Settings = NewParagraphSettings
-
 				if ParaTitle and NewParagraphSettings.Title then
 					LunaSetText(ParaTitle, NewParagraphSettings.Title)
 				end
 				if ParaText and NewParagraphSettings.Text ~= nil then
 					LunaSetText(ParaText, NewParagraphSettings.Text)
 				end
-
 				ParagraphV:Update()
-
 			end
-
 			function ParagraphV:Destroy()
 				Paragraph.Visible = false
 				Paragraph:Destroy()
 			end
-
 			ParagraphV:Update()
-
 			return ParagraphV
 		end
-
-		-- Slider
-		function Tab:CreateSlider(SliderSettings, Flag)
+				function Tab:CreateSlider(SliderSettings, Flag)
 			local SliderV = { IgnoreConfig = false, Class = "Slider", Settings = SliderSettings }
-
 			SliderSettings = Kwargify({
 				Name = "Slider",
 				Range = {0, 200},
 				Increment = 1,
 				CurrentValue = 100,
 				Callback = function(Value)
-
 				end,
 			}, SliderSettings or {})
-
 			local SLDragging = false
 			local Slider = Elements.Template.Slider:Clone()
 			RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 			Slider.Title.Text = SliderSettings.Name
 			Slider.Visible = true
 			Slider.Parent = TabPage
-
 			Slider.BackgroundTransparency = 1
 			Slider.UIStroke.Transparency = 1
 			Slider.Title.TextTransparency = 1
-
 			TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 			TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Slider.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-
+			TweenService:Create(Slider.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			Slider.Main.Progress.Size =	UDim2.new(0, Slider.Main.AbsoluteSize.X * ((SliderSettings.CurrentValue + SliderSettings.Range[1]) / (SliderSettings.Range[2] - SliderSettings.Range[1])) > 5 and Slider.Main.AbsoluteSize.X * (SliderSettings.CurrentValue / (SliderSettings.Range[2] - SliderSettings.Range[1])) or 5, 1, 0)
-
 			Slider.Value.Text = tostring(SliderSettings.CurrentValue)
 			SliderV.CurrentValue = Slider.Value.Text
-
 			SliderSettings.Callback(SliderSettings.CurrentValue)
-
 			Slider["MouseEnter"]:Connect(function()
 				tween(Slider.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
-
 			Slider["MouseLeave"]:Connect(function()
 				tween(Slider.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
-
 			Slider.Interact.InputBegan:Connect(function(Input)
-				if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-					SLDragging = true 
-				end 
+				if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+					SLDragging = true
+				end
 			end)
-
-			Slider.Interact.InputEnded:Connect(function(Input) 
-				if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then 
-					SLDragging = false 
-				end 
+			Slider.Interact.InputEnded:Connect(function(Input)
+				if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+					SLDragging = false
+				end
 			end)
-
 			Slider.Interact.MouseButton1Down:Connect(function()
 				local Current = Slider.Main.Progress.AbsolutePosition.X + Slider.Main.Progress.AbsoluteSize.X
 				local Start = Current
@@ -6428,19 +5548,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 					if SLDragging then
 						Location = UserInputService:GetMouseLocation().X
 						Current = Current + 0.025 * (Location - Start)
-
 						if Location < Slider.Main.AbsolutePosition.X then
 							Location = Slider.Main.AbsolutePosition.X
 						elseif Location > Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X then
 							Location = Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X
 						end
-
 						if Current < Slider.Main.AbsolutePosition.X + 5 then
 							Current = Slider.Main.AbsolutePosition.X + 5
 						elseif Current > Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X then
 							Current = Slider.Main.AbsolutePosition.X + Slider.Main.AbsoluteSize.X
 						end
-
 						if Current <= Location and (Location - Start) < 0 then
 							Start = Location
 						elseif Current >= Location and (Location - Start) > 0 then
@@ -6448,11 +5565,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 						Slider.Main.Progress.Size = UDim2.new(0, Location - Slider.Main.AbsolutePosition.X, 1, 0)
 						local NewValue = SliderSettings.Range[1] + (Location - Slider.Main.AbsolutePosition.X) / Slider.Main.AbsoluteSize.X * (SliderSettings.Range[2] - SliderSettings.Range[1])
-
 						NewValue = math.floor(NewValue / SliderSettings.Increment + 0.5) * (SliderSettings.Increment * 10000000) / 10000000
-
 						Slider.Value.Text = tostring(NewValue)
-
 						if SliderSettings.CurrentValue ~= NewValue then
 							local Success, Response = pcall(function()
 								SliderSettings.Callback(NewValue)
@@ -6469,7 +5583,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
 								TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 							end
-
 							SliderSettings.CurrentValue = NewValue
 							SliderV.CurrentValue = SliderSettings.CurrentValue
 						end
@@ -6479,11 +5592,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end)
 			end)
-
 			local function Set(NewVal, bleh)
-
 				NewVal = NewVal or SliderSettings.CurrentValue
-
 				TweenService:Create(Slider.Main.Progress, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.InOut), {Size = UDim2.new(0, Slider.Main.AbsoluteSize.X * ((NewVal + SliderSettings.Range[1]) / (SliderSettings.Range[2] - SliderSettings.Range[1])) > 5 and Slider.Main.AbsoluteSize.X * (NewVal / (SliderSettings.Range[2] - SliderSettings.Range[1])) or 5, 1, 0)}):Play()
 				if not bleh then Slider.Value.Text = tostring(NewVal) end
 				local Success, Response = pcall(function()
@@ -6501,16 +5611,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(30, 33, 40)}):Play()
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
-
 				SliderSettings.CurrentValue = NewVal
 				SliderV.CurrentValue = SliderSettings.CurrentValue
-
 			end
-
 			function SliderV:UpdateValue(Value)
 				Set(tonumber(Value))
-			end 
-
+			end
 			Slider.Value:GetPropertyChangedSignal("Text"):Connect(function()
 				local text = Slider.Value.Text
 				if not tonumber(text) and text ~= "." then
@@ -6520,7 +5626,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Slider.Value.Size = UDim2.fromOffset(Slider.Value.TextBounds.X, 23)
 				Set(tonumber(Slider.Value.Text), true)
 			end)
-
 			function SliderV:Set(NewSliderSettings)
 				NewSliderSettings = Kwargify({
 					Name = SliderSettings.Name,
@@ -6529,39 +5634,27 @@ function Window:CreateHomeTab(HomeTabSettings)
 					CurrentValue = SliderSettings.CurrentValue,
 					Callback = SliderSettings.Callback
 				}, NewSliderSettings or {})
-
 				SliderSettings = NewSliderSettings
 				SliderV.Settings = NewSliderSettings
-
 				RegisterElement(Window, Slider, SliderSettings.Name, "Slider", TabSettings.Name)
 				Slider.Title.Text = SliderSettings.Name
-
 				Set()
-
 			end
-
 			function SliderV:Destroy()
 				Slider.Visible = false
 				Slider:Destroy()
 			end
-
 			if Flag then
 				Luna.Options[Flag] = SliderV
 			end
-
 			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 				Slider.Main.color.Color = Luna.ThemeGradient
 				Slider.Main.UIStroke.color.Color = Luna.ThemeGradient
 			end)
-
 			return SliderV
-
 		end
-
-		-- Toggle
-		function Tab:CreateToggle(ToggleSettings, Flag)    
+				function Tab:CreateToggle(ToggleSettings, Flag)
 			local ToggleV = { IgnoreConfig = false, Class = "Toggle" }
-
 			ToggleSettings = Kwargify({
 				Name = "Toggle",
 				Description = nil,
@@ -6569,19 +5662,14 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Callback = function(Value)
 				end,
 			}, ToggleSettings or {})
-
-
 			local Toggle
-
 			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 				Toggle = Elements.Template.ToggleDesc:Clone()
 			else
 				Toggle = Elements.Template.Toggle:Clone()
 			end
-
 			Toggle.Visible = true
 			Toggle.Parent = TabPage
-
 			RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
 			LunaSetText(Toggle.Title, ToggleSettings.Name)
 			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle:FindFirstChild("Desc") then
@@ -6589,49 +5677,38 @@ function Window:CreateHomeTab(HomeTabSettings)
 			elseif Toggle:FindFirstChild("Desc") then
 				Toggle.Desc.Visible = false
 			end
-
 			Toggle.UIStroke.Transparency = 1
 			Toggle.Title.TextTransparency = 1
 			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 				Toggle.Desc.TextTransparency = 1
 			end
-
 			TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 			if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" then
 				TweenService:Create(Toggle.Desc, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			end
 			TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Toggle.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
-
+			TweenService:Create(Toggle.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			local function Set(bool)
 				if bool then
 					Toggle.toggle.color.Enabled = true
 					tween(Toggle.toggle, {BackgroundTransparency = 0})
-
 					Toggle.toggle.UIStroke.color.Enabled = true
 					tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255), Transparency = 1})
-
 					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0})
 				else
 					Toggle.toggle.color.Enabled = false
 					Toggle.toggle.UIStroke.color.Enabled = false
-
 					Toggle.toggle.UIStroke.Color = Color3.fromRGB(97,97,97)
 					tween(Toggle.toggle.UIStroke, {Transparency = 1})
-
 					Toggle.toggle.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(60, 60, 72)
 					tween(Toggle.toggle, {BackgroundTransparency = 0.55})
-
 					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 				end
-
 				ToggleV.CurrentValue = bool
 			end
-
 			Toggle.Interact.MouseButton1Click:Connect(function()
 				ToggleSettings.CurrentValue = not ToggleSettings.CurrentValue
 				Set(ToggleSettings.CurrentValue)
-
 				local Success, Response = pcall(function()
 					ToggleSettings.Callback(ToggleSettings.CurrentValue)
 				end)
@@ -6648,15 +5725,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 			end)
-
 			Toggle["MouseEnter"]:Connect(function()
 				tween(Toggle.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
-
 			Toggle["MouseLeave"]:Connect(function()
 				tween(Toggle.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
-
 			if ToggleSettings.CurrentValue then
 				Set(ToggleSettings.CurrentValue)
 				local Success, Response = pcall(function()
@@ -6675,34 +5749,26 @@ function Window:CreateHomeTab(HomeTabSettings)
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 			end
-
 			function ToggleV:UpdateState(State)
 				ToggleSettings.CurrentValue = State
 				Set(ToggleSettings.CurrentValue)
 			end
-
 			function ToggleV:Set(NewToggleSettings)
-
 				NewToggleSettings = Kwargify({
 					Name = ToggleSettings.Name,
 					Description = ToggleSettings.Description,
 					CurrentValue = ToggleSettings.CurrentValue,
 					Callback = ToggleSettings.Callback
 				}, NewToggleSettings or {})
-
 				ToggleV.Settings = NewToggleSettings
 				ToggleSettings = NewToggleSettings
-
 				RegisterElement(Window, Toggle, ToggleSettings.Name, "Toggle", TabSettings.Name)
 				Toggle.Title.Text = ToggleSettings.Name
 				if ToggleSettings.Description ~= nil and ToggleSettings.Description ~= "" and Toggle.Desc ~= nil then
 					Toggle.Desc.Text = ToggleSettings.Description
 				end
-
 				Set(ToggleSettings.CurrentValue)
-
 				ToggleV.CurrentValue = ToggleSettings.CurrentValue
-
 				local Success, Response = pcall(function()
 					ToggleSettings.Callback(ToggleSettings.CurrentValue)
 				end)
@@ -6719,61 +5785,45 @@ function Window:CreateHomeTab(HomeTabSettings)
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 			end
-
 			function ToggleV:Destroy()
 				Toggle.Visible = false
 				Toggle:Destroy()
 			end
-
 			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 				Toggle.toggle.color.Color = Luna.ThemeGradient
 				Toggle.toggle.UIStroke.color.Color = Luna.ThemeGradient
 			end)
-
 			if Flag then
 				Luna.Options[Flag] = ToggleV
 			end
-
 			return ToggleV
-
 		end
-
-		-- Bind
-		function Tab:CreateBind(BindSettings, Flag)
+				function Tab:CreateBind(BindSettings, Flag)
 			local BindV = { Class = "Keybind", IgnoreConfig = false, Settings = BindSettings, Active = false }
-
 			BindSettings = Kwargify({
 				Name = "Bind",
 				Description = nil,
 				CurrentBind = "Q",
 				HoldToInteract = false,
 				Callback = function(Bind)
-					
-				end,
-
+									end,
 				OnChangedCallback = function(Bind)
-					
-				end,
+									end,
 			}, BindSettings or {})
-
 			local CheckingForKey = false
-
 			local Bind
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind = Elements.Template.BindDesc:Clone()
 			else
 				Bind = Elements.Template.Bind:Clone()
 			end
-
 			Bind.Visible = true
 			Bind.Parent = TabPage
-
 			RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 			Bind.Title.Text = BindSettings.Name
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind.Desc.Text = BindSettings.Description
 			end
-
 			Bind.Title.TextTransparency = 1
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind.Desc.TextTransparency = 1
@@ -6781,7 +5831,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Bind.BindFrame.BackgroundTransparency = 1
 			Bind.BindFrame.UIStroke.Transparency = 1
 			Bind.BindFrame.BindBox.TextTransparency = 1
-
 			TweenService:Create(Bind, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 			TweenService:Create(Bind.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
@@ -6790,32 +5839,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 			TweenService:Create(Bind.BindFrame, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.9}):Play()
 			TweenService:Create(Bind.BindFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 			TweenService:Create(Bind.BindFrame.BindBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-
-
 			Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 			Bind.BindFrame.BindBox.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 20, 0, 42)
-
 			Bind.BindFrame.BindBox.Focused:Connect(function()
 				CheckingForKey = true
 				Bind.BindFrame.BindBox.Text = ""
 			end)
-
 			Bind.BindFrame.BindBox.FocusLost:Connect(function()
 				CheckingForKey = false
 				if Bind.BindFrame.BindBox.Text == (nil or "") then
 					Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 				end
 			end)
-
 			Bind["MouseEnter"]:Connect(function()
 				tween(Bind.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
-
 			Bind["MouseLeave"]:Connect(function()
 				tween(Bind.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
 			UserInputService.InputBegan:Connect(function(input, processed)
-
 				if CheckingForKey then
 					if input.KeyCode ~= Enum.KeyCode.Unknown and input.KeyCode ~= Window.Bind then
 						local SplitMessage = string.split(tostring(input.KeyCode), ".")
@@ -6839,7 +5881,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 						Bind.BindFrame.BindBox:ReleaseFocus()
 					end
-				elseif BindSettings.CurrentBind ~= nil and (input.KeyCode == Enum.KeyCode[BindSettings.CurrentBind] and not processed) then -- Test
+				elseif BindSettings.CurrentBind ~= nil and (input.KeyCode == Enum.KeyCode[BindSettings.CurrentBind] and not processed) then
 					local Held = true
 					local Connection
 					Connection = input.Changed:Connect(function(prop)
@@ -6848,7 +5890,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 							Held = false
 						end
 					end)
-
 					if not BindSettings.HoldToInteract then
 						BindV.Active = not BindV.Active
 						local Success, Response = pcall(function()
@@ -6885,7 +5926,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-									end 
+									end
 									Loop:Disconnect()
 								else
 									local Success, Response = pcall(function()
@@ -6904,18 +5945,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 									end
 								end
-							end)	
+							end)
 						end
 					end
 				end
 			end)
-
 			Bind.BindFrame.BindBox:GetPropertyChangedSignal("Text"):Connect(function()
 				TweenService:Create(Bind.BindFrame, TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 20, 0, 30)}):Play()
 			end)
-
 			function BindV:Set(NewBindSettings)
-
 				NewBindSettings = Kwargify({
 					Name = BindSettings.Name,
 					Description = BindSettings.Description,
@@ -6923,67 +5961,50 @@ function Window:CreateHomeTab(HomeTabSettings)
 					HoldToInteract = BindSettings.HoldToInteract,
 					Callback = BindSettings.Callback
 				}, NewBindSettings or {})
-
 				BindV.Settings = NewBindSettings
 				BindSettings = NewBindSettings
-
 				RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 				Bind.Title.Text = BindSettings.Name
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" and Bind.Desc ~= nil then
 					Bind.Desc.Text = BindSettings.Description
 				end
-
 				Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 				Bind.BindFrame.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 20, 0, 42)
-
-
 				BindV.CurrentBind = BindSettings.CurrentBind
 			end
-
 			function BindV:Destroy()
 				Bind.Visible = false
 				Bind:Destroy()
 			end
-
 			if Flag then
 				Luna.Options[Flag] = BindV
 			end
-
 			return BindV
-
 		end
-
 		function Tab:CreateKeybind(BindSettings)
-
 			BindSettings = Kwargify({
 				Name = "Bind",
 				Description = nil,
 				CurrentBind = "Q",
 				HoldToInteract = false,
 				Callback = function(Bind)
-					
-				end
+									end
 			}, BindSettings or {})
-
 			local BindV = { Settings = BindSettings, Active = false }
 			local CheckingForKey = false
-
 			local Bind
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind = Elements.Template.BindDesc:Clone()
 			else
 				Bind = Elements.Template.Bind:Clone()
 			end
-
 			Bind.Visible = true
 			Bind.Parent = TabPage
-
 			RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 			Bind.Title.Text = BindSettings.Name
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind.Desc.Text = BindSettings.Description
 			end
-
 			Bind.Title.TextTransparency = 1
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
 				Bind.Desc.TextTransparency = 1
@@ -6991,7 +6012,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Bind.BindFrame.BackgroundTransparency = 1
 			Bind.BindFrame.UIStroke.Transparency = 1
 			Bind.BindFrame.BindBox.TextTransparency = 1
-
 			TweenService:Create(Bind, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 			TweenService:Create(Bind.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			if BindSettings.Description ~= nil and BindSettings.Description ~= "" then
@@ -7000,31 +6020,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 			TweenService:Create(Bind.BindFrame, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.9}):Play()
 			TweenService:Create(Bind.BindFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 			TweenService:Create(Bind.BindFrame.BindBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-
 			Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 			Bind.BindFrame.BindBox.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 16, 0, 42)
-
 			Bind.BindFrame.BindBox.Focused:Connect(function()
 				CheckingForKey = true
 				Bind.BindFrame.BindBox.Text = ""
 			end)
-
 			Bind.BindFrame.BindBox.FocusLost:Connect(function()
 				CheckingForKey = false
 				if Bind.BindFrame.BindBox.Text == (nil or "") then
 					Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 				end
 			end)
-
 			Bind["MouseEnter"]:Connect(function()
 				tween(Bind.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
-
 			Bind["MouseLeave"]:Connect(function()
 				tween(Bind.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
 			UserInputService.InputBegan:Connect(function(input, processed)
-
 				if CheckingForKey then
 					if input.KeyCode ~= Enum.KeyCode.Unknown and input.KeyCode ~= Enum.KeyCode.K then
 						local SplitMessage = string.split(tostring(input.KeyCode), ".")
@@ -7033,7 +6047,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						BindSettings.CurrentBind = tostring(NewKeyNoEnum)
 						Bind.BindFrame.BindBox:ReleaseFocus()
 					end
-				elseif BindSettings.CurrentBind ~= nil and (input.KeyCode == Enum.KeyCode[BindSettings.CurrentBind] and not processed) then -- Test
+				elseif BindSettings.CurrentBind ~= nil and (input.KeyCode == Enum.KeyCode[BindSettings.CurrentBind] and not processed) then
 					local Held = true
 					local Connection
 					Connection = input.Changed:Connect(function(prop)
@@ -7042,7 +6056,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 							Held = false
 						end
 					end)
-
 					if not BindSettings.HoldToInteract then
 						BindV.Active = not BindV.Active
 						local Success, Response = pcall(function()
@@ -7079,7 +6092,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-									end 
+									end
 									Loop:Disconnect()
 								else
 									local Success, Response = pcall(function()
@@ -7098,18 +6111,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 									end
 								end
-							end)	
+							end)
 						end
 					end
 				end
 			end)
-
 			Bind.BindFrame.BindBox:GetPropertyChangedSignal("Text"):Connect(function()
 				TweenService:Create(Bind.BindFrame, TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 16, 0, 30)}):Play()
 			end)
-
 			function BindV:Set(NewBindSettings)
-
 				NewBindSettings = Kwargify({
 					Name = BindSettings.Name,
 					Description = BindSettings.Description,
@@ -7117,34 +6127,24 @@ function Window:CreateHomeTab(HomeTabSettings)
 					HoldToInteract = BindSettings.HoldToInteract,
 					Callback = BindSettings.Callback
 				}, NewBindSettings or {})
-
 				BindV.Settings = NewBindSettings
 				BindSettings = NewBindSettings
-
 				RegisterElement(Window, Bind, BindSettings.Name, "Bind", TabSettings.Name)
 				Bind.Title.Text = BindSettings.Name
 				if BindSettings.Description ~= nil and BindSettings.Description ~= "" and Bind.Desc ~= nil then
 					Bind.Desc.Text = BindSettings.Description
 				end
-
 				Bind.BindFrame.BindBox.Text = BindSettings.CurrentBind
 				Bind.BindFrame.BindBox.Size = UDim2.new(0, Bind.BindFrame.BindBox.TextBounds.X + 16, 0, 42)
-
 			end
-
 			function BindV:Destroy()
 				Bind.Visible = false
 				Bind:Destroy()
 			end
-
 			return BindV
-
 		end
-
-		-- Dynamic Input
-		function Tab:CreateInput(InputSettings, Flag)
+				function Tab:CreateInput(InputSettings, Flag)
 			local InputV = { IgnoreConfig = false, Class = "Input", Settings = InputSettings }
-
 			InputSettings = Kwargify({
 				Name = "Dynamic Input",
 				Description = nil,
@@ -7155,30 +6155,24 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Enter = false,
 				MaxCharacters = nil,
 				Callback = function(Text)
-
 				end,
 			}, InputSettings or {})
-
 			InputV.CurrentValue = InputSettings.CurrentValue
-
 			local descriptionbool
 			if InputSettings.Description ~= nil and InputSettings.Description ~= "" then
 				descriptionbool = true
 			end
-
-			local Input 
+			local Input
 			if descriptionbool then
 				Input = Elements.Template.InputDesc:Clone()
 			else
 				Input = Elements.Template.Input:Clone()
 			end
-
 			RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 			Input.Title.Text = InputSettings.Name
 			if descriptionbool then LunaSetText(Input.Desc, InputSettings.Description) end
 			Input.Visible = true
 			Input.Parent = TabPage
-
 			Input.BackgroundTransparency = 1
 			Input.UIStroke.Transparency = 1
 			Input.Title.TextTransparency = 1
@@ -7186,20 +6180,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Input.InputFrame.BackgroundTransparency = 1
 			Input.InputFrame.UIStroke.Transparency = 1
 			Input.InputFrame.InputBox.TextTransparency = 1
-
 			TweenService:Create(Input, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
 			TweenService:Create(Input.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
-			TweenService:Create(Input.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()	
+			TweenService:Create(Input.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			if descriptionbool then TweenService:Create(Input.Desc, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play() end
 			TweenService:Create(Input.InputFrame, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.9}):Play()
 			TweenService:Create(Input.InputFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 			TweenService:Create(Input.InputFrame.InputBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-
 			Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
 			Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 30)
-
 			Input.InputFrame.InputBox.FocusLost:Connect(function(bleh)
-
 				if InputSettings.Enter then
 					if bleh then
 						local Success, Response = pcall(function()
@@ -7220,13 +6210,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 						end
 					end
 				end
-
 				if InputSettings.RemoveTextAfterFocusLost then
 					Input.InputFrame.InputBox.Text = ""
 				end
-
 			end)
-
 			if InputSettings.Numeric then
 				Input.InputFrame.InputBox:GetPropertyChangedSignal("Text"):Connect(function()
 					local text = Input.InputFrame.InputBox.Text
@@ -7235,7 +6222,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end)
 			end
-
 			Input.InputFrame.InputBox:GetPropertyChangedSignal("Text"):Connect(function()
 				if tonumber(InputSettings.MaxCharacters) then
 					if (#Input.InputFrame.InputBox.Text - 1) == InputSettings.MaxCharacters then
@@ -7260,55 +6246,40 @@ function Window:CreateHomeTab(HomeTabSettings)
 						TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end
-				InputV.CurrentValue = Input.InputFrame.InputBox.Text				
+				InputV.CurrentValue = Input.InputFrame.InputBox.Text
 			end)
-
 			Input["MouseEnter"]:Connect(function()
 				tween(Input.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
-
 			Input["MouseLeave"]:Connect(function()
 				tween(Input.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
-
 			function InputV:Set(NewInputSettings)
-
 				NewInputSettings = Kwargify(InputSettings, NewInputSettings or {})
-
 				InputV.Settings = NewInputSettings
 				InputSettings = NewInputSettings
-
 				RegisterElement(Window, Input, InputSettings.Name, "Input", TabSettings.Name)
 				Input.Title.Text = InputSettings.Name
 				if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 					Input.Desc.Text = InputSettings.Description
 				end
-
 				Input.InputFrame.InputBox:CaptureFocus()
 				Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue)
 				Input.InputFrame.InputBox:ReleaseFocus()
 				Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 42)
-
 				InputV.CurrentValue = InputSettings.CurrentValue
 			end
-
 			function InputV:Destroy()
 				Input.Visible = false
 				Input:Destroy()
 			end
-
 			if Flag then
 				Luna.Options[Flag] = InputV
 			end
-
 			return InputV
-
 		end
-
-		-- Dropdown
-		function Tab:CreateDropdown(DropdownSettings, Flag)
+				function Tab:CreateDropdown(DropdownSettings, Flag)
 			local DropdownV = { IgnoreConfig = false, Class = "Dropdown", Settings = DropdownSettings}
-
 			DropdownSettings = Kwargify({
 				Name = "Dropdown",
 				Description = nil,
@@ -7317,12 +6288,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 				MultipleOptions = false,
 				SpecialType = nil,
 				Callback = function(Options)
-					
-				end,
+									end,
 			}, DropdownSettings or {})
-
 			DropdownV.CurrentOption = DropdownSettings.CurrentOption
-
 			local descriptionbool = false
 			if DropdownSettings.Description ~= nil and DropdownSettings.Description ~= "" then
 				descriptionbool = true
@@ -7337,17 +6305,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 				openedsize = 160
 			end
 			local opened = false
-
 			local Dropdown
 			if descriptionbool then Dropdown = Elements.Template.DropdownDesc:Clone() else Dropdown = Elements.Template.Dropdown:Clone() end
-
 			RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 			Dropdown.Title.Text = DropdownSettings.Name
 			if descriptionbool then LunaSetText(Dropdown.Desc, DropdownSettings.Description) end
-
 			Dropdown.Parent = TabPage
 			Dropdown.Visible = true
-
 			local function Toggle()
 				opened = not opened
 				if opened then
@@ -7358,7 +6322,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					tween(Dropdown, {Size = UDim2.new(1, -25, 0, closedsize)})
 				end
 			end
-
 			local function SafeCallback(param, c2)
 				local Success, Response = pcall(function()
 					DropdownSettings.Callback(param)
@@ -7379,9 +6342,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					c2()
 				end
 			end
-
-			-- Fixed By justhey
-			Dropdown.Selected:GetPropertyChangedSignal("Text"):Connect(function()
+						Dropdown.Selected:GetPropertyChangedSignal("Text"):Connect(function()
 				local text = Dropdown.Selected.Text:lower()
 				for _, Item in ipairs(Dropdown.List:GetChildren()) do
 					if Item:IsA("TextLabel") and Item.Name ~= "Template" then
@@ -7389,8 +6350,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			end)
-
-
 			local function Clear()
 				for _, option in ipairs(Dropdown.List:GetChildren()) do
 					if option.ClassName == "TextLabel" and option.Name ~= "Template" then
@@ -7398,18 +6357,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			end
-
 			local function ActivateColorSingle(name)
 				for _, Option in pairs(Dropdown.List:GetChildren()) do
 					if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
 						tween(Option, {BackgroundTransparency = 0.98})
 					end
 				end
-
 				Toggle()
 				LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
 			end
-
 			local function Refresh()
 				Clear()
 				for i,v in pairs(DropdownSettings.Options) do
@@ -7440,7 +6396,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 							DropdownV.CurrentOption = bleh
 							ActivateColorSingle(v)
 						end
-
 						SafeCallback(bleh, function()
 							if DropdownSettings.MultipleOptions then
 								if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
@@ -7479,47 +6434,36 @@ function Window:CreateHomeTab(HomeTabSettings)
 						else
 							tween(Option, {TextColor3 = Color3.fromRGB(200,200,200)})
 						end
-					end)	
+					end)
 				end
 			end
-
 			local function PlayerTableRefresh()
 				for i,v in pairs(DropdownSettings.Options) do
 					table.remove(DropdownSettings.Options, i)
 				end
-
 				for i,v in pairs(Players:GetChildren()) do
 					table.insert(DropdownSettings.Options, v.Name)
 				end
 			end
-
 			Dropdown.Interact.MouseButton1Click:Connect(function()
 				Toggle()
 			end)
-
 			Dropdown["MouseEnter"]:Connect(function()
 				tween(Dropdown.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
-
 			Dropdown["MouseLeave"]:Connect(function()
 				tween(Dropdown.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
-
 			if DropdownSettings.SpecialType == "Player" then
-
 				for i,v in pairs(DropdownSettings.Options) do
 					table.remove(DropdownSettings.Options, i)
 				end
 				PlayerTableRefresh()
 				DropdownSettings.CurrentOption = DropdownSettings.Options[1]
-
 				Players.PlayerAdded:Connect(function() PlayerTableRefresh() end)
 				Players.PlayerRemoving:Connect(function() PlayerTableRefresh() end)
-
 			end
-
 			Refresh()
-
 			if DropdownSettings.MultipleOptions then
 				DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
 					DropdownSettings.Options,
@@ -7534,7 +6478,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				)
 				DropdownSettings.CurrentOption = single and {single} or {}
 			end
-
 			local bleh, ind = nil,0
 			for i,v in pairs(DropdownSettings.CurrentOption) do
 				ind = ind + 1
@@ -7553,7 +6496,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			else
 				LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 			end
-
 			if DropdownSettings.MultipleOptions then
 				if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
 					if #DropdownSettings.CurrentOption == 1 then
@@ -7571,33 +6513,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
 			end
 			Dropdown.Selected.Text = ""
-
 			function DropdownV:Set(NewDropdownSettings)
 				NewDropdownSettings = Kwargify(DropdownSettings, NewDropdownSettings or {})
-
 				DropdownV.Settings = NewDropdownSettings
 				DropdownSettings = NewDropdownSettings
-
 				RegisterElement(Window, Dropdown, DropdownSettings.Name, "Dropdown", TabSettings.Name)
 				Dropdown.Title.Text = DropdownSettings.Name
 				if DropdownSettings.Description ~= nil and DropdownSettings.Description ~= "" and Dropdown.Desc ~= nil then
 					Dropdown.Desc.Text = DropdownSettings.Description
 				end
-
 				if DropdownSettings.SpecialType == "Player" then
-
 					for i,v in pairs(DropdownSettings.Options) do
 						table.remove(DropdownSettings.Options, i)
 					end
 					PlayerTableRefresh()
-					DropdownSettings.CurrentOption = DropdownSettings.Options[1]                    
+					DropdownSettings.CurrentOption = DropdownSettings.Options[1]
 					Players.PlayerAdded:Connect(function() PlayerTableRefresh() end)
 					Players.PlayerRemoving:Connect(function() PlayerTableRefresh() end)
-
 				end
-
 				Refresh()
-
 				if DropdownSettings.MultipleOptions then
 					DropdownSettings.CurrentOption = LunaSanitizeDropdownCurrent(
 						DropdownSettings.Options,
@@ -7612,7 +6546,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					)
 					DropdownSettings.CurrentOption = single and {single} or {}
 				end
-
 				local bleh, ind = nil,0
 				for i,v in pairs(DropdownSettings.CurrentOption) do
 					ind = ind + 1
@@ -7631,7 +6564,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				else
 					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
 				end
-
 				if DropdownSettings.MultipleOptions then
 					if DropdownSettings.CurrentOption and type(DropdownSettings.CurrentOption) == "table" then
 						if #DropdownSettings.CurrentOption == 1 then
@@ -7649,49 +6581,35 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Dropdown.Selected.PlaceholderText = DropdownSettings.CurrentOption[1] or "None"
 				end
 				Dropdown.Selected.Text = ""
-
 			end
-
 			function DropdownV:Destroy()
 				Dropdown.Visible = false
 				Dropdown:Destroy()
 			end
-
 			if Flag then
 				Luna.Options[Flag] = DropdownV
 			end
-
 			return DropdownV
-
 		end
-
-		-- Color Picker
-		function Tab:CreateColorPicker(ColorPickerSettings, Flag) -- by Rayfield/Throit
+				function Tab:CreateColorPicker(ColorPickerSettings, Flag)
 			local ColorPickerV = {IgnoreClass = false, Class = "Colorpicker", Settings = ColorPickerSettings}
-
 			ColorPickerSettings = Kwargify({
 				Name = "Color Picker",
 				Color = Color3.fromRGB(255,255,255),
 				Callback = function(Value)
-					
-				end
+									end
 			}, ColorPickerSettings or {})
-
 			local function Color3ToHex(color)
 				return string.format("#%02X%02X%02X", math.floor(color.R * 255), math.floor(color.G * 255), math.floor(color.B * 255))
 			end
-
 			ColorPickerV.Color = Color3ToHex(ColorPickerSettings.Color)
-
 			local closedsize = UDim2.new(0, 75, 0, 22)
 			local openedsize = UDim2.new(0, 219, 0, 129)
-
 			local ColorPicker = Elements.Template.ColorPicker:Clone()
 			local Background = ColorPicker.CPBackground
 			local Display = Background.Display
 			local Main = Background.MainCP
 			local Slider = ColorPicker.ColorSlider
-
 			RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 			ColorPicker.Title.Text = ColorPickerSettings.Name
 			ColorPicker.Visible = true
@@ -7699,14 +6617,12 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ColorPicker.Size = UDim2.new(1.042, -25,0, 38)
 			Background.Size = closedsize
 			Display.BackgroundTransparency = 0
-
 			ColorPicker["MouseEnter"]:Connect(function()
 				tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
 			end)
 			ColorPicker["MouseLeave"]:Connect(function()
 				tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(64,61,76)})
 			end)
-
 			local function SafeCallback(param, c2)
 				local Success, Response = pcall(function()
 					ColorPickerSettings.Callback(param)
@@ -7727,16 +6643,14 @@ function Window:CreateHomeTab(HomeTabSettings)
 					c2()
 				end
 			end
-
 			local opened = false
-
 			local mouse = game.Players.LocalPlayer:GetMouse()
 			Main.Image = "http://www.roblox.com/asset/?id=11415645739"
-			local mainDragging = false 
-			local sliderDragging = false 
+			local mainDragging = false
+			local sliderDragging = false
 			ColorPicker.Interact.MouseButton1Down:Connect(function()
 				if not opened then
-					opened = true 
+					opened = true
 					tween(ColorPicker, {Size = UDim2.new( 1.042, -25,0, 165)}, nil, TweenInfo.new(0.6, Enum.EasingStyle.Exponential))
 					tween(Background, {Size = openedsize})
 					tween(Display, {BackgroundTransparency = 1})
@@ -7747,42 +6661,40 @@ function Window:CreateHomeTab(HomeTabSettings)
 					tween(Display, {BackgroundTransparency = 0})
 				end
 			end)
-			UserInputService.InputEnded:Connect(function(input, gameProcessed) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+			UserInputService.InputEnded:Connect(function(input, gameProcessed) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 					mainDragging = false
 					sliderDragging = false
 				end end)
 			Main.MouseButton1Down:Connect(function()
 				if opened then
-					mainDragging = true 
+					mainDragging = true
 				end
 			end)
 			Main.MainPoint.MouseButton1Down:Connect(function()
 				if opened then
-					mainDragging = true 
+					mainDragging = true
 				end
 			end)
 			Slider.MouseButton1Down:Connect(function()
-				sliderDragging = true 
+				sliderDragging = true
 			end)
 			Slider.SliderPoint.MouseButton1Down:Connect(function()
-				sliderDragging = true 
+				sliderDragging = true
 			end)
 			local h,s,v = ColorPickerSettings.Color:ToHSV()
-			local color = Color3.fromHSV(h,s,v) 
+			local color = Color3.fromHSV(h,s,v)
 			local r,g,b = math.floor((h*255)+0.5),math.floor((s*255)+0.5),math.floor((v*255)+0.5)
 			local hex = string.format("#%02X%02X%02X",color.R*0xFF,color.G*0xFF,color.B*0xFF)
 			ColorPicker.HexInput.InputBox.Text = hex
 			local function setDisplay(hp,sp,vp)
-				--Main
-				Main.MainPoint.Position = UDim2.new(s,-Main.MainPoint.AbsoluteSize.X/2,1-v,-Main.MainPoint.AbsoluteSize.Y/2)
+								Main.MainPoint.Position = UDim2.new(s,-Main.MainPoint.AbsoluteSize.X/2,1-v,-Main.MainPoint.AbsoluteSize.Y/2)
 				Main.MainPoint.ImageColor3 = Color3.fromHSV(hp,sp,vp)
 				Background.BackgroundColor3 = Color3.fromHSV(hp,1,1)
 				Display.BackgroundColor3 = Color3.fromHSV(hp,sp,vp)
-				--Slider 
-				local x = hp * Slider.AbsoluteSize.X
+								local x = hp * Slider.AbsoluteSize.X
 				Slider.SliderPoint.Position = UDim2.new(0,x-Slider.SliderPoint.AbsoluteSize.X/2,0.5,0)
 				Slider.SliderPoint.ImageColor3 = Color3.fromHSV(hp,1,1)
-				local color = Color3.fromHSV(hp,sp,vp) 
+				local color = Color3.fromHSV(hp,sp,vp)
 				local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 				ColorPicker.RInput.InputBox.Text = tostring(r)
 				ColorPicker.GInput.InputBox.Text = tostring(g)
@@ -7799,26 +6711,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 						hex = ColorPicker.HexInput.InputBox.Text
 						setDisplay()
 						ColorPickerSettings.Color = rgbColor
-					end) 
-				then 
-					ColorPicker.HexInput.InputBox.Text = hex 
+					end)
+				then
+					ColorPicker.HexInput.InputBox.Text = hex
 				end
 				local r,g,b = math.floor((h*255)+0.5),math.floor((s*255)+0.5),math.floor((v*255)+0.5)
 				ColorPickerSettings.Color = Color3.fromRGB(r,g,b)
 				SafeCallback( Color3.fromRGB(r,g,b))
 			end)
-			--RGB
-			local function rgbBoxes(box,toChange)
-				local value = tonumber(box.Text) 
-				local color = Color3.fromHSV(h,s,v) 
+						local function rgbBoxes(box,toChange)
+				local value = tonumber(box.Text)
+				local color = Color3.fromHSV(h,s,v)
 				local oldR,oldG,oldB = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
-				local save 
+				local save
 				if toChange == "R" then save = oldR;oldR = value elseif toChange == "G" then save = oldG;oldG = value else save = oldB;oldB = value end
-				if value then 
+				if value then
 					value = math.clamp(value,0,255)
 					h,s,v = Color3.fromRGB(oldR,oldG,oldB):ToHSV()
 					setDisplay()
-				else 
+				else
 					box.Text = tostring(save)
 				end
 				local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
@@ -7837,7 +6748,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				SafeCallback(Color3.fromRGB(r,g,b))
 			end)
 			RunService.RenderStepped:connect(function()
-				if mainDragging then 
+				if mainDragging then
 					local localX = math.clamp(mouse.X-Main.AbsolutePosition.X,0,Main.AbsoluteSize.X)
 					local localY = math.clamp(mouse.Y-Main.AbsolutePosition.Y,0,Main.AbsoluteSize.Y)
 					Main.MainPoint.Position = UDim2.new(0,localX-Main.MainPoint.AbsoluteSize.X/2,0,localY-Main.MainPoint.AbsoluteSize.Y/2)
@@ -7846,7 +6757,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Display.BackgroundColor3 = Color3.fromHSV(h,s,v)
 					Main.MainPoint.ImageColor3 = Color3.fromHSV(h,s,v)
 					Background.BackgroundColor3 = Color3.fromHSV(h,1,1)
-					local color = Color3.fromHSV(h,s,v) 
+					local color = Color3.fromHSV(h,s,v)
 					local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 					ColorPicker.RInput.InputBox.Text = tostring(r)
 					ColorPicker.GInput.InputBox.Text = tostring(g)
@@ -7856,7 +6767,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					ColorPickerSettings.Color = Color3.fromRGB(r,g,b)
 					ColorPickerV.Color = ColorPickerSettings.Color
 				end
-				if sliderDragging then 
+				if sliderDragging then
 					local localX = math.clamp(mouse.X-Slider.AbsolutePosition.X,0,Slider.AbsoluteSize.X)
 					h = localX / Slider.AbsoluteSize.X
 					Display.BackgroundColor3 = Color3.fromHSV(h,s,v)
@@ -7864,7 +6775,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Slider.SliderPoint.ImageColor3 = Color3.fromHSV(h,1,1)
 					Background.BackgroundColor3 = Color3.fromHSV(h,1,1)
 					Main.MainPoint.ImageColor3 = Color3.fromHSV(h,s,v)
-					local color = Color3.fromHSV(h,s,v) 
+					local color = Color3.fromHSV(h,s,v)
 					local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 					ColorPicker.RInput.InputBox.Text = tostring(r)
 					ColorPicker.GInput.InputBox.Text = tostring(g)
@@ -7875,60 +6786,45 @@ function Window:CreateHomeTab(HomeTabSettings)
 					ColorPickerV.Color = ColorPickerSettings.Color
 				end
 			end)
-
 			function ColorPickerV:Set(NewColorPickerSettings)
-
 				NewColorPickerSettings = Kwargify(ColorPickerSettings, NewColorPickerSettings or {})
-
 				ColorPickerV.Settings = NewColorPickerSettings
 				ColorPickerSettings = NewColorPickerSettings
-
 				RegisterElement(Window, ColorPicker, ColorPickerSettings.Name, "ColorPicker", TabSettings.Name)
 				ColorPicker.Title.Text = ColorPickerSettings.Name
 				ColorPicker.Visible = true
-
 				local h,s,v = ColorPickerSettings.Color:ToHSV()
-				local color = Color3.fromHSV(h,s,v) 
+				local color = Color3.fromHSV(h,s,v)
 				local r,g,b = math.floor((color.R*255)+0.5),math.floor((color.G*255)+0.5),math.floor((color.B*255)+0.5)
 				local hex = string.format("#%02X%02X%02X",color.R*0xFF,color.G*0xFF,color.B*0xFF)
 				ColorPicker.HexInput.InputBox.Text = hex
 				setDisplay(h,s,v)
 				SafeCallback(Color3.fromRGB(r,g,b))
-
 				ColorPickerV.Color = ColorPickerSettings.Color
 			end
-
 			function ColorPickerV:Destroy()
 				ColorPicker:Destroy()
 			end
-
 			if Flag then
 				Luna.Options[Flag] = ColorPickerV
 			end
-
 			SafeCallback(ColorPickerSettings.Color)
-
 			return ColorPickerV
 		end
-
 		function Tab:BuildConfigSection()
 			if isStudio then
 				Tab:CreateLabel({Text = "Config system unavailable. (Environment isStudio)", Style = 3})
-				return "Config system unavailable." 
+				return "Config system unavailable."
 			end
-
 			local inputPath = nil
 			local selectedConfig = nil
-
 			local Title = Elements.Template.Title:Clone()
 			Title.Text = "Configurations"
 			Title.Visible = true
 			Title.Parent = TabPage
 			Title.TextTransparency = 1
 			TweenService:Create(Title, TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
-
 			Tab:CreateSection("Config Creator")
-
 			Tab:CreateInput({
 				Name = "Config Name",
 				Description = "Insert a name for your to be created config.",
@@ -7941,9 +6837,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					inputPath = input
 				end,
 			})
-
 			local configSelection
-
 			Tab:CreateButton({
 				Name = "Create Config",
 				Description = "Create a config with all of your current settings.",
@@ -7957,7 +6851,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						})
 						return
 					end
-
 					local success, returned = Luna:SaveConfig(inputPath)
 					if not success then
 						Luna:Notification({
@@ -7967,20 +6860,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 							Content = "Unable to save config, return error: " .. returned
 						})
 					end
-
 					Luna:Notification({
 						Title = "Interface",
 						Icon = "info",
 						ImageSource = "Material",
 						Content = string.format("Created config %q", inputPath),
 					})
-
 					configSelection:Set({ Options = Luna:RefreshConfigList() })
 				end
 			})
-
 			Tab:CreateSection("Config Load/Settings")
-
 			configSelection = Tab:CreateDropdown({
 				Name = "Select Config",
 				Description = "Select a config to load your settings on.",
@@ -7992,7 +6881,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					selectedConfig = Value
 				end,
 			})
-
 			Tab:CreateButton({
 				Name = "Load Config",
 				Description = "Load your saved config settings.",
@@ -8007,7 +6895,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						})
 						return
 					end
-
 					Luna:Notification({
 						Title = "Interface",
 						Icon = "info",
@@ -8016,7 +6903,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					})
 				end
 			})
-
 			Tab:CreateButton({
 				Name = "Overwrite Config",
 				Description = "Overwrite your current config settings.",
@@ -8031,7 +6917,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						})
 						return
 					end
-
 					Luna:Notification({
 						Title = "Interface",
 						Icon = "info",
@@ -8040,7 +6925,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					})
 				end
 			})
-
 			Tab:CreateButton({
 				Name = "Refresh Config List",
 				Description = "Refresh the current config list.",
@@ -8048,7 +6932,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					configSelection:Set({ Options = Luna:RefreshConfigList() })
 				end,
 			})
-
 			local loadlabel
 			Tab:CreateButton({
 				Name = "Set as autoload",
@@ -8057,7 +6940,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					local name = selectedConfig
 					writefile(Luna.Folder .. "/settings/autoload.txt", name)
 					loadlabel:Set({ Text = "Current autoload config: " .. name })
-
 					Luna:Notification({
 						Title = "Interface",
 						Icon = "info",
@@ -8066,12 +6948,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 					})
 				end,
 			})
-
 			loadlabel = Tab:CreateParagraph({
 				Title = "Current Auto Load",
 				Text = "None"
 			})
-
 			Tab:CreateButton({
 				Name = "Delete Autoload",
 				Description = "Delete The Autoload File",
@@ -8079,7 +6959,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					local name = selectedConfig
 					delfile(Luna.Folder .. "/settings/autoload.txt")
 					loadlabel:Set({ Text = "None" })
-
 					Luna:Notification({
 						Title = "Interface",
 						Icon = "info",
@@ -8088,19 +6967,17 @@ function Window:CreateHomeTab(HomeTabSettings)
 					})
 				end,
 			})
-
 			if isfile(Luna.Folder .. "/settings/autoload.txt") then
 				local name = readfile(Luna.Folder .. "/settings/autoload.txt")
 				loadlabel:Set( { Text = "Current autoload config: " .. name })
-			end     
+			end
 		end
-
 		local ClassParser = {
 			["Toggle"] = {
 				Save = function(Flag, data)
 					return {
-						type = "Toggle", 
-						flag = Flag, 
+						type = "Toggle",
+						flag = Flag,
 						state = data.CurrentValue or false
 					}
 				end,
@@ -8113,8 +6990,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			["Slider"] = {
 				Save = function(Flag, data)
 					return {
-						type = "Slider", 
-						flag = Flag, 
+						type = "Slider",
+						flag = Flag,
 						value = (data.CurrentValue and tostring(data.CurrentValue)),
 					}
 				end,
@@ -8127,8 +7004,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			["Input"] = {
 				Save = function(Flag, data)
 					return {
-						type = "Input", 
-						flag = Flag, 
+						type = "Input",
+						flag = Flag,
 						text = data.CurrentValue
 					}
 				end,
@@ -8141,8 +7018,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			["Dropdown"] = {
 				Save = function(Flag, data)
 					return {
-						type = "Dropdown", 
-						flag = Flag, 
+						type = "Dropdown",
+						flag = Flag,
 						value = data.CurrentOption
 					}
 				end,
@@ -8152,16 +7029,14 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			},
-			-- buggy as hell still
-			["Colorpicker"] = {
+						["Colorpicker"] = {
 				Save = function(Flag, data)
 					local function Color3ToHex(color)
 						return string.format("#%02X%02X%02X", math.floor(color.R * 255), math.floor(color.G * 255), math.floor(color.B * 255))
 					end
-
 					return {
-						type = "Colorpicker", 
-						flag = Flag, 
+						type = "Colorpicker",
+						flag = Flag,
 						color = Color3ToHex(data.Color) or nil,
 						alpha = data.Alpha
 					}
@@ -8173,25 +7048,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 						local b = tonumber(hex:sub(6, 7), 16) / 255
 						return Color3.new(r, g, b)
 					end
-
 					if Luna.Options[Flag] and data.color then
 						Luna.Options[Flag]:Set({Color = HexToColor3(data.color)})
 					end
 				end
 			}
 		}
-
 		function Tab:BuildThemeSection()
-
 			local Title = Elements.Template.Title:Clone()
 			Title.Text = "Theming"
 			Title.Visible = true
 			Title.Parent = TabPage
 			Title.TextTransparency = 1
 			TweenService:Create(Title, TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
-
 			Tab:CreateSection("UI Theme")
-
 			Tab:CreateDropdown({
 				Name = "Interface Theme",
 				Description = "Full UI skin (colours, fonts, radii). Preset gradients below only affect toggles and sliders.",
@@ -8210,26 +7080,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end,
 			})
-
 			Tab:CreateSection("Custom Editor")
-
 			local c1cp = Tab:CreateColorPicker({
 				Name = "Color 1",
 				Color = Color3.fromRGB(117, 164, 206),
-			}, "LunaInterfaceSuitePrebuiltCPC1") -- A flag is the identifier for the configuration file, make sure every element has a different flag if you're using configuration saving to ensure no overlaps
-
+			}, "LunaInterfaceSuitePrebuiltCPC1")
 			local c2cp = Tab:CreateColorPicker({
 				Name = "Color 2",
 				Color = Color3.fromRGB(123, 201, 201),
 			}, "LunaInterfaceSuitePrebuiltCPC2")
-
 			local c3cp = Tab:CreateColorPicker({
 				Name = "Color 3",
 				Color = Color3.fromRGB(224, 138, 184),
-			}, "LunaInterfaceSuitePrebuiltCPC3") 
-
+			}, "LunaInterfaceSuitePrebuiltCPC3")
 			task.wait(1)
-
 			c1cp:Set({
 				Callback = function(Value)
 					if c2cp and c3cp then
@@ -8238,7 +7102,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			})
-
 			c2cp:Set({
 				Callback = function(Value)
 					if c1cp and c3cp then
@@ -8247,7 +7110,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			})
-
 			c3cp:Set({
 				Callback = function(Valuex)
 					if c2cp and c1cp then
@@ -8256,9 +7118,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			})
-
 			Tab:CreateSection("Preset Gradients")
-
 			for i,v in pairs(PresetGradients) do
 				Tab:CreateButton({
 					Name = tostring(i),
@@ -8269,16 +7129,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end,
 				})
 			end
-
 		end
-
 		local function BuildFolderTree()
 			if isStudio then return "Config system unavailable." end
 			local paths = {
 				Luna.Folder,
 				Luna.Folder .. "/settings"
 			}
-
 			for i = 1, #paths do
 				local str = paths[i]
 				if not isfolder(str) then
@@ -8286,82 +7143,59 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 		end
-
 		local function SetFolder()
-
 			if isStudio then return "Config system unavailable." end
-
 			if WindowSettings.ConfigSettings.RootFolder ~= nil and WindowSettings.ConfigSettings.RootFolder ~= "" then
 				Luna.Folder = WindowSettings.ConfigSettings.RootFolder .. "/" .. WindowSettings.ConfigSettings.ConfigFolder
 			else
 				Luna.Folder = WindowSettings.ConfigSettings.ConfigFolder
 			end
-
 			BuildFolderTree()
 		end
-
 		SetFolder()
-
 		function Luna:SaveConfig(Path)
 			if isStudio then return "Config system unavailable." end
-
 			if (not Path) then
 				return false, "Please select a config file."
 			end
-
 			local fullPath = Luna.Folder .. "/settings/" .. Path .. ".luna"
-
 			local data = {
 				objects = {}
 			}
-
 			for flag, option in next, Luna.Options do
 				if not ClassParser[option.Class] then continue end
 				if option.IgnoreConfig then continue end
-
 				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end	
-
+			end
 			local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
 			if not success then
 				return false, "Unable to encode into JSON data"
 			end
-
 			writefile(fullPath, encoded)
 			return true
 		end
-
 		function Luna:LoadConfig(Path)
 			if isStudio then return "Config system unavailable." end
-
 			if (not Path) then
 				return false, "Please select a config file."
 			end
-
 			local file = Luna.Folder .. "/settings/" .. Path .. ".luna"
 			if not isfile(file) then return false, "Invalid file" end
-
 			local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
 			if not success then return false, "Unable to decode JSON data." end
-
 			for _, option in next, decoded.objects do
 				if ClassParser[option.type] then
-					task.spawn(function() 
-						ClassParser[option.type].Load(option.flag, option) 
+					task.spawn(function()
+						ClassParser[option.type].Load(option.flag, option)
 					end)
 				end
 			end
-
 			return true
 		end
-
 		function Luna:LoadAutoloadConfig()
 			if isfile(Luna.Folder .. "/settings/autoload.txt") then
-
 				if isStudio then return "Config system unavailable." end
-
 				local name = readfile(Luna.Folder .. "/settings/autoload.txt")
-
 				local success, err = Luna:LoadConfig(name)
 				if not success then
 					return Luna:Notification({
@@ -8371,35 +7205,28 @@ function Window:CreateHomeTab(HomeTabSettings)
 						Content = "Failed to load autoload config: " .. err,
 					})
 				end
-
 				Luna:Notification({
 					Title = "Interface",
 					Icon = "sparkle",
 					ImageSource = "Material",
 					Content = string.format("Auto loaded config %q", name),
 				})
-
-			end 
+			end
 		end
-
 		function Luna:RefreshConfigList()
 			if isStudio then return "Config system unavailable." end
-
 			local list = listfiles(Luna.Folder .. "/settings")
-
 			local out = {}
 			for i = 1, #list do
 				local file = list[i]
 				if file:sub(-5) == ".luna" then
 					local pos = file:find(".luna", 1, true)
 					local start = pos
-
 					local char = file:sub(pos, pos)
 					while char ~= "/" and char ~= "\\" and char ~= "" do
 						pos = pos - 1
 						char = file:sub(pos, pos)
 					end
-
 					if char == "/" or char == "\\" then
 						local name = file:sub(pos + 1, start - 1)
 						if name ~= "options" then
@@ -8408,57 +7235,32 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 			end
-
 			return out
 		end
 		return Tab
 	end
-
-	-- ============================================================
-	-- AI Chat tab (pollinations.ai + keyless OVH fallback; free key via /key)
-	-- ============================================================
-	-- Layout:
-	--   ┌─────────────────────────────────────────────────────────────┐
-	--   │ Header: title • subtitle • [model] • [sidebar] [save] [×]   │
-	--   ├──────────────────────────────────────┬──────────────────────┤
-	--   │ Messages (scroll)                    │ + New chat           │
-	--   │                                      │ search               │
-	--   │                                      │ ────────             │
-	--   │                                      │ • Active chat   ⋯    │
-	--   │ [Quick-prompt chips]                 │   Recent chat 1 ⋯    │
-	--   │ [Input box                  ] [▶]    │   …                  │
-	--   └──────────────────────────────────────┴──────────────────────┘
-	--
-	-- Multi-chat persistence (Solara_AI_Chat.json v2):
-	--   { v = 2, activeId, model, chats = { {id, name, conv, updatedAt, pinned, autoNamed}, ... } }
-	-- Old v1 single-chat files are migrated transparently into one "Previous chat".
-	function Window:CreateAiTab(opts)
+																			function Window:CreateAiTab(opts)
 		opts = Kwargify({
 			Name = "Solara Hub AI",
 			Icon = "bot",
 			ImageSource = "Material",
-			SystemPrompt = nil,         -- if set, replaces the default Luau/host prompt
-			Knowledge = nil,            -- extra context block injected into the system prompt
+			SystemPrompt = nil,
+			Knowledge = nil,
 			Model = "openai",
 			ShowTitle = true,
 			Endpoint = "https://gen.pollinations.ai/v1/chat/completions",
-			Webhook = nil,              -- Discord webhook URL for "Send script request" flow
-			SaveFile = "LunaAI_chat.json", -- where to persist chat history (multi-chat v2)
+			Webhook = nil,
+			SaveFile = "LunaAI_chat.json",
 			AutoSave = true,
 		}, opts or {})
-
 		local hostTab = self:CreateTab({
 			Name = opts.Name,
 			Icon = opts.Icon,
 			ImageSource = opts.ImageSource,
-			ShowTitle = false, -- our own header looks cleaner
+			ShowTitle = false,
 		})
-
 		local Page = hostTab.Page
-
-		-- The chat fills the whole page; remove the standard UIListLayout so absolute
-		-- positioning works, and stop the Page from auto-canvassing.
-		local existingList = Page:FindFirstChildOfClass("UIListLayout")
+						local existingList = Page:FindFirstChildOfClass("UIListLayout")
 		if existingList then existingList:Destroy() end
 		local existingPadding = Page:FindFirstChildOfClass("UIPadding")
 		if existingPadding then existingPadding:Destroy() end
@@ -8467,17 +7269,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
 			Page.ScrollingEnabled = false
 		end
-
-		-- =====================================================================
-		-- System prompt
-		-- =====================================================================
-		-- This is the "library" portion — generic Luau/Roblox/executor guidance.
-		-- All product-specific knowledge (tabs, settings, supported games) should
-		-- arrive from the host via opts.Knowledge and is appended below.
-		local function buildSystemPrompt()
-			-- NOTE: level-2 long string `[==[ ... ]==]` so the `[[SCRIPT_REQUEST: ...]]`
-			-- marker inside this prompt doesn't close the literal early.
-			local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — an expert Luau/Roblox assistant embedded inside the Solara Hub script-executor UI. You are precise, brutally honest, and never sloppy. Always reply in the **exact same language the user wrote in** (Russian → Russian, English → English, mixed → mirror the dominant one).
+														local function buildSystemPrompt()
+									local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — an expert Luau/Roblox assistant embedded inside the Solara Hub script-executor UI. You are precise, brutally honest, and never sloppy. Always reply in the **exact same language the user wrote in** (Russian → Russian, English → English, mixed → mirror the dominant one).
 
 ## Identity & purpose
 - You live INSIDE Solara Hub as a sidebar tab. The user already has the hub open and an executor running.
@@ -8546,12 +7339,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 - No emoji spam. No "Hope this helps!" filler. No restating the question back at the user.
 - Confident when host context backs you up; humble (and explicit) when it doesn't.
 - Wrong question or missing info? Briefly say what you can answer and what you'd need to answer the rest — don't guess.
-]==]
-			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
+]==]			if opts.Knowledge and type(opts.Knowledge) == "string" and opts.Knowledge ~= "" then
 				base = base .. "\n\nExtra context provided by the host script:\n" .. opts.Knowledge
 			end
-			-- Live runtime context (auto-attached so the AI knows the current game/player).
-			pcall(function()
+						pcall(function()
 				local placeId = game.PlaceId
 				local gameName = "Unknown"
 				pcall(function()
@@ -8564,35 +7355,20 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 			return base
 		end
-
-		-- =====================================================================
-		-- Palette
-		-- =====================================================================
-		local ACCENT       = Color3.fromRGB(124, 92, 240)
+								local ACCENT       = Color3.fromRGB(124, 92, 240)
 		local ACCENT_DEEP  = Color3.fromRGB(95, 75, 220)
 		local PANEL_BG     = Color3.fromRGB(24, 22, 36)
 		local PANEL_BG_LT  = Color3.fromRGB(38, 34, 54)
 		local STROKE_SOFT  = Color3.fromRGB(120, 105, 175)
 		local TEXT_PRIMARY = Color3.fromRGB(245, 240, 255)
 		local TEXT_DIM     = Color3.fromRGB(175, 170, 200)
-
-		-- =====================================================================
-		-- Multi-chat storage
-		-- =====================================================================
-		local STORAGE_VERSION = 2
+								local STORAGE_VERSION = 2
 		local MAX_CHATS = 50
-		local chats = {}            -- id -> chat
-		local chatOrder = {}        -- array of ids in MRU order (most recent first)
+		local chats = {}
+		local chatOrder = {}
 		local activeId = nil
-		-- Single fixed model — pollinations' alternate endpoints (mistral, deepseek,
-		-- llama, etc.) are unreliable / 404 in practice, so the UI no longer exposes
-		-- a picker. Host can still override via opts.Model if it really wants to.
-		local currentModel = opts.Model or "openai"
-		-- Pollinations API key. Since 2026 pollinations moved text/image generation
-		-- behind gen.pollinations.ai which requires a key (free tier via
-		-- enter.pollinations.ai). The user pastes their own key with /key; it is
-		-- stored locally next to the chat save file.
-		local aiToken = nil
+								local currentModel = opts.Model or "openai"
+										local aiToken = nil
 		local tokenFile = (tostring(opts.SaveFile):gsub("%.%w+$", "")) .. "_Token.txt"
 		local function loadToken()
 			if isfile and readfile and isfile(tokenFile) then
@@ -8611,17 +7387,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 		loadToken()
-		-- Generation token: incrementing counter so a Stop / chat-switch cancels
-		-- the in-flight reply (we drop it instead of writing to the UI).
-		local generation = { token = 0, active = false, chatId = nil }
+						local generation = { token = 0, active = false, chatId = nil }
 		local sidebarOpen = true
-
 		local function nowSec() return os.time() end
 		local function newChatId()
-			-- Luau's `math.random(lo, hi)` is bounded by 2^31-1, so 0xFFFFFFFF
-			-- overflows ("interval is empty"). Compose 32 random bits from two
-			-- 16-bit halves instead.
-			local hi = math.random(0, 0xFFFF)
+												local hi = math.random(0, 0xFFFF)
 			local lo = math.random(0, 0xFFFF)
 			return string.format("%04x%04x_%d", hi, lo, nowSec())
 		end
@@ -8646,9 +7416,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			}
 			chats[id] = c
 			table.insert(chatOrder, 1, id)
-			-- Trim to MAX_CHATS by dropping the oldest UN-pinned entry. If everything
-			-- is pinned we simply stop — exceeding the cap by a little is fine.
-			while #chatOrder > MAX_CHATS do
+									while #chatOrder > MAX_CHATS do
 				local removed = false
 				for i = #chatOrder, 1, -1 do
 					local rid = chatOrder[i]
@@ -8686,7 +7454,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return ""
 		end
-
 		local function saveAll()
 			if not opts.AutoSave or not writefile then return end
 			pcall(function()
@@ -8711,8 +7478,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if data.v == STORAGE_VERSION and type(data.chats) == "table" then
 				for _, c in ipairs(data.chats) do
 					if type(c) == "table" and c.id and type(c.conv) == "table" then
-						-- Refresh the system message so updated host knowledge applies.
-						if c.conv[1] and c.conv[1].role == "system" then
+												if c.conv[1] and c.conv[1].role == "system" then
 							c.conv[1].content = buildSystemPrompt()
 						else
 							table.insert(c.conv, 1, { role = "system", content = buildSystemPrompt() })
@@ -8724,8 +7490,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				if data.activeId and chats[data.activeId] then activeId = data.activeId end
 				if type(data.model) == "string" and data.model ~= "" then currentModel = data.model end
 			elseif type(data.conv) == "table" then
-				-- v1 single-chat migration → "Previous chat".
-				local id = newChatId()
+								local id = newChatId()
 				local c = {
 					id = id, name = "Previous chat",
 					conv = data.conv, updatedAt = nowSec(),
@@ -8741,23 +7506,16 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				activeId = id
 			end
 		end
-
-		-- =====================================================================
-		-- Forward declarations (referenced by UI callbacks defined below)
-		-- =====================================================================
-		local AiTab = {}
+								local AiTab = {}
 		local renderActiveChat, renderSidebar, setHeaderForChat
 		local appendMessage, addScriptRequestCard, extractScriptRequest
 		local showQuickRow, showEmptyState
 		local welcomeNode
-
-		-- ---- Added-feature state ----
-		local codeRunHistory = {}       -- last code blocks run via Execute (newest first)
-		local lastClientError = ""      -- most recent client error (LogService)
-		local consecutiveFailures = 0   -- for the "AI offline?" banner
-		local streamingEnabled = true   -- progressive (typewriter) reveal of replies
-		-- Capture client-side errors so the user can pull "last error" into chat.
-		pcall(function()
+				local codeRunHistory = {}
+		local lastClientError = ""
+		local consecutiveFailures = 0
+		local streamingEnabled = true
+				pcall(function()
 			game:GetService("LogService").MessageOut:Connect(function(msg, mt)
 				if mt == Enum.MessageType.MessageError and msg and msg ~= "" then
 					lastClientError = tostring(msg)
@@ -8773,18 +7531,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return math.floor(chars / 4)
 		end
-
-		-- =====================================================================
-		-- Header
-		-- =====================================================================
-		local Header = Instance.new("Frame")
+								local Header = Instance.new("Frame")
 		Header.Name = RandomName()
 		Header.BackgroundTransparency = 1
 		Header.BorderSizePixel = 0
 		Header.Position = UDim2.new(0, 12, 0, 6)
 		Header.Size = UDim2.new(1, -24, 0, 34)
 		Header.Parent = Page
-
 		local titleIcon = Instance.new("ImageLabel")
 		titleIcon.BackgroundTransparency = 1
 		titleIcon.Size = UDim2.fromOffset(22, 22)
@@ -8792,7 +7545,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		titleIcon.ImageColor3 = ACCENT
 		titleIcon.Parent = Header
 		ApplyIcon(titleIcon, GetIcon("auto_awesome", "Material"))
-
 		local headerTitle = Instance.new("TextLabel")
 		headerTitle.BackgroundTransparency = 1
 		headerTitle.Position = UDim2.new(0, 30, 0, 0)
@@ -8806,7 +7558,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		headerTitle.TextTruncate = Enum.TextTruncate.AtEnd
 		headerTitle:SetAttribute("LunaNoTranslate", true)
 		headerTitle.Parent = Header
-
 		local headerSub = Instance.new("TextLabel")
 		headerSub.BackgroundTransparency = 1
 		headerSub.Position = UDim2.new(0, 30, 0, 18)
@@ -8819,7 +7570,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		headerSub.TextYAlignment = Enum.TextYAlignment.Top
 		headerSub:SetAttribute("LunaNoTranslate", true)
 		headerSub.Parent = Header
-
 		local function makeHeaderBtn(iconName, xOffset)
 			local btn = Instance.new("ImageButton")
 			btn.Name = RandomName()
@@ -8838,24 +7588,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			btn.MouseLeave:Connect(function() tween(btn, {BackgroundTransparency = 0.2}) end)
 			return btn
 		end
-
 		local ClearBtn   = makeHeaderBtn("delete",       -0)
 		local SaveBtn    = makeHeaderBtn("save",         -34)
 		local SidebarBtn = makeHeaderBtn("view_sidebar", -68)
-
-		-- =====================================================================
-		-- Body = ChatPane (left) + Sidebar (right)
-		-- =====================================================================
-		local SIDEBAR_W   = 210
+								local SIDEBAR_W   = 210
 		local SIDEBAR_GAP = 8
-
 		local Body = Instance.new("Frame")
 		Body.Name = RandomName()
 		Body.BackgroundTransparency = 1
 		Body.Position = UDim2.new(0, 8, 0, 46)
 		Body.Size = UDim2.new(1, -16, 1, -54)
 		Body.Parent = Page
-
 		local Sidebar = Instance.new("Frame")
 		Sidebar.Name = RandomName()
 		Sidebar.AnchorPoint = Vector2.new(1, 0)
@@ -8873,14 +7616,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			g.Transparency = NumberSequence.new(0.05, 0.2)
 			g.Parent = Sidebar
 		end
-
 		local ChatPane = Instance.new("Frame")
 		ChatPane.Name = RandomName()
 		ChatPane.Position = UDim2.new(0, 0, 0, 0)
 		ChatPane.Size = UDim2.new(1, -(SIDEBAR_W + SIDEBAR_GAP), 1, 0)
 		ChatPane.BackgroundTransparency = 1
 		ChatPane.Parent = Body
-
 		local function applySidebarLayout(animated)
 			local ti = animated == false and TweenInfo.new(0) or nil
 			if sidebarOpen then
@@ -8901,17 +7642,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sidebarOpen = not sidebarOpen
 			applySidebarLayout(true)
 		end)
-
-		-- =====================================================================
-		-- Sidebar contents
-		-- =====================================================================
-		do
+								do
 			local sbPad = Instance.new("UIPadding")
 			sbPad.PaddingTop = UDim.new(0, 10); sbPad.PaddingBottom = UDim.new(0, 10)
 			sbPad.PaddingLeft = UDim.new(0, 10); sbPad.PaddingRight = UDim.new(0, 10)
 			sbPad.Parent = Sidebar
 		end
-
 		local NewChatBtn = Instance.new("TextButton")
 		NewChatBtn.Name = RandomName()
 		NewChatBtn.Position = UDim2.new(0, 0, 0, 0)
@@ -8931,7 +7667,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			NewChatBtn.MouseEnter:Connect(function() tween(NewChatBtn, {BackgroundTransparency = -0.05}) end)
 			NewChatBtn.MouseLeave:Connect(function() tween(NewChatBtn, {BackgroundTransparency = 0.05}) end)
 		end
-
 		local SearchBox = Instance.new("Frame")
 		SearchBox.Name = RandomName()
 		SearchBox.Position = UDim2.new(0, 0, 0, 40)
@@ -8967,7 +7702,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SearchInput.ClearTextOnFocus = false
 		SearchInput:SetAttribute("LunaNoTranslate", true)
 		SearchInput.Parent = SearchBox
-
 		local ChatList = Instance.new("ScrollingFrame")
 		ChatList.Name = RandomName()
 		ChatList.Position = UDim2.new(0, 0, 0, 76)
@@ -8986,11 +7720,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			l.SortOrder = Enum.SortOrder.LayoutOrder
 			l.Parent = ChatList
 		end
-
-		-- =====================================================================
-		-- Chat pane: messages + quick prompts + input bar
-		-- =====================================================================
-		local Messages = Instance.new("ScrollingFrame")
+								local Messages = Instance.new("ScrollingFrame")
 		Messages.Name = RandomName()
 		Messages.BackgroundTransparency = 1
 		Messages.BorderSizePixel = 0
@@ -9012,7 +7742,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			p.PaddingLeft = UDim.new(0, 4); p.PaddingRight = UDim.new(0, 4); p.PaddingBottom = UDim.new(0, 4)
 			p.Parent = Messages
 		end
-
 		local QuickRow = Instance.new("Frame")
 		QuickRow.Name = RandomName()
 		QuickRow.AnchorPoint = Vector2.new(0, 1)
@@ -9028,7 +7757,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			l.SortOrder = Enum.SortOrder.LayoutOrder
 			l.Parent = QuickRow
 		end
-
 		local InputBar = Instance.new("Frame")
 		InputBar.Name = RandomName()
 		InputBar.BackgroundColor3 = PANEL_BG_LT
@@ -9043,7 +7771,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = InputBar
 			local g = Instance.new("UIGradient"); g.Rotation = 90; g.Transparency = NumberSequence.new(0.1, 0.35); g.Parent = InputBar
 		end
-
 		local InputBox = Instance.new("TextBox")
 		InputBox.Name = RandomName()
 		InputBox.BackgroundTransparency = 1
@@ -9061,7 +7788,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		InputBox.MultiLine = false
 		InputBox:SetAttribute("LunaNoTranslate", true)
 		InputBox.Parent = InputBar
-
 		local SendButton = Instance.new("ImageButton")
 		SendButton.Name = RandomName()
 		SendButton.AnchorPoint = Vector2.new(1, 0.5)
@@ -9076,10 +7802,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = SendButton
 		end
-
-		-- ---------- markdown / rich text ----------
-		-- Returns a list of segments: {kind="text"|"code", lang?, content}
-		local function splitCodeBlocks(text)
+						local function splitCodeBlocks(text)
 			local segments = {}
 			local cursor = 1
 			while cursor <= #text do
@@ -9097,24 +7820,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if #segments == 0 then segments[1] = { kind = "text", content = text } end
 			return segments
 		end
-
-		-- Full Markdown → Roblox RichText. Supports:
-		--   Headers       # ## ### #### #####
-		--   Lists         - * + bullets, 1. numbered, nested by indent
-		--   Task lists    - [ ]  /  - [x]
-		--   Blockquotes   > quoted text  (vertical bar marker)
-		--   Horizontal rule  ---  ***  ___
-		--   Inline code   `code`           (orange)
-		--   Bold          **b**  __b__
-		--   Italic        *i*    _i_       (only when surrounded by whitespace to avoid snake_case false positives)
-		--   Strike        ~~s~~
-		--   Highlight     ==h==            (RichText <mark>)
-		--   Underline     [[u]]  (uncommon but cheap to support)
-		--   Links         [text](url)      (underlined, colored — RichText cannot click, so we just style)
-		-- Inline code + links + raw HTML get stashed FIRST so their bodies survive
-		-- the per-line / per-emphasis passes that follow. All stashed bodies are
-		-- HTML-escaped to prevent the model accidentally injecting RichText tags.
-		local function richText(t)
+																																		local function richText(t)
 			if type(t) ~= "string" then return tostring(t) end
 			local function htmlEscape(s)
 				return (s:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
@@ -9124,50 +7830,37 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				table.insert(placeholders, s)
 				return "\0LUNA" .. #placeholders .. "\0"
 			end
-
-			-- 1) Stash inline code first; body must NOT be re-escaped later.
-			t = t:gsub("``([^`\n]+)``", function(c)
+						t = t:gsub("``([^`\n]+)``", function(c)
 				return stash("<font color=\"rgb(255,180,140)\">" .. htmlEscape(c) .. "</font>")
 			end)
 			t = t:gsub("`([^`\n]+)`", function(c)
 				return stash("<font color=\"rgb(255,180,140)\">" .. htmlEscape(c) .. "</font>")
 			end)
-
-			-- 2) Stash links [text](url) — text is styled, url displayed in dim parens.
-			t = t:gsub("%[([^%]\n]*)%]%(([^%s%)\n]+)%)", function(text, url)
+						t = t:gsub("%[([^%]\n]*)%]%(([^%s%)\n]+)%)", function(text, url)
 				if text == "" then text = url end
 				return stash(
 					"<u><font color=\"rgb(150,180,255)\">" .. htmlEscape(text) .. "</font></u>"
 				)
 			end)
-
-			-- 3) HTML-escape whatever raw markdown remains (placeholders survive).
-			t = htmlEscape(t)
-
-			-- 4) Per-line block-level transforms.
-			local lines = {}
+						t = htmlEscape(t)
+						local lines = {}
 			for raw in (t .. "\n"):gmatch("([^\n]*)\n") do
 				local line = raw
-				-- Preserve indentation for nested lists.
-				local leadSpaces = line:match("^(%s*)") or ""
+								local leadSpaces = line:match("^(%s*)") or ""
 				local indentLevel = math.floor(#leadSpaces / 2)
 				local indent = string.rep("    ", indentLevel)
 				local body = line:sub(#leadSpaces + 1)
-
-				-- Horizontal rule (any of --- *** ___).
-				if body:match("^%-%-%-+%s*$") or body:match("^%*%*%*+%s*$") or body:match("^___+%s*$") then
+								if body:match("^%-%-%-+%s*$") or body:match("^%*%*%*+%s*$") or body:match("^___+%s*$") then
 					line = "<font color=\"rgb(90,82,140)\">────────────────────────────────</font>"
 				else
 					local hashes, hText = body:match("^(#+)%s+(.+)$")
 					local hLevel = hashes and #hashes
-					-- Task lists must be checked BEFORE generic bullets.
-					local taskOff = body:match("^[%-%*%+]%s+%[%s%]%s+(.+)$")
+										local taskOff = body:match("^[%-%*%+]%s+%[%s%]%s+(.+)$")
 					local taskOn  = body:match("^[%-%*%+]%s+%[[xX]%]%s+(.+)$")
 					local numIdx, numText = body:match("^(%d+)%.%s+(.+)$")
 					local bullet = (not (hashes or taskOff or taskOn or numIdx))
 						and body:match("^[%-%*%+]%s+(.+)$")
 					local quote = body:match("^&gt;%s*(.*)$")
-
 					if hLevel == 1 and hText then
 						line = "<b><font size=\"22\" color=\"rgb(255,255,255)\">" .. hText .. "</font></b>"
 					elseif hLevel == 2 and hText then
@@ -9193,42 +7886,30 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				table.insert(lines, line)
 			end
 			t = table.concat(lines, "\n")
-
-			-- 5) Inline emphasis (after block transforms so they don't conflict with bullets).
-			t = t:gsub("%*%*%*([^%*\n]+)%*%*%*", "<b><i>%1</i></b>")  -- ***bold-italic***
-			t = t:gsub("___([^_\n]+)___",          "<b><i>%1</i></b>")  -- ___bold-italic___
+						t = t:gsub("%*%*%*([^%*\n]+)%*%*%*", "<b><i>%1</i></b>")
+			t = t:gsub("___([^_\n]+)___",          "<b><i>%1</i></b>")
 			t = t:gsub("%*%*([^%*\n]+)%*%*",       "<b>%1</b>")
 			t = t:gsub("__([^_\n]+)__",            "<b>%1</b>")
 			t = t:gsub("%*([^%*\n]+)%*",           "<i>%1</i>")
-			-- _italic_ only when the underscores are word-bounded (avoid snake_case mangling).
-			t = t:gsub("(%f[%w_])_([^_\n]+)_(%f[^%w_])", "%1<i>%2</i>%3")
+						t = t:gsub("(%f[%w_])_([^_\n]+)_(%f[^%w_])", "%1<i>%2</i>%3")
 			t = t:gsub("~~([^~\n]+)~~",            "<s>%1</s>")
 			t = t:gsub("==([^=\n]+)==",            "<mark>%1</mark>")
-			t = t:gsub("%[%[([^%]\n]+)%]%]",       "<u>%1</u>") -- [[underline]]
-
-			-- 6) Restore stashes.
-			t = t:gsub("\0LUNA(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
-			-- Old-format compat for any pre-stashed CODE markers from cached chats.
-			t = t:gsub("\0CODE(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
+			t = t:gsub("%[%[([^%]\n]+)%]%]",       "<u>%1</u>")
+						t = t:gsub("\0LUNA(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
+						t = t:gsub("\0CODE(%d+)\0", function(n) return placeholders[tonumber(n)] or "" end)
 			return t
 		end
-
-		-- ---------- HTTP helpers ----------
-		local function getHttpFn()
+				local function getHttpFn()
 			return (syn and syn.request) or (http and http.request) or http_request or request
 		end
-
-		-- ---------- copying & clipboard ----------
-		local function copyToClipboard(text)
+				local function copyToClipboard(text)
 			local ok = pcall(function()
 				if setclipboard then setclipboard(text) end
 				if toclipboard then toclipboard(text) end
 			end)
 			return ok
 		end
-
-		-- ---------- bubble / code-block builders ----------
-		local function bubbleFor(role, parent)
+				local function bubbleFor(role, parent)
 			local Bubble = Instance.new("Frame")
 			Bubble.Name = RandomName()
 			Bubble.BorderSizePixel = 0
@@ -9249,7 +7930,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Bubble.Parent = parent
 			return Bubble
 		end
-
 		local function bubbleTextLabel(parent, text)
 			local Label = Instance.new("TextLabel")
 			Label.Name = "Text"
@@ -9268,9 +7948,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Label.Parent = parent
 			return Label
 		end
-
-		-- Renders a fenced ```lua ... ``` block as its own card with copy + execute buttons.
-		local function makeCodeBlock(parent, code, lang)
+				local function makeCodeBlock(parent, code, lang)
 			local Block = Instance.new("Frame")
 			Block.Name = RandomName()
 			Block.BackgroundColor3 = Color3.fromRGB(18, 16, 26)
@@ -9281,12 +7959,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Block.Parent = parent
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = Block
 			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(110, 95, 180); s.Transparency = 0.6; s.Parent = Block
-
 			local TitleBar = Instance.new("Frame")
 			TitleBar.BackgroundTransparency = 1
 			TitleBar.Size = UDim2.new(1, 0, 0, 26)
 			TitleBar.Parent = Block
-
 			local langLabel = Instance.new("TextLabel")
 			langLabel.BackgroundTransparency = 1
 			langLabel.Position = UDim2.new(0, 12, 0, 0)
@@ -9299,7 +7975,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			langLabel.TextYAlignment = Enum.TextYAlignment.Center
 			langLabel:SetAttribute("LunaNoTranslate", true)
 			langLabel.Parent = TitleBar
-
 			local function smallBtn(text, xOffset)
 				local b = Instance.new("TextButton")
 				b.AnchorPoint = Vector2.new(1, 0.5)
@@ -9320,17 +7995,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.1}) end)
 				return b
 			end
-
 			local copyBtn = smallBtn("Copy", -8)
 			local execBtn = smallBtn("Execute", -68)
-
 			local code_pad = Instance.new("UIPadding")
 			code_pad.PaddingLeft = UDim.new(0, 12)
 			code_pad.PaddingRight = UDim.new(0, 12)
 			code_pad.PaddingBottom = UDim.new(0, 10)
-			code_pad.PaddingTop = UDim.new(0, 30) -- below TitleBar
+			code_pad.PaddingTop = UDim.new(0, 30)
 			code_pad.Parent = Block
-
 			local codeLabel = Instance.new("TextLabel")
 			codeLabel.BackgroundTransparency = 1
 			codeLabel.Size = UDim2.new(1, 0, 0, 0)
@@ -9344,7 +8016,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			codeLabel.TextWrapped = true
 			codeLabel:SetAttribute("LunaNoTranslate", true)
 			codeLabel.Parent = Block
-
 			copyBtn.MouseButton1Click:Connect(function()
 				if copyToClipboard(code) then
 					copyBtn.Text = "Copied!"
@@ -9359,8 +8030,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 				if ok then
 					execBtn.Text = "Running"
-					-- Track for /rerun and /history (newest first, max 5).
-					table.insert(codeRunHistory, 1, code)
+										table.insert(codeRunHistory, 1, code)
 					while #codeRunHistory > 5 do table.remove(codeRunHistory) end
 					task.delay(1.6, function() if execBtn and execBtn.Parent then execBtn.Text = "Execute" end end)
 				else
@@ -9369,12 +8039,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 			return Block
 		end
-
-		-- ---------- assemble a single chat row ----------
-		-- Builds row layout (left/right alignment) and populates the bubble with
-		-- text/code segments. Returns (row, bubble, label, setContent) so the
-		-- streaming "thinking" indicator can mutate the same bubble in place.
-		appendMessage = function(role, text)
+										appendMessage = function(role, text)
 			local Row = Instance.new("Frame")
 			Row.Name = RandomName()
 			Row.BackgroundTransparency = 1
@@ -9383,15 +8048,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Row.AutomaticSize = Enum.AutomaticSize.Y
 			Row.LayoutOrder = #Messages:GetChildren()
 			Row.Parent = Messages
-
 			local rowList = Instance.new("UIListLayout")
 			rowList.SortOrder = Enum.SortOrder.LayoutOrder
 			rowList.Padding = UDim.new(0, 4)
 			rowList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
 			rowList.Parent = Row
-
-			-- Width-limited holder; UISizeConstraint MaxSize.X ≈ 82% of Messages.
-			local Holder = Instance.new("Frame")
+						local Holder = Instance.new("Frame")
 			Holder.Name = "Holder"
 			Holder.BackgroundTransparency = 1
 			Holder.BorderSizePixel = 0
@@ -9399,7 +8061,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Holder.AutomaticSize = Enum.AutomaticSize.XY
 			Holder.LayoutOrder = 1
 			Holder.Parent = Row
-
 			local sc = Instance.new("UISizeConstraint")
 			sc.MaxSize = Vector2.new(360, math.huge)
 			sc.Parent = Holder
@@ -9409,18 +8070,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			task.defer(refreshMax)
 			Messages:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshMax)
-
 			local innerList = Instance.new("UIListLayout")
 			innerList.SortOrder = Enum.SortOrder.LayoutOrder
 			innerList.Padding = UDim.new(0, 6)
 			innerList.HorizontalAlignment = (role == "user") and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
 			innerList.Parent = Holder
-
 			local Bubble = bubbleFor(role, Holder)
 			local Label = bubbleTextLabel(Bubble, "")
-
-			-- Meta row: Copy + Retry (assistant only).
-			local metaRow
+						local metaRow
 			if role == "assistant" then
 				metaRow = Instance.new("Frame")
 				metaRow.Name = "Meta"
@@ -9433,7 +8090,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				metaList.Padding = UDim.new(0, 4)
 				metaList.SortOrder = Enum.SortOrder.LayoutOrder
 				metaList.Parent = metaRow
-
 				local function metaBtn(label, layoutOrder)
 					local b = Instance.new("TextButton")
 					b.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
@@ -9464,33 +8120,26 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					if AiTab and AiTab.Regenerate then AiTab:Regenerate() end
 				end)
 			end
-
-			-- Replace the bubble + code blocks with the given raw text. Used both
-			-- by streaming (think bubble update) and the initial draw.
-			local function setContent(raw)
+									local function setContent(raw)
 				Label:SetAttribute("LunaRawText", raw)
-				-- Tear down any prior code blocks (keep Bubble + metaRow).
-				for _, child in ipairs(Holder:GetChildren()) do
+								for _, child in ipairs(Holder:GetChildren()) do
 					if child:IsA("Frame") and child ~= Bubble and child ~= metaRow then
 						child:Destroy()
 					end
 				end
 				local segments = splitCodeBlocks(raw)
-				-- Text segments are merged into the bubble; code segments become cards.
-				local proseChunks = {}
+								local proseChunks = {}
 				local order = 2
 				for _, seg in ipairs(segments) do
 					if seg.kind == "text" then
 						table.insert(proseChunks, seg.content)
 					else
-						-- Flush any accumulated prose first so order is correct.
-						Label.Text = richText(table.concat(proseChunks, ""))
+												Label.Text = richText(table.concat(proseChunks, ""))
 						proseChunks = {}
 						local codeBlock = makeCodeBlock(Holder, seg.content, seg.lang)
 						codeBlock.LayoutOrder = order
 						order = order + 1
-						-- Add a fresh empty bubble for any text AFTER this code block.
-						local follow = bubbleFor(role, Holder)
+												local follow = bubbleFor(role, Holder)
 						follow.LayoutOrder = order
 						order = order + 1
 						local newLabel = bubbleTextLabel(follow, "")
@@ -9500,22 +8149,16 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				if #proseChunks > 0 then
 					Label.Text = richText(table.concat(proseChunks, ""))
 				end
-				-- Hide empty trailing bubbles (happens when the message ENDS with a code block).
-				if Label.Text == "" then
+								if Label.Text == "" then
 					Label.Parent.Visible = false
 				end
-				-- Auto-scroll to the latest message.
-				task.defer(function()
+								task.defer(function()
 					task.wait()
 					Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y)
 				end)
 			end
-
 			setContent(text or "")
-
-			-- Pop-in: scale 0.94 → 1.0 + fade. UIStroke and Label use separate
-			-- tweens because UIStroke.Transparency is its own property.
-			local scaleFx = Instance.new("UIScale"); scaleFx.Scale = 0.94; scaleFx.Parent = Bubble
+									local scaleFx = Instance.new("UIScale"); scaleFx.Scale = 0.94; scaleFx.Parent = Bubble
 			Bubble.BackgroundTransparency = 1
 			Label.TextTransparency = 1
 			local popInfo  = TweenInfo.new(0.30, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -9526,15 +8169,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			task.delay(0.40, function()
 				if scaleFx and scaleFx.Parent then scaleFx:Destroy() end
 			end)
-
 			return Row, Bubble, Label, setContent
 		end
-
-		-- ---------- script request flow ----------
-		-- Adds a "Send request to developers" card below the AI's bubble. Pressing
-		-- it fires the webhook with userinfo + a short description; the card then
-		-- collapses into a small confirmation pill.
-		addScriptRequestCard = function(holder, description)
+										addScriptRequestCard = function(holder, description)
 			local Card = Instance.new("Frame")
 			Card.Name = RandomName()
 			Card.BackgroundColor3 = Color3.fromRGB(30, 90, 50)
@@ -9544,7 +8181,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Card.Parent = holder
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = Card
 			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 220, 150); s.Transparency = 0.5; s.Parent = Card
-
 			local title = Instance.new("TextLabel")
 			title.BackgroundTransparency = 1
 			title.Position = UDim2.new(0, 14, 0, 6)
@@ -9556,7 +8192,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title:SetAttribute("LunaNoTranslate", true)
 			title.Parent = Card
-
 			local desc = Instance.new("TextLabel")
 			desc.BackgroundTransparency = 1
 			desc.Position = UDim2.new(0, 14, 0, 24)
@@ -9569,7 +8204,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			desc.TextWrapped = true
 			desc:SetAttribute("LunaNoTranslate", true)
 			desc.Parent = Card
-
 			local sendBtn = Instance.new("TextButton")
 			sendBtn.AnchorPoint = Vector2.new(1, 0.5)
 			sendBtn.Position = UDim2.new(1, -8, 0.5, 0)
@@ -9584,7 +8218,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sendBtn:SetAttribute("LunaNoTranslate", true)
 			sendBtn.Parent = Card
 			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = sendBtn
-
 			sendBtn.MouseButton1Click:Connect(function()
 				if not opts.Webhook or opts.Webhook == "" then
 					Luna:Notification({ Title = "No webhook", Content = "Host script didn't configure AiSettings.Webhook.", Icon = "warning", ImageSource = "Material", Duration = 5 })
@@ -9631,10 +8264,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 			end)
 		end
-
-		-- Strips the [[SCRIPT_REQUEST: ...]] marker (case-insensitive) and returns
-		-- (cleaned_text, description_or_nil). The marker survives across newlines.
-		extractScriptRequest = function(text)
+						extractScriptRequest = function(text)
 			local desc = text:match("%[%[SCRIPT_REQUEST:%s*(.-)%]%]")
 			if not desc then desc = text:match("%[%[script_request:%s*(.-)%]%]") end
 			if not desc then return text, nil end
@@ -9642,18 +8272,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			cleaned = (cleaned:gsub("%s+$", ""))
 			return cleaned, desc:gsub("^%s+", ""):gsub("%s+$", "")
 		end
-
-		-- =====================================================================
-		-- Quick prompts (chips + welcome card)
-		-- =====================================================================
-		local function readClipboard()
+								local function readClipboard()
 			local fn = getclipboard or readclipboard or (Clipboard and Clipboard.get)
 			if not fn then return nil end
 			local ok, txt = pcall(fn)
 			if ok and type(txt) == "string" then return txt end
 			return nil
 		end
-
 		local QUICK_PROMPTS = {
 			{ chip = "What can Solara Hub do?",
 			  prompt = "Briefly explain what Solara Hub can do: list the main tabs, the headline features, and how to use them." },
@@ -9681,7 +8306,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				return "Help me debug this error:\n```\n" .. lastClientError .. "\n```"
 			  end },
 		}
-
 		local function clearQuickRow()
 			for _, ch in ipairs(QuickRow:GetChildren()) do
 				if ch:IsA("TextButton") then ch:Destroy() end
@@ -9709,8 +8333,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
 				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 1; s.Parent = b
 				local sc = Instance.new("UIScale"); sc.Scale = 0.85; sc.Parent = b
-				-- Stagger entrance (each chip slightly after the previous).
-				task.delay((i - 1) * 0.05, function()
+								task.delay((i - 1) * 0.05, function()
 					if not b.Parent then return end
 					local ti = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 					TweenService:Create(b,  ti, {BackgroundTransparency = 0.2, TextTransparency = 0}):Play()
@@ -9745,7 +8368,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 			end
 		end
-
 		showEmptyState = function()
 			if welcomeNode and welcomeNode.Parent then welcomeNode:Destroy() end
 			welcomeNode = Instance.new("Frame")
@@ -9754,13 +8376,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			welcomeNode.Size = UDim2.new(1, 0, 0, 200)
 			welcomeNode.LayoutOrder = 1
 			welcomeNode.Parent = Messages
-
 			local card = Instance.new("Frame")
 			card.AnchorPoint = Vector2.new(0.5, 0.5)
 			card.Position = UDim2.new(0.5, 0, 0.5, 0)
 			card.Size = UDim2.new(0, 380, 0, 180)
 			card.BackgroundColor3 = PANEL_BG_LT
-			card.BackgroundTransparency = 1   -- faded in below
+			card.BackgroundTransparency = 1
 			card.Parent = welcomeNode
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 14); c.Parent = card
 			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 1; s.Parent = card
@@ -9775,9 +8396,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				NumberSequenceKeypoint.new(1, 0.92),
 			})
 			g.Parent = card
-
-			-- Pop-in animation + ambient gradient sweep (~6s loop).
-			local cardScale = Instance.new("UIScale"); cardScale.Scale = 0.88; cardScale.Parent = card
+						local cardScale = Instance.new("UIScale"); cardScale.Scale = 0.88; cardScale.Parent = card
 			local popInfo = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			TweenService:Create(card, TweenInfo.new(0.32), {BackgroundTransparency = 0.15}):Play()
 			TweenService:Create(s,    TweenInfo.new(0.32), {Transparency = 0.55}):Play()
@@ -9791,7 +8410,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					task.wait(3)
 				end
 			end)
-
 			local icon = Instance.new("ImageLabel")
 			icon.BackgroundTransparency = 1
 			icon.Size = UDim2.fromOffset(28, 28)
@@ -9799,7 +8417,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			icon.ImageColor3 = ACCENT
 			icon.Parent = card
 			ApplyIcon(icon, GetIcon("auto_awesome", "Material"))
-
 			local t1 = Instance.new("TextLabel")
 			t1.BackgroundTransparency = 1
 			t1.Position = UDim2.new(0, 54, 0, 18)
@@ -9811,7 +8428,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			t1.TextXAlignment = Enum.TextXAlignment.Left
 			t1:SetAttribute("LunaNoTranslate", true)
 			t1.Parent = card
-
 			local t2 = Instance.new("TextLabel")
 			t2.BackgroundTransparency = 1
 			t2.Position = UDim2.new(0, 54, 0, 42)
@@ -9823,10 +8439,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			t2.TextXAlignment = Enum.TextXAlignment.Left
 			t2:SetAttribute("LunaNoTranslate", true)
 			t2.Parent = card
-
-			-- No-key hint: works via the keyless backup provider, but a free
-			-- pollinations key (/key) unlocks the main model and /image.
-			local keyWarnShown = (aiToken == nil)
+									local keyWarnShown = (aiToken == nil)
 			if keyWarnShown then
 				local kw = Instance.new("TextLabel")
 				kw.BackgroundTransparency = 1
@@ -9840,7 +8453,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				kw:SetAttribute("LunaNoTranslate", true)
 				kw.Parent = card
 			end
-
 			local listFrame = Instance.new("Frame")
 			listFrame.BackgroundTransparency = 1
 			listFrame.Position = UDim2.new(0, 18, 0, keyWarnShown and 96 or 80)
@@ -9872,17 +8484,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 			end
 		end
-
-		-- =====================================================================
-		-- Render: active chat + sidebar
-		-- =====================================================================
-		local function clearMessagesUI()
+								local function clearMessagesUI()
 			for _, ch in ipairs(Messages:GetChildren()) do
 				if ch:IsA("Frame") then ch:Destroy() end
 			end
 			welcomeNode = nil
 		end
-
 		setHeaderForChat = function(chat)
 			if not chat then
 				headerTitle.Text = "Solara Hub AI"
@@ -9899,7 +8506,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				headerSub.Text = (n .. (n == 1 and " message" or " messages")) .. "  ·  ~" .. tokStr .. " tokens"
 			end
 		end
-
 		renderActiveChat = function()
 			clearMessagesUI()
 			local chat = getActive()
@@ -9930,9 +8536,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				showQuickRow(false)
 			end
 		end
-
-		-- ---------- sidebar item ----------
-		local function previewText(chat)
+				local function previewText(chat)
 			local last = lastAssistantText(chat)
 			if last == "" then return "Empty chat" end
 			last = last:gsub("```.-```", "[code]")
@@ -9948,7 +8552,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if diff < 86400 then return math.floor(diff / 3600) .. "h" end
 			return math.floor(diff / 86400) .. "d"
 		end
-
 		local function makeChatItem(chat)
 			local isActive = (chat.id == activeId)
 			local Item = Instance.new("Frame")
@@ -9963,7 +8566,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			s.Color = isActive and ACCENT or STROKE_SOFT
 			s.Transparency = isActive and 0.4 or 0.75
 			s.Parent = Item
-
 			local leftPad = 10
 			if chat.pinned then
 				local pinIcon = Instance.new("ImageLabel")
@@ -9975,7 +8577,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				ApplyIcon(pinIcon, GetIcon("push_pin", "Material"))
 				leftPad = 22
 			end
-
 			local titleLbl = Instance.new("TextLabel")
 			titleLbl.BackgroundTransparency = 1
 			titleLbl.Position = UDim2.new(0, leftPad, 0, 5)
@@ -9988,7 +8589,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
 			titleLbl:SetAttribute("LunaNoTranslate", true)
 			titleLbl.Parent = Item
-
 			local prev = Instance.new("TextLabel")
 			prev.BackgroundTransparency = 1
 			prev.Position = UDim2.new(0, 10, 0, 24)
@@ -10001,7 +8601,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			prev.TextTruncate = Enum.TextTruncate.AtEnd
 			prev:SetAttribute("LunaNoTranslate", true)
 			prev.Parent = Item
-
 			local timeLbl = Instance.new("TextLabel")
 			timeLbl.BackgroundTransparency = 1
 			timeLbl.Position = UDim2.new(1, -34, 0, 5)
@@ -10013,7 +8612,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			timeLbl.TextXAlignment = Enum.TextXAlignment.Right
 			timeLbl:SetAttribute("LunaNoTranslate", true)
 			timeLbl.Parent = Item
-
 			local Click = Instance.new("TextButton")
 			Click.BackgroundTransparency = 1
 			Click.Size = UDim2.new(1, 0, 1, 0)
@@ -10030,9 +8628,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Click.MouseButton1Click:Connect(function()
 				AiTab:SwitchTo(chat.id)
 			end)
-
-			-- Hover-only action buttons (right edge): pin, rename, delete.
-			local actionsRow = Instance.new("Frame")
+						local actionsRow = Instance.new("Frame")
 			actionsRow.BackgroundTransparency = 1
 			actionsRow.AnchorPoint = Vector2.new(1, 1)
 			actionsRow.Position = UDim2.new(1, -6, 1, -4)
@@ -10067,7 +8663,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local delBtn    = actBtn("delete",   Color3.fromRGB(220, 120, 120),       3)
 			Item.MouseEnter:Connect(function() actionsRow.Visible = true; timeLbl.Visible = false end)
 			Item.MouseLeave:Connect(function() actionsRow.Visible = false; timeLbl.Visible = true end)
-
 			pinBtn.MouseButton1Click:Connect(function()
 				chat.pinned = not chat.pinned
 				saveAll(); renderSidebar()
@@ -10086,11 +8681,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 			return Item
 		end
-
-		-- Set by the search input so per-keystroke re-renders don't stutter with
-		-- entrance animations. NewChat / Delete / Switch keep the animation.
-		local suppressItemAnim = false
-
+						local suppressItemAnim = false
 		renderSidebar = function()
 			for _, ch in ipairs(ChatList:GetChildren()) do
 				if not ch:IsA("UIListLayout") then ch:Destroy() end
@@ -10131,12 +8722,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			renderSidebar()
 			suppressItemAnim = false
 		end)
-
-		-- =====================================================================
-		-- AiTab API
-		-- =====================================================================
-		AiTab.Messages = Messages
-
+								AiTab.Messages = Messages
 		local function setSendEnabled(enabled)
 			SendButton.AutoButtonColor = enabled
 			if enabled then
@@ -10147,9 +8733,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				SendButton.BackgroundColor3 = Color3.fromRGB(190, 90, 90)
 			end
 		end
-
-		-- Minimal in-page rename dialog (blocking).
-		function AiTab:_promptRename(currentName)
+				function AiTab:_promptRename(currentName)
 			local accepted
 			local dialog = Instance.new("Frame")
 			dialog.Size = UDim2.new(0, 280, 0, 116)
@@ -10223,7 +8807,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			while dialog.Parent do task.wait() end
 			return accepted
 		end
-
 		function AiTab:NewChat(name)
 			local c = newChat(name or "New chat")
 			activeId = c.id
@@ -10263,8 +8846,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if id == activeId then setHeaderForChat(c) end
 		end
 		function AiTab:Clear()
-			-- "Clear" wipes the active chat back to a blank state (keeps the id).
-			local c = getActive()
+						local c = getActive()
 			if not c then return end
 			c.conv = freshConv()
 			c.updatedAt = nowSec()
@@ -10286,8 +8868,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			AiTab.Conversation = chats[activeId].conv
 			renderSidebar(); renderActiveChat()
 			Luna:Notification({ Title = "Chats loaded", Content = "Restored " .. #chatOrder .. " chat(s).", Icon = "check_circle", ImageSource = "Material", Duration = 3 })
-			-- One-time warm greeting on the very first launch.
-			pcall(function()
+						pcall(function()
 				local flag = "Solara_AI_Greeted.txt"
 				local greeted = isfile and isfile(flag)
 				if not greeted then
@@ -10302,24 +8883,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end)
 		end
-
-		-- Focus the chat input from anywhere (used by the host's Ctrl+L hotkey).
-		function AiTab:Focus()
+				function AiTab:Focus()
 			pcall(function() InputBox:CaptureFocus() end)
 		end
 		self._AiFocus = function() AiTab:Focus() end
 		function AiTab:Stop()
 			if generation.active then
-				-- Invalidate the in-flight reply token; the response, when it arrives,
-				-- will be silently dropped and the UI re-enabled.
-				generation.token = generation.token + 1
+												generation.token = generation.token + 1
 				generation.active = false
 				setSendEnabled(true)
 			end
 		end
-
-		-- Auto-name a chat from its first user message (until manually renamed).
-		local function autoNameChat(chat, firstUserMsg)
+				local function autoNameChat(chat, firstUserMsg)
 			if not chat.autoNamed and chat.name == "New chat" then
 				local nm = firstUserMsg:gsub("\n", " "):gsub("%s+", " ")
 				nm = nm:gsub("^%s+", ""):gsub("%s+$", "")
@@ -10330,19 +8905,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
-		-- ---------- HTTP call (wrapped) ----------
-		-- Provider chain, tried in order until one answers:
-		--   1) pollinations.ai with the user's /key (best models)
-		--   2) OVHcloud AI Endpoints — keyless anonymous tier (2 req/min/model,
-		--      no signup; documented by OVH, OpenAI-compatible)
-		--   3) pollinations.ai anonymously, in case their free tier comes back
-		-- Returns (replyText, errReason). replyText is nil on failure; errReason
-		-- is shown inside the chat bubble so the user sees what went wrong.
-		local OVH_URL = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions"
+																		local OVH_URL = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions"
 		local OVH_MODEL = "gpt-oss-120b"
 		local usedFallback = false
-
 		local function requestChat(url, model, useToken, conv)
 			local fn = getHttpFn()
 			if not fn then
@@ -10373,18 +8938,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			local okDec, decoded = pcall(HttpService.JSONDecode, HttpService, body)
 			if not okDec then
-				-- Some endpoints answer as plain text; treat as the reply.
-				return body, nil
+								return body, nil
 			end
 			if decoded and decoded.choices and decoded.choices[1] then
 				local msg = decoded.choices[1].message
 				if msg and msg.content then return msg.content, nil end
 			end
-			-- Some models return `text` field instead of `choices[].message`.
-			if decoded and decoded.text then return decoded.text, nil end
+						if decoded and decoded.text then return decoded.text, nil end
 			return nil, "Could not extract `choices[1].message.content` from response."
 		end
-
 		local function callPollinations(conv)
 			if aiToken then
 				local reply = requestChat(opts.Endpoint, currentModel, true, conv)
@@ -10417,14 +8979,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return nil, "AI request failed on all providers: " .. tostring(err) .. (body and (" — " .. tostring(body):sub(1, 200)) or "")
 		end
-
 		local function doSend(prompt, isRegenerate)
 			local chat = getActive()
 			if not chat then return end
 			if generation.active then return end
-			-- Refresh system prompt so live host knowledge is current on every call.
-			-- Per-chat custom instructions (set via /system) are appended on top.
-			local sysContent = buildSystemPrompt()
+									local sysContent = buildSystemPrompt()
 			if chat.systemExtra and chat.systemExtra ~= "" then
 				sysContent = sysContent .. "\n\nUser custom instructions for THIS chat (obey them):\n" .. chat.systemExtra
 			end
@@ -10444,13 +9003,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			showQuickRow(false)
 			if welcomeNode and welcomeNode.Parent then welcomeNode:Destroy(); welcomeNode = nil end
 			renderSidebar()
-
 			generation.active = true
 			generation.token  = generation.token + 1
 			generation.chatId = chat.id
 			local myToken = generation.token
 			setSendEnabled(false)
-
 			local _, thinkBubble, thinkLabel, thinkSet = appendMessage("assistant", "Thinking")
 			task.spawn(function()
 				local dots = 0
@@ -10460,7 +9017,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					task.wait(0.35)
 				end
 			end)
-
 			task.spawn(function()
 				local ok, replyText, errReason = pcall(callPollinations, chat.conv)
 				if not ok then
@@ -10472,8 +9028,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					didFail = true
 					replyText = "_(AI request failed.)_\n\n**Reason:** " .. tostring(errReason or "unknown")
 				end
-				-- Token mismatch → user pressed Stop or switched chats; persist silently.
-				if generation.token ~= myToken then
+								if generation.token ~= myToken then
 					table.insert(chat.conv, { role = "assistant", content = replyText })
 					chat.updatedAt = nowSec()
 					saveAll(); renderSidebar()
@@ -10484,9 +9039,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				table.insert(chat.conv, { role = "assistant", content = replyText })
 				chat.updatedAt = nowSec()
 				saveAll(); renderSidebar()
-
-				-- "AI offline?" banner after 2 consecutive failures.
-				if didFail then
+								if didFail then
 					consecutiveFailures = consecutiveFailures + 1
 					if consecutiveFailures >= 2 then
 						Luna:Notification({
@@ -10498,7 +9051,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				else
 					consecutiveFailures = 0
 				end
-
 				local visibleText, reqDescription = extractScriptRequest(replyText)
 				if chat.id == activeId then
 					local function commit()
@@ -10508,9 +9060,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 							appendMessage("assistant", visibleText)
 						end
 					end
-					-- Progressive (typewriter) reveal — only for plain-text answers, so
-					-- code blocks (with Copy/Execute buttons) don't flicker mid-stream.
-					local hasCode = visibleText:find("```", 1, true) ~= nil
+															local hasCode = visibleText:find("```", 1, true) ~= nil
 					if streamingEnabled and not didFail and not hasCode and thinkSet and #visibleText >= 40 then
 						local steps = math.clamp(math.floor(#visibleText / 60), 6, 16)
 						for i = 1, steps do
@@ -10536,14 +9086,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end)
 		end
-
-		-- ---- helpers for slash commands ----
-		local function urlencode(s)
+				local function urlencode(s)
 			return (tostring(s):gsub("[^%w%-_%.~]", function(ch)
 				return string.format("%%%02X", string.byte(ch))
 			end))
 		end
-
 		local function appendImageBubble(assetId)
 			local Row = Instance.new("Frame")
 			Row.Name = RandomName()
@@ -10564,7 +9111,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				pcall(function() Messages.CanvasPosition = Vector2.new(0, Messages.AbsoluteCanvasSize.Y) end)
 			end)
 		end
-
 		local function doImage(p)
 			if p == "" then
 				Luna:Notification({ Title = "/image", Content = "Usage: /image <prompt>", Icon = "image", ImageSource = "Material" })
@@ -10593,7 +9139,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end)
 		end
-
 		local function doExport()
 			local chat = getActive()
 			if not chat then return end
@@ -10621,14 +9166,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				Luna:Notification({ Title = "Export failed", Content = "Executor has no writefile/clipboard.", Icon = "error", ImageSource = "Material", Duration = 5 })
 			end
 		end
-
 		function AiTab:Send(prompt)
 			prompt = tostring(prompt or "")
 			if generation.active then return end
 			if prompt == "" then return end
-
-			-- ---- Slash commands ----
-			if prompt:sub(1, 1) == "/" then
+						if prompt:sub(1, 1) == "/" then
 				local cmd, rest = prompt:match("^/(%S+)%s*(.*)$")
 				cmd = (cmd or ""):lower()
 				rest = rest or ""
@@ -10713,15 +9255,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					return
 				end
 			end
-
 			doSend(prompt, false)
 		end
-
 		function AiTab:Regenerate()
 			local chat = getActive()
 			if not chat or generation.active then return end
-			-- Find the last user message and drop everything after it.
-			local lastUserIdx
+						local lastUserIdx
 			for i = #chat.conv, 1, -1 do
 				if chat.conv[i].role == "user" then lastUserIdx = i; break end
 			end
@@ -10732,13 +9271,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			renderActiveChat()
 			doSend(chat.conv[lastUserIdx].content, true)
 		end
-
-		-- =====================================================================
-		-- Event bindings
-		-- =====================================================================
-		-- Click handlers are wrapped so any unhandled error surfaces as a toast
-		-- instead of the button silently appearing "dead".
-		local function safeClick(label, fn)
+												local function safeClick(label, fn)
 			return function(...)
 				local ok, err = pcall(fn, ...)
 				if not ok then
@@ -10752,7 +9285,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
 		InputBox.FocusLost:Connect(safeClick("Enter", function(enterPressed)
 			if enterPressed then
 				local t = InputBox.Text
@@ -10769,8 +9301,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SaveBtn.MouseButton1Click:Connect(safeClick("Save", function() AiTab:Save() end))
 		ClearBtn.MouseButton1Click:Connect(safeClick("Clear", function() AiTab:Clear() end))
 		NewChatBtn.MouseButton1Click:Connect(safeClick("New chat", function() AiTab:NewChat() end))
-		-- Send button: hover glow + click pulse via UIScale.
-		local sendScale = Instance.new("UIScale"); sendScale.Scale = 1; sendScale.Parent = SendButton
+				local sendScale = Instance.new("UIScale"); sendScale.Scale = 1; sendScale.Parent = SendButton
 		SendButton.MouseEnter:Connect(function()
 			if not generation.active then
 				tween(SendButton, {BackgroundTransparency = 0})
@@ -10789,28 +9320,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SendButton.MouseButton1Up:Connect(function()
 			tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
 		end)
-
-		-- Sidebar toggle button: rotate the icon when the sidebar collapses.
-		SidebarBtn.MouseButton1Click:Connect(function()
+				SidebarBtn.MouseButton1Click:Connect(function()
 			tween(SidebarBtn, {Rotation = sidebarOpen and 0 or 180}, nil, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 		end)
-
-		-- Header title: subtle accent shimmer when hovered (color cycle).
-		Header.MouseEnter:Connect(function()
+				Header.MouseEnter:Connect(function()
 			tween(titleIcon, {ImageColor3 = Color3.fromRGB(180, 160, 255)}, nil, TweenInfo.new(0.25))
 		end)
 		Header.MouseLeave:Connect(function()
 			tween(titleIcon, {ImageColor3 = ACCENT}, nil, TweenInfo.new(0.35))
 		end)
-
-		-- =====================================================================
-		-- Bootstrap
-		-- =====================================================================
-		loadAll()
+								loadAll()
 		if not (activeId and chats[activeId]) then
-			-- Stale / missing activeId: fall back to the most recent persisted
-			-- chat, or create a fresh one if the storage was empty.
-			if chatOrder[1] and chats[chatOrder[1]] then
+									if chatOrder[1] and chats[chatOrder[1]] then
 				activeId = chatOrder[1]
 			else
 				local c = newChat("New chat")
@@ -10820,11 +9341,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		AiTab.Conversation = chats[activeId].conv
 		renderSidebar()
 		renderActiveChat()
-
 		Window._AiTab = AiTab
 		return AiTab
 	end
-
 	function Window:CreateScriptSearcherTab(opts)
 		opts = Kwargify({
 			Name = "Scripts",
@@ -10832,27 +9351,20 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ImageSource = "Lucide",
 			ShowTitle = false,
 		}, opts or {})
-
 		local hostTab = self:CreateTab({
 			Name = opts.Name,
 			Icon = opts.Icon,
 			ImageSource = opts.ImageSource,
 			ShowTitle = false,
 		})
-
-		-- Sub-pages: Search (default) / Favorites / History.
-		local searchSub = hostTab:CreateSubTab({ Name = "Search", Icon = "search", Default = true, Order = 1 })
+				local searchSub = hostTab:CreateSubTab({ Name = "Search", Icon = "search", Default = true, Order = 1 })
 		local favSub    = hostTab:CreateSubTab({ Name = "Favorites", Icon = "star", Order = 2 })
 		local histSub   = hostTab:CreateSubTab({ Name = "History", Icon = "history", Order = 3 })
 		local searchPage = searchSub.Page
-
-		-- Persistence. Custom/Stats files are shared with the host script's
-		-- My Scripts section (same JSON schema, keys must stay compatible).
-		local FAV_FILE    = "Solara_SSFavorites.json"
+						local FAV_FILE    = "Solara_SSFavorites.json"
 		local HIST_FILE   = "Solara_SSHistory.json"
 		local CUSTOM_FILE = "Solara_Custom.json"
 		local STATS_FILE  = "Solara_Stats.json"
-
 		local function ssReadJson(path)
 			if not (isfile and readfile and isfile(path)) then return nil end
 			local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
@@ -10863,12 +9375,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if not writefile then return end
 			pcall(function() writefile(path, HttpService:JSONEncode(tbl)) end)
 		end
-
 		local source = "ScriptBlox"
 		local pageNum = 1
 		local maxPages = 1
 		local loading = false
-		local sortMode = "date" -- date | views | likes
+		local sortMode = "date"
 		local lastQuery = nil
 		local filters = {
 			verifiedOnly = false,
@@ -10880,19 +9391,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			verified = false,
 			patched = false,
 		}
-		-- Result cache: key -> {cards, maxPages, ts}. 5 min TTL.
-		local resultCache = {}
+				local resultCache = {}
 		local CACHE_TTL = 300
-
 		local favorites = ssReadJson(FAV_FILE) or {}
 		local history   = ssReadJson(HIST_FILE) or {}
-		local runStats  = nil -- lazy: Solara_Stats.json ({ [urlOrCode] = {Name, Count} })
-
+		local runStats  = nil
 		local function getRunStats()
 			if runStats == nil then runStats = ssReadJson(STATS_FILE) or {} end
 			return runStats
 		end
-
 		local function fmtNum(n)
 			n = tonumber(n) or 0
 			if n >= 1e6 then return string.format("%.1fM", n / 1e6) end
@@ -10903,7 +9410,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if type(iso) == "string" and #iso >= 10 then return iso:sub(1, 10) end
 			return nil
 		end
-
 		local gameNameCache = nil
 		local function currentGameName()
 			if gameNameCache ~= nil then return gameNameCache end
@@ -10913,12 +9419,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			gameNameCache = (ok and info and info.Name) or false
 			return gameNameCache or nil
 		end
-
-		-- Identity key shared by favorites, run stats and the "ran" badge.
-		local function dataKey(data)
+				local function dataKey(data)
 			return data.fetchUrl or data.link or data.raw
 		end
-
 		local function isFavorite(data)
 			local k = dataKey(data)
 			for _, e in ipairs(favorites) do
@@ -10926,18 +9429,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return false
 		end
-
 		local statusLabel
 		local runSearch
 		local updateFilterVisibility
-
 		local function setStatus(msg)
 			if statusLabel then statusLabel:Set(tostring(msg)) end
 		end
-
-		-- Snapshot-diff helper: collects Page children a creation function adds,
-		-- so whole sections can be shown/hidden per selected API source.
-		local function collectNew(parent, fn)
+						local function collectNew(parent, fn)
 			local before = {}
 			for _, c in ipairs(parent:GetChildren()) do before[c] = true end
 			fn()
@@ -10947,10 +9445,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return added
 		end
-
-		-- Element creation goes through the SubTab (its delegation swaps the
-		-- shared TabPage upvalue); Section objects would parent to the real page.
-		searchSub:CreateSection("Search")
+						searchSub:CreateSection("Search")
 		local queryInput = searchSub:CreateInput({
 			Name = "Query",
 			PlaceholderText = "e.g. infinite yield, arsenal, universal",
@@ -11005,12 +9500,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				runSearch(1)
 			end,
 		})
-
 		statusLabel = searchSub:CreateLabel({
 			Text = "Enter a query and press Search (needs HttpService / request).",
 			Style = 2,
 		})
-
 		local resultsHost = Instance.new("Frame")
 		resultsHost.Name = "ScriptSearcherResults"
 		resultsHost.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
@@ -11026,7 +9519,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		hostStroke.Color = Color3.fromRGB(70, 68, 85)
 		hostStroke.Transparency = 0.6
 		hostStroke.Parent = resultsHost
-
 		local Scroll = Instance.new("ScrollingFrame")
 		Scroll.Name = "ResultsScroll"
 		Scroll.BackgroundTransparency = 1
@@ -11049,16 +9541,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		scrollPad.PaddingLeft = UDim.new(0, 4)
 		scrollPad.PaddingRight = UDim.new(0, 4)
 		scrollPad.Parent = Scroll
-
-		-- Pagination bar (Prev / Page x of y / Next). maxPages comes from the
-		-- APIs: ScriptBlox result.totalPages, RScripts info.maxPages.
-		local pageBar = Instance.new("Frame")
+						local pageBar = Instance.new("Frame")
 		pageBar.Name = "ScriptSearcherPager"
 		pageBar.BackgroundTransparency = 1
 		pageBar.Size = UDim2.new(1, 0, 0, 34)
 		pageBar.LayoutOrder = 9
 		pageBar.Parent = searchPage
-
 		local function pagerBtn(text, anchor, pos)
 			local b = Instance.new("TextButton")
 			b.AnchorPoint = anchor
@@ -11086,7 +9574,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		pageLabel.TextColor3 = Color3.fromRGB(200, 198, 210)
 		pageLabel.Text = "Page 1"
 		pageLabel.Parent = pageBar
-
 		local function updatePageBar()
 			pageLabel.Text = "Page " .. pageNum .. " / " .. math.max(maxPages, 1)
 			prevBtn.BackgroundTransparency = (pageNum > 1) and 0 or 0.55
@@ -11098,11 +9585,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		nextBtn.MouseButton1Click:Connect(function()
 			if pageNum < maxPages and not loading then runSearch(pageNum + 1) end
 		end)
-
 		local function cardWidth()
 			return math.max(Scroll.AbsoluteSize.X - 12, 220)
 		end
-
 		local function scrollToResults()
 			if not searchPage:IsA("ScrollingFrame") then return end
 			task.defer(function()
@@ -11113,7 +9598,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				searchPage.CanvasPosition = Vector2.new(0, math.max(0, target))
 			end)
 		end
-
 		local sbFilterInsts = collectNew(searchPage, function()
 			searchSub:CreateSection("ScriptBlox filters")
 			local function sbToggle(name, key)
@@ -11128,7 +9612,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sbToggle("Verified", "verified")
 			sbToggle("Patched", "patched")
 		end)
-
 		local rsFilterInsts = collectNew(searchPage, function()
 			searchSub:CreateSection("RScripts filters")
 			local function rsToggle(name, key)
@@ -11143,14 +9626,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			rsToggle("Unpatched", "unpatched")
 			rsToggle("No key system", "noKeySystem")
 		end)
-
-		-- Only the active source's filter section stays visible.
-		updateFilterVisibility = function()
+				updateFilterVisibility = function()
 			for _, inst in ipairs(sbFilterInsts) do inst.Visible = (source == "ScriptBlox") end
 			for _, inst in ipairs(rsFilterInsts) do inst.Visible = (source == "RScripts") end
 		end
 		updateFilterVisibility()
-
 		local function setSectionLayoutOrder(sectionTitle, order)
 			for _, ch in ipairs(searchPage:GetChildren()) do
 				if ch:IsA("TextLabel") and ch.Text == sectionTitle then
@@ -11162,19 +9642,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		setSectionLayoutOrder("Search", 1)
 		setSectionLayoutOrder("ScriptBlox filters", 20)
 		setSectionLayoutOrder("RScripts filters", 21)
-
 		local function clearResults()
 			for _, ch in ipairs(Scroll:GetChildren()) do
 				if ch:IsA("Frame") then ch:Destroy() end
 			end
 		end
-
 		local function notifyCopy(text)
 			Luna:Notification({Title = "Script Searcher", Content = text, Icon = "content_copy"})
 		end
-
-		-- Run counter shared with the host's My Scripts stats (same file, same schema).
-		local function ssRecordRun(name, key)
+				local function ssRecordRun(name, key)
 			if not key then return end
 			local stats = getRunStats()
 			local e = stats[key] or { Name = name, Count = 0 }
@@ -11183,9 +9659,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			stats[key] = e
 			ssWriteJson(STATS_FILE, stats)
 		end
-
-		local renderFavorites, renderHistory -- forward; list pages refresh live on changes
-
+		local renderFavorites, renderHistory
 		local function toggleFavorite(data)
 			local k = dataKey(data)
 			if not k then return false end
@@ -11205,10 +9679,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if renderFavorites then renderFavorites() end
 			return true
 		end
-
-		-- Solara_Custom.json is owned by the host's My Scripts section; entries
-		-- added here show up after the hub is re-executed.
-		local function addToMyScripts(data)
+						local function addToMyScripts(data)
 			local src = data.fetchUrl or data.raw or data.link
 			if not src then return end
 			local list = ssReadJson(CUSTOM_FILE) or {}
@@ -11222,9 +9693,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ssWriteJson(CUSTOM_FILE, list)
 			Luna:Notification({ Title = "Script Searcher", Content = "Saved to My Scripts (visible after hub reload).", Icon = "check_circle" })
 		end
-
-		-- ---------- code preview popup ----------
-		local function showCodePopup(titleText, code)
+				local function showCodePopup(titleText, code)
 			local overlay = Instance.new("Frame")
 			overlay.Name = "SSCodePreview"
 			overlay.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
@@ -11232,14 +9701,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			overlay.Size = UDim2.fromScale(1, 1)
 			overlay.ZIndex = 200
 			overlay.Parent = LunaUI
-
 			local closeCatcher = Instance.new("TextButton")
 			closeCatcher.BackgroundTransparency = 1
 			closeCatcher.Size = UDim2.fromScale(1, 1)
 			closeCatcher.Text = ""
 			closeCatcher.ZIndex = 201
 			closeCatcher.Parent = overlay
-
 			local panel = Instance.new("Frame")
 			panel.AnchorPoint = Vector2.new(0.5, 0.5)
 			panel.Position = UDim2.fromScale(0.5, 0.5)
@@ -11249,7 +9716,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			panel.Parent = overlay
 			local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 12); pc.Parent = panel
 			local ps = Instance.new("UIStroke"); ps.Color = Color3.fromRGB(70, 68, 85); ps.Transparency = 0.4; ps.Parent = panel
-
 			local titleLbl = Instance.new("TextLabel")
 			titleLbl.BackgroundTransparency = 1
 			titleLbl.Position = UDim2.new(0, 14, 0, 10)
@@ -11262,7 +9728,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			titleLbl.Text = tostring(titleText or "Script code")
 			titleLbl.ZIndex = 203
 			titleLbl.Parent = panel
-
 			local function panelBtn(text, xOffset)
 				local b = Instance.new("TextButton")
 				b.AnchorPoint = Vector2.new(1, 0)
@@ -11286,7 +9751,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			copyBtn.MouseButton1Click:Connect(function()
 				if setclipboard then setclipboard(code); notifyCopy("Code copied.") end
 			end)
-
 			local codeScroll = Instance.new("ScrollingFrame")
 			codeScroll.BackgroundColor3 = Color3.fromRGB(16, 15, 21)
 			codeScroll.Position = UDim2.new(0, 10, 0, 40)
@@ -11299,7 +9763,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			codeScroll.ZIndex = 203
 			codeScroll.Parent = panel
 			local csc = Instance.new("UICorner"); csc.CornerRadius = UDim.new(0, 8); csc.Parent = codeScroll
-
 			local codeLbl = Instance.new("TextLabel")
 			codeLbl.BackgroundTransparency = 1
 			codeLbl.Position = UDim2.new(0, 8, 0, 6)
@@ -11314,9 +9777,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			codeLbl.ZIndex = 204
 			codeLbl.Parent = codeScroll
 		end
-
-		-- ---------- result card ----------
-		local function makeCard(data, order, parentScroll)
+				local function makeCard(data, order, parentScroll)
 			parentScroll = parentScroll or Scroll
 			local card = Instance.new("Frame")
 			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
@@ -11332,7 +9793,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			cStroke.Color = Color3.fromRGB(70, 68, 85)
 			cStroke.Transparency = 0.75
 			cStroke.Parent = card
-
 			local title = Instance.new("TextLabel")
 			title.BackgroundTransparency = 1
 			title.Position = UDim2.new(0, 10, 0, 6)
@@ -11344,7 +9804,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Text = data.title or "Untitled"
 			title.Parent = card
-
 			local badges = {}
 			if data.gameMatch then table.insert(badges, '<font color="#7CE38B">[THIS GAME]</font>') end
 			if data.verified then table.insert(badges, '<font color="#7CE38B">[VERIFIED]</font>') end
@@ -11365,7 +9824,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			badgeLbl.TextTruncate = Enum.TextTruncate.AtEnd
 			badgeLbl.Text = table.concat(badges, " ")
 			badgeLbl.Parent = card
-
 			local metaParts = {}
 			if data.game then table.insert(metaParts, tostring(data.game)) end
 			if data.author then table.insert(metaParts, tostring(data.author)) end
@@ -11384,7 +9842,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			meta.TextXAlignment = Enum.TextXAlignment.Left
 			meta.Text = table.concat(metaParts, "  •  ")
 			meta.Parent = card
-
 			local function btnRow(y)
 				local row = Instance.new("Frame")
 				row.BackgroundTransparency = 1
@@ -11400,7 +9857,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			local row1 = btnRow(60)
 			local row2 = btnRow(88)
-
 			local function miniBtn(row, text, orderB, cb)
 				local b = Instance.new("TextButton")
 				b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
@@ -11419,7 +9875,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				b.Activated:Connect(cb)
 				return b
 			end
-
 			local execBtn
 			execBtn = miniBtn(row1, "Execute", 1, function()
 				if data.raw and data.raw ~= "" then
@@ -11448,7 +9903,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end)
 				end
 			end)
-
 			local viewBtn
 			viewBtn = miniBtn(row1, "View", 2, function()
 				if data.raw and data.raw ~= "" then
@@ -11467,7 +9921,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end)
 				end
 			end)
-
 			miniBtn(row1, "Copy", 3, function()
 				if setclipboard and data.raw and data.raw ~= "" then
 					setclipboard(data.raw)
@@ -11480,7 +9933,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					notifyCopy("Link copied.")
 				end
 			end)
-
 			miniBtn(row2, data.fetchUrl and "Copy LS" or "Copy Raw", 1, function()
 				if not setclipboard then return end
 				if data.fetchUrl then
@@ -11491,20 +9943,16 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					notifyCopy("Script copied.")
 				end
 			end)
-
 			local favBtn
 			favBtn = miniBtn(row2, isFavorite(data) and "* Fav" or "+ Fav", 2, function()
 				favBtn.Text = toggleFavorite(data) and "* Fav" or "+ Fav"
 			end)
-
 			miniBtn(row2, "+ My Scripts", 3, function()
 				addToMyScripts(data)
 			end)
-
 			card.MouseEnter:Connect(function() tween(cStroke, {Transparency = 0.35}) end)
 			card.MouseLeave:Connect(function() tween(cStroke, {Transparency = 0.75}) end)
 		end
-
 		local function getQuery()
 			if queryInput and queryInput.CurrentValue then
 				local t = tostring(queryInput.CurrentValue)
@@ -11517,7 +9965,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return ""
 		end
-
 		Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 			local w = cardWidth()
 			for _, ch in ipairs(Scroll:GetChildren()) do
@@ -11526,7 +9973,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end)
-
 		local function syncSource()
 			if sourceDropdown and sourceDropdown.CurrentOption then
 				local v = sourceDropdown.CurrentOption
@@ -11543,7 +9989,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				if type(v) == "string" and v ~= "" then source = v end
 			end
 		end
-
 		local function buildRScriptsUrl(q, page)
 			local params = {
 				page = tostring(page),
@@ -11563,7 +10008,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return "https://rscripts.net/api/v2/scripts?" .. table.concat(parts, "&")
 		end
-
 		local function buildScriptBloxUrl(q, page)
 			local url = "https://scriptblox.com/api/script/search?q=" .. HttpService:UrlEncode(q)
 				.. "&mode=free&page=" .. tostring(page) .. "&max=20"
@@ -11573,7 +10017,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if filters.patched then url = url .. "&patched=1" end
 			return url
 		end
-
 		local function parseRScripts(data)
 			if not data then return {} end
 			local list = data.scripts or (data.data and data.data.scripts)
@@ -11600,7 +10043,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return cards
 		end
-
 		local function parseScriptBlox(data)
 			if not data then return {} end
 			local list = data.result and data.result.scripts
@@ -11628,7 +10070,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return cards
 		end
-
 		local function fetchCards(query, page)
 			local cards, errMsg, mp = {}, nil, 1
 			if source == "RScripts" then
@@ -11644,7 +10085,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end
 				end
 			else
-				task.wait(1.05) -- scriptblox rate-limits; keep the old courtesy delay
+				task.wait(1.05)
 				local data, err = LunaHttpJSON(buildScriptBloxUrl(query, page))
 				errMsg = err
 				if data then
@@ -11659,9 +10100,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return cards, errMsg, mp
 		end
-
-		-- ScriptBlox search has no server-side sort param; sort its page locally.
-		local function sortCards(cards)
+				local function sortCards(cards)
 			if source == "ScriptBlox" then
 				if sortMode == "views" then
 					table.sort(cards, function(a, b) return (a.views or 0) > (b.views or 0) end)
@@ -11671,9 +10110,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return cards
 		end
-
-		-- Badges (ran counter) + current-game cards floated to the top, stable.
-		local function annotateCards(cards)
+				local function annotateCards(cards)
 			local gname = currentGameName()
 			local gl = gname and gname:lower()
 			local stats = getRunStats()
@@ -11697,7 +10134,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			for _, c in ipairs(rest) do table.insert(ranked, c) end
 			return ranked
 		end
-
 		local function cacheKeyFor(query, page)
 			local f = {}
 			for k, v in pairs(filters) do
@@ -11706,7 +10142,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			table.sort(f)
 			return source .. "|" .. query:lower() .. "|" .. tostring(page) .. "|" .. sortMode .. "|" .. table.concat(f, ",")
 		end
-
 		local function renderCards(cards)
 			clearResults()
 			for i, c in ipairs(cards) do
@@ -11719,9 +10154,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
-		-- ---------- shared list host for Favorites / History pages ----------
-		local function buildListHost(parentPage)
+				local function buildListHost(parentPage)
 			local host = Instance.new("Frame")
 			host.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
 			host.BackgroundTransparency = 0.15
@@ -11754,11 +10187,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sp.Parent = sc
 			return host, sc
 		end
-
-		-- ---------- Favorites sub-page ----------
-		local favCountLbl = favSub:CreateLabel({ Text = "", Style = 2 })
+				local favCountLbl = favSub:CreateLabel({ Text = "", Style = 2 })
 		local _, favScroll = buildListHost(favSub.Page)
-
 		renderFavorites = function()
 			favCountLbl:Set(#favorites .. " favorite script(s) — use + Fav on a search result to add more.")
 			for _, ch in ipairs(favScroll:GetChildren()) do
@@ -11777,11 +10207,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
-		-- ---------- History sub-page ----------
-		local histCountLbl = histSub:CreateLabel({ Text = "", Style = 2 })
+				local histCountLbl = histSub:CreateLabel({ Text = "", Style = 2 })
 		local _, histScroll = buildListHost(histSub.Page)
-
 		local function makeHistoryRow(e, order)
 			local row = Instance.new("Frame")
 			row.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
@@ -11790,7 +10217,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			row.LayoutOrder = order
 			row.Parent = histScroll
 			local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 8); rc.Parent = row
-
 			local qBtn = Instance.new("TextButton")
 			qBtn.BackgroundTransparency = 1
 			qBtn.Position = UDim2.new(0, 10, 0, 0)
@@ -11803,7 +10229,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			qBtn.Text = tostring(e.Query) .. "   (" .. tostring(e.Source or "?") .. ")"
 			qBtn.AutoButtonColor = false
 			qBtn.Parent = row
-
 			local xBtn = Instance.new("TextButton")
 			xBtn.AnchorPoint = Vector2.new(1, 0.5)
 			xBtn.Position = UDim2.new(1, -8, 0.5, 0)
@@ -11816,7 +10241,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			xBtn.AutoButtonColor = false
 			xBtn.Parent = row
 			local xc = Instance.new("UICorner"); xc.CornerRadius = UDim.new(0, 6); xc.Parent = xBtn
-
 			qBtn.MouseButton1Click:Connect(function()
 				pcall(function() queryInput:Set(e.Query) end)
 				source = (e.Source == "RScripts") and "RScripts" or "ScriptBlox"
@@ -11833,7 +10257,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				renderHistory()
 			end)
 		end
-
 		renderHistory = function()
 			histCountLbl:Set(#history .. " recent quer" .. (#history == 1 and "y" or "ies") .. " — click to search again.")
 			for _, ch in ipairs(histScroll:GetChildren()) do
@@ -11843,7 +10266,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				makeHistoryRow(e, i)
 			end
 		end
-
 		local function pushHistory(query)
 			for i, e in ipairs(history) do
 				if e.Query == query and e.Source == source then
@@ -11856,9 +10278,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ssWriteJson(HIST_FILE, history)
 			renderHistory()
 		end
-
-		-- Refresh list pages whenever their pill is pressed.
-		local baseFavActivate = favSub.Activate
+				local baseFavActivate = favSub.Activate
 		favSub.Activate = function(self, ...)
 			baseFavActivate(self, ...)
 			renderFavorites()
@@ -11868,7 +10288,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			baseHistActivate(self, ...)
 			renderHistory()
 		end
-
 		runSearch = function(page)
 			if loading then return end
 			syncSource()
@@ -11880,7 +10299,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			page = math.max(1, page or 1)
 			pageNum = page
 			lastQuery = query
-
 			local ck = cacheKeyFor(query, page)
 			local cached = resultCache[ck]
 			if cached and (os.time() - cached.ts) < CACHE_TTL then
@@ -11891,11 +10309,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				if #cached.cards > 0 then scrollToResults() end
 				return
 			end
-
 			loading = true
 			setStatus("Searching " .. source .. " (page " .. page .. ")...")
 			if page == 1 then clearResults() end
-
 			task.spawn(function()
 				local cards, errMsg, mp = fetchCards(query, page)
 				maxPages = math.max(1, mp or 1)
@@ -11922,21 +10338,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				loading = false
 			end)
 		end
-
 		renderFavorites()
 		renderHistory()
 		updatePageBar()
 		setStatus("Ready — use Search or press Enter in Query.")
-
 		Window._ScriptSearcherTab = hostTab
 		return hostTab
 	end
-
 	Elements.Parent.Visible = true
 	tween(Elements.Parent, {BackgroundTransparency = 0.1})
 	Navigation.Visible = true
 	tween(Navigation.Line, {BackgroundTransparency = 0})
-
 	for _, TopbarButton in ipairs(Main.Controls:GetChildren()) do
 		if TopbarButton.ClassName == "Frame" and TopbarButton.Name ~= "Theme" then
 			TopbarButton.Visible = true
@@ -11945,7 +10357,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			tween(TopbarButton.ImageLabel, {ImageTransparency = 0.25})
 		end
 	end
-
 	Main.Controls.Close.ImageLabel.MouseButton1Click:Connect(function()
 		Hide(Main, Window.Bind, true)
 		dragBar.Visible = false
@@ -11961,7 +10372,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	Main.Controls.Close["MouseLeave"]:Connect(function()
 		tween(Main.Controls.Close.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
 	end)
-
 	UserInputService.InputBegan:Connect(function(input, gpe)
 		if gpe then return end
 		if Window.State then return end
@@ -11976,7 +10386,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 	end)
-
 	Main.Logo.MouseButton1Click:Connect(function()
 		if Navigation.Size.X.Offset == 205 then
 			tween(Elements.Parent, {Size = UDim2.new(1, -55, Elements.Parent.Size.Y.Scale, Elements.Parent.Size.Y.Offset)})
@@ -11986,7 +10395,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			tween(Navigation, {Size = UDim2.new(Navigation.Size.X.Scale, 205, Navigation.Size.Y.Scale, Navigation.Size.Y.Offset)})
 		end
 	end)
-
 	Main.Controls.ToggleSize.ImageLabel.MouseButton1Click:Connect(function()
 		Window.Size = not Window.Size
 		if Window.Size then
@@ -12006,7 +10414,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	Main.Controls.ToggleSize["MouseLeave"]:Connect(function()
 		tween(Main.Controls.ToggleSize.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
 	end)
-
 	Main.Controls.Theme.ImageLabel.MouseButton1Click:Connect(function()
 		if Window.Settings then
 			Window.Settings:Activate()
@@ -12018,9 +10425,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	end)
 	Main.Controls.Theme["MouseLeave"]:Connect(function()
 		tween(Main.Controls.Theme.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
-	end)	
-
-
+	end)
 	LunaUI.MobileSupport.Interact.MouseButton1Click:Connect(function()
 		Unhide(Main, Window.CurrentTab)
 		dragBar.Visible = true
@@ -12031,7 +10436,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 		LunaUI.MobileSupport.Visible = false
 	end)
-
 	if dragBar then
 		dragBar.Active = true
 		if dragInteract then
@@ -12042,21 +10446,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if dragBar.Visible then syncDragBarPosition(Main) end
 		end)
 	end
-
-	-- ============================================================
-	-- SearchBar feature (opt-in via WindowSettings.SearchBar)
-	-- ============================================================
-	if WindowSettings.SearchBar then
-		-- Search icon in the top-right controls: clone Close's frame to match style.
-		local SearchControl = Main.Controls.Close:Clone()
+				if WindowSettings.SearchBar then
+				local SearchControl = Main.Controls.Close:Clone()
 		SearchControl.Name = RandomName()
 		SearchControl.Parent = Main.Controls
 		ApplyIcon(SearchControl.ImageLabel, GetIcon("search", "Material"))
-
-		-- Position the search slot next to ToggleSize (minimize). We support two layouts:
-		--   1) UIListLayout-managed Controls -> set LayoutOrder so it sorts just before ToggleSize
-		--   2) Absolutely positioned Controls -> compute a position one slot to the left of ToggleSize
-		local listLayout = Main.Controls:FindFirstChildOfClass("UIListLayout")
+								local listLayout = Main.Controls:FindFirstChildOfClass("UIListLayout")
 		if listLayout then
 			SearchControl.LayoutOrder = (Main.Controls.ToggleSize.LayoutOrder or 0) - 1
 		else
@@ -12071,11 +10466,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				toggleSize.Position.Y.Offset
 			)
 		end
-
-		-- The modal lives at the LunaUI (ScreenGui) root so it overlays the SmartWindow,
-		-- dragBar, and every other UI element. We use a backdrop frame for click-outside
-		-- close + a dim effect, with the actual panel anchored to the window's bounds.
-		local SearchLayer = Instance.new("Frame")
+								local SearchLayer = Instance.new("Frame")
 		SearchLayer.Name = RandomName()
 		SearchLayer.AnchorPoint = Vector2.new(0, 0)
 		SearchLayer.Position = UDim2.fromScale(0, 0)
@@ -12086,9 +10477,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SearchLayer.Visible = false
 		SearchLayer.ZIndex = 5000
 		SearchLayer.Parent = LunaUI
-
-		-- Dim backdrop: dark with a faint vignette gradient instead of solid white.
-		local Backdrop = Instance.new("TextButton")
+				local Backdrop = Instance.new("TextButton")
 		Backdrop.Name = RandomName()
 		Backdrop.AutoButtonColor = false
 		Backdrop.Text = ""
@@ -12098,9 +10487,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Backdrop.BorderSizePixel = 0
 		Backdrop.ZIndex = 5000
 		Backdrop.Parent = SearchLayer
-
-		-- Subtle radial-ish vignette so the modal pops without making the bg solid.
-		local backdropGradient = Instance.new("UIGradient")
+				local backdropGradient = Instance.new("UIGradient")
 		backdropGradient.Rotation = 90
 		backdropGradient.Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.15),
@@ -12108,19 +10495,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			NumberSequenceKeypoint.new(1, 0.15),
 		})
 		backdropGradient.Parent = Backdrop
-
 		local SearchModal = Instance.new("Frame")
 		SearchModal.Name = RandomName()
 		SearchModal.AnchorPoint = Vector2.new(0.5, 0.5)
-		-- Slight cool tint behind the glass.
-		SearchModal.BackgroundColor3 = Color3.fromRGB(28, 26, 38)
+				SearchModal.BackgroundColor3 = Color3.fromRGB(28, 26, 38)
 		SearchModal.BackgroundTransparency = 0.08
 		SearchModal.BorderSizePixel = 0
 		SearchModal.ZIndex = 5010
 		SearchModal.Parent = SearchLayer
-
-		-- Liquid-glass: layered diagonal gradient gives the milky highlight.
-		local modalGradient = Instance.new("UIGradient")
+				local modalGradient = Instance.new("UIGradient")
 		modalGradient.Rotation = 135
 		modalGradient.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 56, 82)),
@@ -12132,9 +10515,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			NumberSequenceKeypoint.new(1, 0.05),
 		})
 		modalGradient.Parent = SearchModal
-
-		-- Re-anchor the modal to Main so it tracks the window (position + size).
-		local function repositionModal()
+				local function repositionModal()
 			local pos = Main.AbsolutePosition
 			local sz = Main.AbsoluteSize
 			SearchModal.Position = UDim2.fromOffset(pos.X + sz.X * 0.5, pos.Y + sz.Y * 0.5)
@@ -12143,37 +10524,28 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		repositionModal()
 		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(repositionModal)
 		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionModal)
-
 		local modalCorner = Instance.new("UICorner")
 		modalCorner.CornerRadius = UDim.new(0, 14)
 		modalCorner.Parent = SearchModal
-
 		local modalStroke = Instance.new("UIStroke")
 		modalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		modalStroke.Color = Color3.fromRGB(120, 110, 160)
 		modalStroke.Thickness = 1.2
 		modalStroke.Transparency = 0.4
 		modalStroke.Parent = SearchModal
-
-		-- A second, faint inner highlight stroke - completes the glass look.
-		local highlightStroke = Instance.new("UIStroke")
+				local highlightStroke = Instance.new("UIStroke")
 		highlightStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		highlightStroke.Color = Color3.fromRGB(255, 255, 255)
 		highlightStroke.Thickness = 1
 		highlightStroke.Transparency = 0.9
 		highlightStroke.Parent = SearchModal
-
 		local modalPadding = Instance.new("UIPadding")
 		modalPadding.PaddingTop = UDim.new(0, 14)
 		modalPadding.PaddingBottom = UDim.new(0, 14)
 		modalPadding.PaddingLeft = UDim.new(0, 16)
 		modalPadding.PaddingRight = UDim.new(0, 16)
 		modalPadding.Parent = SearchModal
-
-		-- ============================================================
-		-- Header row: search icon + input
-		-- ============================================================
-		local InputRow = Instance.new("Frame")
+								local InputRow = Instance.new("Frame")
 		InputRow.Name = RandomName()
 		InputRow.Size = UDim2.new(1, 0, 0, 42)
 		InputRow.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
@@ -12181,11 +10553,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		InputRow.BorderSizePixel = 0
 		InputRow.ZIndex = 5011
 		InputRow.Parent = SearchModal
-
 		local rowCornerHdr = Instance.new("UICorner")
 		rowCornerHdr.CornerRadius = UDim.new(0, 10)
 		rowCornerHdr.Parent = InputRow
-
 		local inputRowGradient = Instance.new("UIGradient")
 		inputRowGradient.Rotation = 90
 		inputRowGradient.Transparency = NumberSequence.new({
@@ -12193,7 +10563,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			NumberSequenceKeypoint.new(1, 0.3),
 		})
 		inputRowGradient.Parent = InputRow
-
 		local SearchIconLeft = Instance.new("ImageLabel")
 		SearchIconLeft.Name = RandomName()
 		SearchIconLeft.AnchorPoint = Vector2.new(0, 0.5)
@@ -12205,7 +10574,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SearchIconLeft.ZIndex = 5012
 		SearchIconLeft.Parent = InputRow
 		ApplyIcon(SearchIconLeft, GetIcon("search", "Material"))
-
 		local SearchInput = Instance.new("TextBox")
 		SearchInput.Name = RandomName()
 		SearchInput.AnchorPoint = Vector2.new(0, 0.5)
@@ -12223,12 +10591,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SearchInput.ClearTextOnFocus = false
 		SearchInput.ZIndex = 5012
 		SearchInput.Parent = InputRow
-
 		local inputStroke = Instance.new("UIStroke")
 		inputStroke.Color = Color3.fromRGB(130, 120, 170)
 		inputStroke.Transparency = 0.6
 		inputStroke.Parent = InputRow
-
 		local Results = Instance.new("ScrollingFrame")
 		Results.Name = RandomName()
 		Results.Position = UDim2.new(0, 0, 0, 54)
@@ -12241,12 +10607,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Results.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Results.ZIndex = 5011
 		Results.Parent = SearchModal
-
 		local resultsList = Instance.new("UIListLayout")
 		resultsList.SortOrder = Enum.SortOrder.LayoutOrder
 		resultsList.Padding = UDim.new(0, 6)
 		resultsList.Parent = Results
-
 		local EmptyLabel = Instance.new("TextLabel")
 		EmptyLabel.Name = RandomName()
 		EmptyLabel.Size = UDim2.new(1, 0, 0, 36)
@@ -12258,10 +10622,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		EmptyLabel.TextTransparency = 0.2
 		EmptyLabel.ZIndex = 5011
 		EmptyLabel.Parent = Results
-
-		-- Cache to avoid rebuilding the result rows for identical queries.
-		local lastQuery = nil
-
+				local lastQuery = nil
 		local function clearResults()
 			for _, child in ipairs(Results:GetChildren()) do
 				if child:IsA("TextButton") then
@@ -12269,7 +10630,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
 		local function createResultRow(entry, layoutOrder)
 			local Row = Instance.new("TextButton")
 			Row.Name = RandomName()
@@ -12282,11 +10642,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Row.LayoutOrder = layoutOrder
 			Row.ZIndex = 5012
 			Row.Parent = Results
-
 			local rowCorner = Instance.new("UICorner")
 			rowCorner.CornerRadius = UDim.new(0, 8)
 			rowCorner.Parent = Row
-
 			local rowGradient = Instance.new("UIGradient")
 			rowGradient.Rotation = 90
 			rowGradient.Transparency = NumberSequence.new({
@@ -12294,12 +10652,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				NumberSequenceKeypoint.new(1, 0.4),
 			})
 			rowGradient.Parent = Row
-
 			local rowStroke = Instance.new("UIStroke")
 			rowStroke.Color = Color3.fromRGB(150, 140, 200)
 			rowStroke.Transparency = 0.7
 			rowStroke.Parent = Row
-
 			local title = Instance.new("TextLabel")
 			title.Name = "Title"
 			title.BackgroundTransparency = 1
@@ -12312,7 +10668,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			title.TextSize = 14
 			title.ZIndex = 5013
 			title.Parent = Row
-
 			local sub = Instance.new("TextLabel")
 			sub.Name = "Sub"
 			sub.BackgroundTransparency = 1
@@ -12325,7 +10680,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sub.TextSize = 11
 			sub.ZIndex = 5013
 			sub.Parent = Row
-
 			Row.MouseEnter:Connect(function()
 				tween(rowStroke, {Transparency = 0.25})
 				tween(Row, {BackgroundTransparency = 0.15})
@@ -12334,16 +10688,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				tween(rowStroke, {Transparency = 0.7})
 				tween(Row, {BackgroundTransparency = 0.35})
 			end)
-
 			Row.MouseButton1Click:Connect(function()
 				local tabRef = Window._Tabs[entry.Tab]
 				if tabRef and tabRef.Activate then
 					tabRef.Activate()
 				end
-
-				-- If the element lives inside a sub-tab page, switch to it so
-				-- the highlight + scroll target is actually visible.
-				do
+												do
 					local ancestor = entry.Frame and entry.Frame.Parent
 					local guard = 0
 					while ancestor and ancestor ~= Elements and guard < 12 do
@@ -12358,11 +10708,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 						guard += 1
 					end
 				end
-
 				Window.CloseSearch()
-
-				-- Highlight the target element briefly
-				local frame = entry.Frame
+								local frame = entry.Frame
 				if frame and frame.Parent then
 					local origStroke = frame:FindFirstChild("UIStroke")
 					local origColor = origStroke and origStroke.Color or nil
@@ -12374,9 +10721,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 							origStroke.Color = origColor
 						end
 					end)
-
-					-- Scroll the containing ScrollingFrame to make the element visible.
-					local container = frame.Parent
+										local container = frame.Parent
 					local guard = 0
 					while container and not container:IsA("ScrollingFrame") and container.Parent and guard < 8 do
 						container = container.Parent
@@ -12392,49 +10737,38 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end)
 		end
-
 		local function refreshResults()
 			local query = (SearchInput.Text or ""):lower()
 			if query == lastQuery then return end
 			lastQuery = query
-
 			clearResults()
-
 			if query == "" then
 				EmptyLabel.Text = "Start typing to search elements..."
 				EmptyLabel.Visible = true
 				return
 			end
-
 			local matches = 0
 			for _, entry in ipairs(Window._SearchIndex) do
 				if entry.Frame and entry.Frame.Parent then
 					if string.find(string.lower(entry.Name), query, 1, true) then
 						matches += 1
 						createResultRow(entry, matches)
-						if matches >= 60 then break end -- cap rendering cost
+						if matches >= 60 then break end
 					end
 				end
 			end
-
 			EmptyLabel.Visible = matches == 0
 			if matches == 0 then
 				EmptyLabel.Text = "No results for \"" .. SearchInput.Text .. "\""
 			end
 		end
-
 		SearchInput:GetPropertyChangedSignal("Text"):Connect(refreshResults)
-
-		-- Smooth, slightly springy open / quick fade close.
-		local OPEN_INFO = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+				local OPEN_INFO = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 		local OPEN_FADE = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-
-		-- Scale-from-0 pop in. Done via a child UIScale we add on first open.
-		local modalScale = Instance.new("UIScale")
+				local modalScale = Instance.new("UIScale")
 		modalScale.Scale = 0.85
 		modalScale.Parent = SearchModal
-
 		local function applyVisible(open)
 			if open then
 				SearchLayer.Visible = true
@@ -12448,7 +10782,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				EmptyLabel.TextTransparency = 1
 				SearchIconLeft.ImageTransparency = 1
 				modalScale.Scale = 0.92
-
 				TweenService:Create(Backdrop, OPEN_FADE, {BackgroundTransparency = 0.5}):Play()
 				TweenService:Create(SearchModal, OPEN_FADE, {BackgroundTransparency = 0.08}):Play()
 				TweenService:Create(InputRow, OPEN_FADE, {BackgroundTransparency = 0.25}):Play()
@@ -12471,31 +10804,25 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				TweenService:Create(SearchIconLeft, CLOSE_INFO, {ImageTransparency = 1}):Play()
 				TweenService:Create(modalScale, CLOSE_INFO, {Scale = 0.94}):Play()
 				task.delay(0.2, function()
-					-- Don't hide if user reopened in the meantime
-					if not Window._SearchOpen then
+										if not Window._SearchOpen then
 						SearchLayer.Visible = false
 					end
 				end)
 			end
 		end
-
 		Window._SearchOpen = false
 		Window._SearchEnabled = true
-
 		local function setOpen(open)
 			if not Window._SearchEnabled then open = false end
 			if Window._SearchOpen == open then return end
 			Window._SearchOpen = open
-
 			if open then
-				-- If minimized, expand first so the modal lines up visibly with the window.
-				if Window.Size then
+								if Window.Size then
 					Maximise(Main)
 					Window.Size = false
 					if dragBar then dragBar.Visible = true end
 				end
-				-- If hidden by keybind, restore first.
-				if not Window.State then
+								if not Window.State then
 					Unhide(Main, Window.CurrentTab)
 					Window.State = true
 				end
@@ -12512,7 +10839,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				SearchInput:ReleaseFocus()
 			end
 		end
-
 		SearchControl.ImageLabel.MouseButton1Click:Connect(function()
 			setOpen(not Window._SearchOpen)
 		end)
@@ -12522,20 +10848,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SearchControl["MouseLeave"]:Connect(function()
 			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
 		end)
-
-		-- Click outside (backdrop) closes the modal.
-		Backdrop.MouseButton1Click:Connect(function()
+				Backdrop.MouseButton1Click:Connect(function()
 			setOpen(false)
 		end)
-
-		-- Default keybind: configurable, defaults to Ctrl+F. Esc closes regardless.
-		Window._SearchKeybind = WindowSettings.SearchKeybind or Enum.KeyCode.F
+				Window._SearchKeybind = WindowSettings.SearchKeybind or Enum.KeyCode.F
 		Window._SearchKeybindRequiresCtrl = WindowSettings.SearchKeybindRequiresCtrl ~= false
-
-		-- IMPORTANT: We must accept Esc even when `gpe` is true, because while typing
-		-- in the SearchInput TextBox, all key events get marked as game-processed.
-		-- Without this branch the modal cannot be closed with Escape while focused.
-		UserInputService.InputBegan:Connect(function(input, gpe)
+								UserInputService.InputBegan:Connect(function(input, gpe)
 			if input.KeyCode == Enum.KeyCode.Escape and Window._SearchOpen then
 				setOpen(false)
 				return
@@ -12551,18 +10869,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				setOpen(not Window._SearchOpen)
 			end
 		end)
-
-
 		Window._SearchControl = SearchControl
 		Window._SearchLayer = SearchLayer
 		Window._SearchModal = SearchModal
-
 		Window.OpenSearch = function() setOpen(true) end
 		Window.CloseSearch = function() setOpen(false) end
 		Window.IsSearchOpen = function() return Window._SearchOpen end
-
-		-- Runtime control: toggle SearchBar on/off without rebuilding the window.
-		Window.SetSearchEnabled = function(enabled)
+				Window.SetSearchEnabled = function(enabled)
 			Window._SearchEnabled = enabled and true or false
 			if not Window._SearchEnabled and Window._SearchOpen then
 				setOpen(false)
@@ -12571,10 +10884,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				SearchControl.Visible = Window._SearchEnabled
 			end
 		end
-
-		-- Runtime control: change the keybind. Accepts an Enum.KeyCode or a single
-		-- uppercase letter string (e.g. "F"). `requireCtrl` is a boolean (default true).
-		Window.SetSearchKeybind = function(key, requireCtrl)
+						Window.SetSearchKeybind = function(key, requireCtrl)
 			if typeof(key) == "EnumItem" then
 				Window._SearchKeybind = key
 			elseif type(key) == "string" then
@@ -12586,13 +10896,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 	end
-
-	-- ============================================================
-	-- Resize handle (PC only, opt-in via WindowSettings.Resizable)
-	-- ============================================================
-	if WindowSettings.Resizable and IsDesktop() then
-		-- Small backing chip so the icon stays visible against any background.
-		local HandleBack = Instance.new("Frame")
+				if WindowSettings.Resizable and IsDesktop() then
+				local HandleBack = Instance.new("Frame")
 		HandleBack.Name = RandomName()
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
 		HandleBack.Position = UDim2.new(1, -8, 1, -8)
@@ -12602,30 +10907,25 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		HandleBack.BorderSizePixel = 0
 		HandleBack.ZIndex = 30
 		HandleBack.Parent = Main
-
 		local backCorner = Instance.new("UICorner")
 		backCorner.CornerRadius = UDim.new(0, 6)
 		backCorner.Parent = HandleBack
-
 		local backStroke = Instance.new("UIStroke")
 		backStroke.Color = Color3.fromRGB(120, 117, 140)
 		backStroke.Transparency = 0.5
 		backStroke.Parent = HandleBack
-
 		local Handle = Instance.new("ImageButton")
 		Handle.Name = RandomName()
 		Handle.AnchorPoint = Vector2.new(0.5, 0.5)
 		Handle.Position = UDim2.fromScale(0.5, 0.5)
 		Handle.Size = UDim2.fromOffset(16, 16)
 		Handle.BackgroundTransparency = 1
-		-- Material "open_in_full" - diagonal expansion arrows
-		ApplyIcon(Handle, GetIcon("open_in_full", "Material"))
+				ApplyIcon(Handle, GetIcon("open_in_full", "Material"))
 		Handle.ImageColor3 = Color3.fromRGB(235, 235, 245)
 		Handle.ImageTransparency = 0
 		Handle.AutoButtonColor = false
 		Handle.ZIndex = 31
 		Handle.Parent = HandleBack
-
 		HandleBack.MouseEnter:Connect(function()
 			tween(HandleBack, {BackgroundTransparency = 0.05})
 			tween(backStroke, {Transparency = 0.1})
@@ -12634,17 +10934,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			tween(HandleBack, {BackgroundTransparency = 0.3})
 			tween(backStroke, {Transparency = 0.5})
 		end)
-
 		local resizing = false
 		local startMouse, startSize
-
 		Handle.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 			resizing = true
 			startMouse = UserInputService:GetMouseLocation()
 			startSize = Main.AbsoluteSize
 		end)
-
 		UserInputService.InputChanged:Connect(function(input)
 			if not resizing then return end
 			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
@@ -12656,25 +10953,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			MainSize = Main.Size
 			syncDragBarPosition(Main)
 		end)
-
 		UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				resizing = false
 			end
 		end)
-
-		-- Re-sync on every Main size/position change too so toggling minimize,
-		-- maximise, or restoring from a hide always keeps the dragBar in line.
-		Window._ResizeHandle = HandleBack
-
-		-- Hide the resize handle when the window is minimized or hidden, restore otherwise.
-		local function syncHandleVisibility()
+						Window._ResizeHandle = HandleBack
+				local function syncHandleVisibility()
 			HandleBack.Visible = (Window.Size == false) and Window.State
 		end
-		-- Mirror visibility on size/state changes by observing Main visually.
-		Main:GetPropertyChangedSignal("Size"):Connect(function()
-			-- Heuristic: if Main is in the minimized state we shrink the height below 60px.
-			if Main.AbsoluteSize.Y < 60 then
+				Main:GetPropertyChangedSignal("Size"):Connect(function()
+						if Main.AbsoluteSize.Y < 60 then
 				HandleBack.Visible = false
 			else
 				syncHandleVisibility()
@@ -12684,24 +10973,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if not Main.Visible then HandleBack.Visible = false end
 		end)
 	end
-
-	-- ============================================================
-	-- UI Zoom (Ctrl + / Ctrl - / Ctrl 0)
-	-- ============================================================
-	-- A UIScale on the main SmartWindow lets us scale the whole UI without
-	-- breaking the asset's internal layout. Bound to standard browser-style
-	-- shortcuts; opt-out via WindowSettings.ZoomEnabled = false.
-	do
+							do
 		local mainScale = Main:FindFirstChildOfClass("UIScale")
 		if not mainScale then
 			mainScale = Instance.new("UIScale")
 			mainScale.Scale = 1
 			mainScale.Parent = Main
 		end
-		-- ShadowHolder is a sibling of Main (not a descendant), so it doesn't
-		-- inherit Main's UIScale. Mirror it manually so the drop-shadow grows
-		-- and shrinks together with the window when the user zooms.
-		local shadowScale
+								local shadowScale
 		if Main.Parent and Main.Parent:FindFirstChild("ShadowHolder") then
 			shadowScale = Main.Parent.ShadowHolder:FindFirstChildOfClass("UIScale")
 			if not shadowScale then
@@ -12716,7 +10995,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Window._ZoomMin = 0.6
 		Window._ZoomMax = 1.6
 		Window._ZoomStep = 0.1
-
 		Window.SetZoom = function(scale)
 			scale = math.clamp(tonumber(scale) or 1, Window._ZoomMin, Window._ZoomMax)
 			local info = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -12740,17 +11018,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if not Window._ZoomEnabled then return end
 			Window.SetZoom(1)
 		end
-
 		UserInputService.InputBegan:Connect(function(input, gpe)
-			-- gpe matters less here because the keys aren't typing-related, but we
-			-- still honour it to play nice with focused TextBoxes.
-			if gpe then return end
+									if gpe then return end
 			if not Window._ZoomEnabled then return end
 			if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
 				return
 			end
-			-- "=" share key with "+" on most keyboards; KeypadPlus is the numpad variant.
-			if input.KeyCode == Enum.KeyCode.Equals or input.KeyCode == Enum.KeyCode.Plus or input.KeyCode == Enum.KeyCode.KeypadPlus then
+						if input.KeyCode == Enum.KeyCode.Equals or input.KeyCode == Enum.KeyCode.Plus or input.KeyCode == Enum.KeyCode.KeypadPlus then
 				Window.ZoomIn()
 			elseif input.KeyCode == Enum.KeyCode.Minus or input.KeyCode == Enum.KeyCode.KeypadMinus then
 				Window.ZoomOut()
@@ -12759,11 +11033,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end)
 	end
-
-	-- ============================================================
-	-- Auto-create optional tabs + startup tab focus (after host script finishes)
-	-- ============================================================
-	task.defer(function()
+				task.defer(function()
 		local aiName = (WindowSettings.AiSettings and WindowSettings.AiSettings.Name) or "Solara Hub AI"
 		local ssName = (WindowSettings.ScriptSearcherSettings and WindowSettings.ScriptSearcherSettings.Name) or "Scripts"
 		if WindowSettings.AiTab then
@@ -12781,15 +11051,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				Window:ApplyNavTabOrder(navOrder)
 			end)
 		end
-		-- Apply the UI theme once the host script has finished building its
-		-- tabs (this defer runs after the synchronous element creation).
-		pcall(function() Window.SetTheme(Window._ThemeName) end)
+						pcall(function() Window.SetTheme(Window._ThemeName) end)
 		task.delay(0.5, function() pcall(function() Window.RefreshTheme() end) end)
-
-		-- Liquid Glass: sheen overlay + background blur once the window is up.
-		pcall(EnsureGlassSheen)
+				pcall(EnsureGlassSheen)
 		pcall(function() SetGlassBlur(Luna.GlassMode and Main.Visible) end)
-
 		local function focusStartup()
 			Window:ActivateStartupTab(WindowSettings.StartupTab)
 		end
@@ -12801,26 +11066,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Window:NotifyTabsChanged()
 		end)
 	end)
-
-	-- ============================================================
-	-- Theme API (recolour the whole UI from the host script)
-	-- ============================================================
-	-- We expose a couple of small helpers that re-skin the UI at runtime. They
-	-- walk LunaUI once per call and only touch strokes / specific frames, so
-	-- they're cheap enough to wire to a colour-picker callback.
-	do
+							do
 		Window._Theme = {
 			Accent = Color3.fromRGB(110, 102, 153),
-			Background = nil, -- nil = keep the original frame colour
+			Background = nil,
 		}
 		Window._ThemeName = WindowSettings.Theme
 		Window._StrokeOriginals = {}
-
-		-- Returns true if a UIStroke / Frame is part of the "chrome" we want to
-		-- recolour. We deliberately skip the AI chat code-blocks, the search
-		-- modal accent (it has its own picker) and anything explicitly opted out
-		-- via the LunaNoTheme attribute.
-		local function shouldRecolour(obj)
+										local function shouldRecolour(obj)
 			local cur = obj
 			while cur and cur ~= game do
 				if cur:GetAttribute("LunaNoTheme") then return false end
@@ -12828,13 +11081,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return true
 		end
-
 		local function cacheStrokeColor(stroke)
 			if not Window._StrokeOriginals[stroke] then
 				Window._StrokeOriginals[stroke] = stroke.Color
 			end
 		end
-
 		local function forEachThemeStroke(callback)
 			local roots = {LunaUI, Main, dragBar}
 			for _, root in ipairs(roots) do
@@ -12853,7 +11104,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
 		Window.SetThemeAccent = function(color)
 			if typeof(color) ~= "Color3" then return end
 			Window._Theme.Accent = color
@@ -12864,7 +11114,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 			end)
 		end
-
 		Window.ClearThemeAccent = function()
 			for stroke, original in pairs(Window._StrokeOriginals) do
 				if stroke.Parent then
@@ -12872,23 +11121,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
 		Window.SetThemeBackground = function(color)
 			if typeof(color) ~= "Color3" then return end
 			Window._Theme.Background = color
-			-- Apply to the few "big" backgrounds users would expect to recolour.
-			pcall(function() Main.BackgroundColor3 = color end)
+						pcall(function() Main.BackgroundColor3 = color end)
 			pcall(function() Elements.Parent.BackgroundColor3 = color end)
 			pcall(function() Navigation.BackgroundColor3 = color end)
 		end
-
 		Window.GetTheme = function() return Window._Theme end
-
 		Window.ResetTheme = function()
 			Window.ClearThemeAccent()
 			Window._Theme.Accent = Color3.fromRGB(110, 102, 153)
 		end
-
 		Window.SetThemeGradient = function(c1, c2, c3)
 			if typeof(c1) == "ColorSequence" then
 				Luna.ThemeGradient = c1
@@ -12901,14 +11145,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			pcall(function() LunaUI.ThemeRemote.Value = not LunaUI.ThemeRemote.Value end)
 		end
-
 		Window.ApplyGradientPreset = function(presetName)
 			local preset = PresetGradients[presetName]
 			if preset then
 				Window.SetThemeGradient(preset[1], preset[2], preset[3])
 			end
 		end
-
 		Window.GetGradientPresets = function()
 			local names = {}
 			for name in pairs(PresetGradients) do
@@ -12917,18 +11159,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			table.sort(names)
 			return names
 		end
-
-		-- ========================================================
-		-- UI Theme API ("Midnight" design system presets)
-		-- ========================================================
-		Window.SetTheme = function(nameOrTokens)
+								Window.SetTheme = function(nameOrTokens)
 			local ok = ApplyLunaTheme(nameOrTokens)
 			if ok then
 				Window._ThemeName = Luna.CurrentTheme
 			end
 			return ok
 		end
-
 		Window.RefreshTheme = function()
 			if not Luna.ThemeEnabled then return end
 			pcall(LunaSkinTree, LunaUI)
@@ -12936,7 +11173,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				pcall(function() Main.BackgroundTransparency = MainBgTransparency end)
 			end
 		end
-
 		Window.GetThemeList = function()
 			local names = {}
 			for name in pairs(Luna.Themes) do
@@ -12945,23 +11181,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			table.sort(names)
 			return names
 		end
-
 		Window.GetActiveTheme = function()
 			return Luna.CurrentTheme
 		end
-
 		Window.SetGlassMode = function(enabled)
 			SetGlassMode(enabled)
 		end
-
 		Window.GetGlassMode = function()
 			return Luna.GlassMode
 		end
-
 		Window.GetTabNames = function()
 			local entries = {}
 			local seen = {}
-
 			local function addEntry(name, order)
 				if not name or name == "" or seen[name] then return end
 				if name == "Home" then
@@ -12973,11 +11204,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					order = order or 9999,
 				})
 			end
-
 			if Window._HomeTabButton then
 				addEntry("Dashboard", Window._HomeTabButton.LayoutOrder or 1)
 			end
-
 			if Navigation and Navigation.Tabs then
 				for _, child in ipairs(Navigation.Tabs:GetChildren()) do
 					if child.ClassName == "Frame" and child.Name ~= "InActive Template" then
@@ -12988,20 +11217,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end
 				end
 			end
-
 			for name, reg in pairs(Window._TabRegistry or {}) do
 				if reg.Button then
 					addEntry(name, reg.Button.LayoutOrder or (Window._TabCreationOrder and Window._TabCreationOrder[name]) or 9999)
 				end
 			end
-
 			table.sort(entries, function(a, b)
 				if a.order ~= b.order then
 					return a.order < b.order
 				end
 				return a.name < b.name
 			end)
-
 			local names = {}
 			for _, entry in ipairs(entries) do
 				table.insert(names, entry.name)
@@ -13011,22 +11237,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return names
 		end
-
 		Window.NotifyTabsChanged = function()
 			if Window._TabListRefreshHook then
 				pcall(Window._TabListRefreshHook)
 			end
 		end
-
 		local function getAnonymousIcon()
 			return GetIcon("venetian-mask", "Lucide")
 		end
-
 		Window.GetAnonymousIcon = getAnonymousIcon
 		task.defer(function()
 			pcall(getAnonymousIcon)
 		end)
-
 		local function snapshotImageLabel(label)
 			if not label then return nil end
 			return {
@@ -13035,17 +11257,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				ImageRectOffset = label.ImageRectOffset,
 			}
 		end
-
 		local function restoreImageLabel(label, snap)
 			if not label or not snap then return end
 			label.Image = snap.Image
 			label.ImageRectSize = snap.ImageRectSize
 			label.ImageRectOffset = snap.ImageRectOffset
 		end
-
 		local ANON_DISPLAY = "Anonymous"
 		local ANON_USER = "hidden_user"
-
 		local function setAnonLabelsNoTranslate(refs, enabled)
 			local labels = {
 				refs.NavDisplay, refs.NavUser, refs.HomeGreeting, refs.HomeUserLine, refs.ServerRegion,
@@ -13060,7 +11279,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-
 		Window.CaptureProfileOriginals = function()
 			if Window._ProfileOriginals or not Window._ProfileRefs then return end
 			local refs = Window._ProfileRefs
@@ -13079,15 +11297,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				serverRegion = regionName,
 			}
 		end
-
 		Window.ResetProfileOriginals = function()
 			Window._ProfileOriginals = nil
 		end
-
 		Window.GetAnonymousMode = function()
 			return Window._AnonymousMode == true
 		end
-
 		local function ensureProfileRefs()
 			if Window._ProfileRefs then return Window._ProfileRefs end
 			local ok, refs = pcall(function()
@@ -13116,7 +11331,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return Window._ProfileRefs
 		end
-
 		Window.SetAnonymousMode = function(enabled)
 			enabled = enabled == true
 			local refs = ensureProfileRefs()
@@ -13127,10 +11341,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				Window:ResetProfileOriginals()
 			end
 			Window:CaptureProfileOriginals()
-
 			local o = Window._ProfileOriginals
 			Window._AnonymousMode = enabled
-
 			if enabled then
 				local anonIcon = getAnonymousIcon()
 				Window._AnonIconData = anonIcon
@@ -13170,12 +11382,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return true
 		end
-
 		local function setDashboardVisible(visible)
 			local btn = Window._HomeTabButton
 			if btn then btn.Visible = visible end
 		end
-
 		Window.SetTabVisible = function(tabName, visible)
 			if tabName == "Dashboard" or tabName == "Home" then
 				setDashboardVisible(visible)
@@ -13186,7 +11396,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			entry.Hidden = not visible
 			entry.Button.Visible = visible
 		end
-
 		Window.ApplyHiddenTabs = function(hiddenList)
 			if type(hiddenList) ~= "table" then return end
 			local hideSet = {}
@@ -13202,15 +11411,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 	end
-
 	Window._Main = Main
 	Window.GetMain = function()
 		return Main
 	end
-
 	return Window
 end
-
 function Luna:Destroy()
 	if SetGlassBlur then SetGlassBlur(false) end
 	Main.Visible = false
@@ -13222,15 +11428,6 @@ function Luna:Destroy()
 	end
 	LunaUI:Destroy()
 end
-
--- ============================================================
--- Translator public API
--- ============================================================
--- Sets the UI language. `targetCode` is an ISO code such as "ru", "fr",
--- "pt", "es", "en". Pass "en" to restore originals. Optionally pass a
--- custom translator function `(text, target) -> string`; if provided it
--- replaces the built-in Google Translate fetcher. Translation is async
--- and won't block; expect a brief delay while strings stream in.
 function Luna:SetLanguage(targetCode, customTranslator)
 	targetCode = tostring(targetCode or "en"):lower()
 	LunaTranslator.Target = targetCode
@@ -13241,9 +11438,7 @@ function Luna:SetLanguage(targetCode, customTranslator)
 		_watchNewText(LunaUI)
 	end
 	_translateTree(LunaUI, targetCode)
-	-- Second pass clears stale template originals (e.g. "But with description", lorem ipsum)
-	-- that were snapshotted before host scripts finished assigning real text.
-	if targetCode ~= "en" then
+			if targetCode ~= "en" then
 		task.delay(0.4, function()
 			for _, obj in ipairs(LunaUI:GetDescendants()) do
 				if _isTranslatableText(obj) then
@@ -13258,17 +11453,12 @@ function Luna:SetLanguage(targetCode, customTranslator)
 		end)
 	end
 end
-
--- Direct translate-a-string helper (sync; will yield while waiting for HTTP).
 function Luna:Translate(text, target)
 	return LunaTranslate(text, target or LunaTranslator.Target)
 end
-
--- Returns the active language code, default "en".
 function Luna:GetLanguage()
 	return LunaTranslator.Target or "en"
 end
-
 if isStudio then
 	local Window = Luna:CreateWindow({
 		Name = "Nebula Client - Luna Hub | Blade Ball",
@@ -13296,237 +11486,5 @@ if isStudio then
 			}
 		}
 	})
-	
-	--[[local Window = Luna:CreateWindow({
-		Name = "Luna Example Window",
-		Subtitle = "Test",
-		LogoID = "6031097225",
-		LoadingEnabled = true,
-		LoadingTitle = "Luna Interface Suite",
-		LoadingSubtitle = "by Nebula Softworks",
-		KeySystem = true,
-		KeySettings = {
-			Title = "Luna Example Key",
-			Subtitle = "Key System",
-			Note = "Please Enter Your Key To Use Example Hub",
-			FileName = "Key", -- the name of the key file. this will be saved in ur RootFolder. However, if you don't have one, it'll save in ur config folder instead
-			SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-			Key = {"Example Key"} -- List of keys that will be accepted by the system, please use a system like Pelican or Luarmor that provide key strings based on your HWID since putting a simple string is very easy to bypass
-		}
-	})
-
-	Luna:Notification({ 
-		Title = "Welcome to Luna",
-		Icon = "sparkle",
-		ImageSource = "Material",
-		Content = "Welcome to the Luna Interface Suite. This Is an Amazing Quality Freemium UI Library For Roblox Exploiting Made By Nebula Softworks. Luna was Created in hopes of improving the standard of UI Library designs by being the golden standard for it. Luna Has Amazing Features like a key system, notification and perfection in aesthetics and design. So, What Are You Waiting For? Start Using Luna Today at " .. website
-	})
-
-	local Tabs = {
-		Main = Window:CreateTab({
-			Name = "Tab Example 1",
-			Icon = "view_in_ar",
-			ImageSource = "Material",
-			ShowTitle = true
-		}),
-		Main2 = Window:CreateTab({
-			Name = "Tab Example 2",
-			Icon = "location_searching",
-			ImageSource = "Material",
-			ShowTitle = false
-		}),
-		Premium = Window:CreateTab({
-			Name = "Premium Tab",
-			Icon = "sparkle",
-			ImageSource = "Material",
-			ShowTitle = true
-		}),
-		Debug = Window:CreateTab({
-			Name = "Debug",
-			Icon = "settings"
-		})
-	}
-
-	Window:CreateHomeTab()
-	local bleh =Tabs.Debug:CreateColorPicker()
-	Tabs.Debug:CreateButton({
-		Callback = function()
-			bleh:Set({
-				Color = Color3.fromRGB(0,0,0)
-			})
-		end,
-	})
-
-	Tabs.Main:CreateSection("Section Example")
-	Tabs.Main:CreateButton({
-		Name = "Button Example!",
-		Description = "Every Element Except For Sliders Can Have a description like this"
-	})
-	Tabs.Main:CreateLabel({
-		Text = "Label Example",
-		Style = 1
-	})
-	Tabs.Main:CreateLabel({
-		Text = "Information Example",
-		Style = 2
-	})
-	Tabs.Main:CreateLabel({
-		Text = "Warning Example",
-		Style = 3
-	})
-	Tabs.Main:CreateParagraph({
-		Title = "Paragraph Example ",
-		Text = "This Is A Paragraph. You Can Type Very Long Strings Here And They'll Automatically Fit! This Counts As A Description Right? Right? Right? Right? Right? Right? Right? Right? Right? Right? Right? Right? Right? Right? Right? Also Did I Mention This Has Rich Text? Also Did I Mention This Has Rich Text? Also Did I Mention This Has Rich Text? Also Did I Mention This Has Rich Text? Also Did I Mention This Has Rich Text? Also Did I Mention This Has Rich Text?"
-	})
-	Tabs.Main:CreateSlider({
-		Name = "Slider Example",
-		Range = {0, 200},
-		Increment = 0.1,
-		CurrentValue = 100,
-		Flag = "Slider",
-	})
-	Tabs.Main:CreateToggle({
-		Name = "Toggle Example",
-		Description = "This Is A Toggle. See I Was Right? Sliders Don't Have Descriptions!",
-		CurrentValue = false,
-	})
-
-	Tabs.Main:CreateBind({
-		Name = "Bind Example",
-		Description = "Btw Using CreateKeybind is deprecated, use CreateBind For Future Binds :)",
-		CurrentKeybind = "Q",
-		HoldToInteract = false,
-	})
-	Tabs.Main:CreateInput({
-		Name = "Dynamic Input Example",
-		Description = "Every Element has :Set(). Sadly this one is broken;the text wont update :(",
-		PlaceholderText = "Input Placeholder",
-		CurrentValue = "",
-		Numeric = false,
-		MaxCharacters = nil,
-		Enter = false
-	})
-	Tabs.Main:CreateDropdown({
-		Name = "Dropdown Example",
-		Description = "U can access a element's values using .Settings!",
-		Options = {"Option 1","Option 2","Option 3","Option 4","Option 5","Option 6"},
-		CurrentOption = "Option 1",
-		MultipleOptions = false,
-		SpecialType = nil
-	})
-
-	Tabs.Main:CreateColorPicker({
-		Name = "Color Picker Example",
-		Color = Color3.fromRGB(86, 171, 128),
-		Flag = "ColorPicker1", -- A flag is the identifier for the configuration file, make sure every element has a different flag if you're using configuration saving to ensure no overlaps
-		Callback = function(Value)
-			-- The function that takes place every time the color picker is moved/changed
-			-- The variable (Value) is a Color3fromRGB value based on which color is selected
 		end
-	})
-
-	Tabs.Main2:CreateSection("The Elements Here Are To Show Unique Features")
-	Tabs.Main2:CreateToggle({
-		Name = "Toggle - Default On",
-		Description = "Toggles Can be Onned By Default!",
-		CurrentValue = true
-	})
-	Tabs.Main2:CreateBind({
-		Name = "Hold To Interact - Walkspeed Example",
-		Description = "Binds Can Be Made to only Callback when held",
-		HoldToInteract = true,
-		CurrentBind = "E",
-		Callback = function(v)
-			if v then 
-				Players.LocalPlayer.Character.Humanoid.WalkSpeed = 100
-			else
-				Players.LocalPlayer.Character.Humanoid.WalkSpeed = 16
-			end
-		end,
-	})
-	Tabs.Main2:CreateInput({
-		Name = "Numeric And 12 Max Characters",
-		Description = "You Can Limit The Max Characters or Allow Only Numbers",
-		Numeric = true,
-		MaxCharacters = 12
-	})
-	Tabs.Main2:CreateInput({
-		Name = "Require Enter",
-		Description = "You Can Only make the callback happen after user hits enter",
-		Enter = true
-	})
-	Tabs.Main2:CreateLabel({
-		Text = "Every Element Can be Destroyed as well!"
-	})
-	Tabs.Main2:CreateDropdown({
-		Name = "Dropdown - Multi Options",
-		Description = "Multiple Special Features can be used on the same element!",
-		Options = {"Option 1","Option 2","Option 3","Option 4","Option 5","Option 6"},
-		CurrentOption = {"Option 1","Option 3","Option 6"},
-		MultipleOptions = true
-	})
-	Tabs.Main2:CreateDropdown({
-		Name = "Dropdown - Players",
-		Description = "Luna's Dropdowns Has a built in Player Dropdown!",
-		Options = {"u can put anything here, it wont be shown anyway"},
-		CurrentOption = {"same here, itll be the first option"},
-		MultipleOptions = false,
-		SpecialType = "Player"
-	})
-
-	local s = Tabs.Premium:CreateSection("You can add elements inside section too")
-	s:CreateButton()
-	s:CreateLabel()
-	s:CreateDivider()
-	s:CreateDropdown()
-
-	Tabs.Premium:BuildConfigSection()
-	Tabs.Premium:BuildThemeSection()]]
-end
-
--- THIS IS THE DEBUG DEMO, ONLY USED WHEN TESTING NEW ELEMENTS AND CODE
---[[if isStudio then
-    window = Luna:CreateWindow({LoadingEnabled = false})
-    t1 = window:CreateTab()
-    t2 = window:CreateTab({ Name = "Tab 2", Icon = "location_searching"})
-    Luna:Notification({ 
-        Title = "Welcome to Luna",
-        Icon = "sparkle",
-        ImageSource = "Material",
-        Content = "Welcome to the Luna Interface Suite. This Is an Amazing Quality Freemium UI Library For Roblox Exploiting Made By Nebula Softworks. Luna was Created in hopes of improving the standard of UI Library designs by being the golden standard for it. Luna Has Amazing Features like a key system, notification and perfection in aesthetics and design. So, What Are You Waiting For? Start Using Luna Today at " .. website
-    })
-    t1:CreateSection()
-    local btn = t1:CreateButton({Callback = "", Description = "This Is A Description"})
-    local l = t1:CreateLabel({ Style = 2})
-    local l2 = t1:CreateLabel({ Text = "Another Label" })
-    t2:CreateButton({ Callback = function() 
-        l:Destroy()
-        l2:Set("New Text")
-    end})
-    t2:CreateLabel({Style = 3})
-    t1:CreateParagraph({Text = "Single String"})
-    t1:CreateParagraph({Text = "Welcome to the Luna Interface Suite. This Is an Amazing Quality Freemium UI Library For Roblox Exploiting Made By Nebula Softworks. Luna was Created in hopes of improving the standard of UI Library designs by being the golden standard for it. Luna Has Amazing Features like a key system, notification and perfection in aesthetics and design. So, What Are You Waiting For? Start Using Luna Today at " .. website})
-    s = t2:CreateSlider({ Callback = function(v) print(v) end })	
-    t1:CreateButton({ Callback = function()
-        s:Set({Name = "new name", Callback = ""})
-        wait(5)
-        s:Destroy()
-    end})
-    t1:CreateColorPicker()
-    local toggle = t1:CreateToggle({Name = "test", Description = "test", CurrentValue = true, Callback = ""}, "toggle2")
-    t1:CreateToggle({Callback = function(Value) toggle:Destroy() print(Value) end})
-    local bind = t2:CreateBind({Name = "test", Description = "test", CurrentBind = "E", HoldToInteract = false, Callback = ""})
-    t2:CreateKeybind({HoldToInteract = true, Callback = function(v)
-        if v then
-            Players.LocalPlayer.Character.Humanoid.WalkSpeed = 100
-        else
-            Players.LocalPlayer.Character.Humanoid.WalkSpeed = 16
-        end
-    end,})
-    local input = t2:CreateInput({Name = "test",ClearTextAfterFocusLost = false, Description = "Numbers only, 8 max characters and enter required.",MaxCharacters = 8 ,Numeric = true, Enter = true, Callback = ""})
-    t2:CreateInput({Callback = function(text) print(text) end})
-    local d = t1:CreateDropdown({Name = "test", Options = {"Apples", "Bananas", "Strawberries", "Elixir"}, Description = "MultiOptions", MultipleOptions = true, Callback = function(t) print(t) end, CurrentOption = {"Apples", "Elixir"}})
-    t1:CreateDropdown({Callback = function(t) print(unpack(t)) end})
-    t1:CreateDropdown({Description = "Special Type - Player", Callback = "", SpecialType = "Player"})
-end]]--
 return Luna
