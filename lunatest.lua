@@ -2534,17 +2534,8 @@ Luna.GlassMode = true
 local Lighting = getService("Lighting")
 local GlassBlur = nil
 local GlassSheen = nil
-SetGlassBlur = function(enabled)
-	if not Luna.GlassMode then enabled = false end
-	if enabled then
-		if not GlassBlur or not GlassBlur.Parent then
-			GlassBlur = Instance.new("BlurEffect")
-			GlassBlur.Name = RandomName()
-			GlassBlur:SetAttribute("LunaGlassBlur", true)
-			GlassBlur.Size = 14
-			GlassBlur.Parent = Lighting
-		end
-	elseif GlassBlur then
+SetGlassBlur = function(_enabled)
+	if GlassBlur then
 		pcall(function() GlassBlur:Destroy() end)
 		GlassBlur = nil
 	end
@@ -3256,17 +3247,28 @@ function Window:CreateHomeTab(HomeTabSettings)
 						local function RestyleDashboard()
 			local theme = Luna.ActiveTheme or Luna.Themes[Luna.CurrentTheme] or {}
 			local surface = theme.Surface or Color3.fromRGB(22, 22, 28)
+			local elevated = theme.Elevated or Color3.fromRGB(31, 31, 40)
 			local strokeCol = theme.Stroke or Color3.fromRGB(46, 46, 58)
 			local accent = theme.Accent or Color3.fromRGB(122, 162, 247)
 			local textPri = theme.TextPrimary or Color3.fromRGB(240, 240, 245)
 			local textSec = theme.TextSecondary or Color3.fromRGB(160, 160, 172)
 			local textMut = theme.TextMuted or Color3.fromRGB(110, 110, 124)
+
+			local function killGradients(root)
+				for _, g in ipairs(root:GetDescendants()) do
+					if g:IsA("UIGradient") then g:Destroy() end
+				end
+			end
+			local function ensureCorner(inst, radius)
+				local c = inst:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+				c.CornerRadius = UDim.new(0, radius)
+				c.Parent = inst
+			end
+
 			local iconFrame = HomeTabPage:FindFirstChild("icon")
 			local avatar = iconFrame and iconFrame:FindFirstChild("ImageLabel")
 			if avatar then
-				local c = avatar:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
-				c.CornerRadius = UDim.new(1, 0)
-				c.Parent = avatar
+				ensureCorner(avatar, 0).CornerRadius = UDim.new(1, 0)
 				local ring = avatar:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
 				ring.Thickness = 2
 				ring.Transparency = 0.1
@@ -3280,6 +3282,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					g.Parent = ring
 				end
 			end
+
 			local playerFrame = HomeTabPage:FindFirstChild("player")
 			local greet = playerFrame and playerFrame:FindFirstChild("Text")
 			if greet then
@@ -3289,39 +3292,52 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 			local userLine = playerFrame and playerFrame:FindFirstChild("user")
 			if userLine then userLine.TextColor3 = textMut end
+
 			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
 			local dash = detailsholder and detailsholder:FindFirstChild("dashboard")
 			if not dash then return end
+
 			for _, cardName in ipairs({"Client", "Discord", "Friends", "Server"}) do
 				local card = dash:FindFirstChild(cardName)
 				if card and card:IsA("GuiObject") then
 					local isDiscord = cardName == "Discord"
-					card.BackgroundColor3 = isDiscord and Color3.fromRGB(88, 101, 242) or surface
-					card.BackgroundTransparency = 0.05
-					local corner = card:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
-					corner.CornerRadius = UDim.new(0, 12)
-					corner.Parent = card
+					killGradients(card)
+					card.BackgroundColor3 = isDiscord and Color3.fromRGB(78, 90, 230) or surface
+					card.BackgroundTransparency = 0
+					ensureCorner(card, 12)
+
 					local stroke = card:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
 					stroke.Color = isDiscord and Color3.fromRGB(140, 150, 250) or strokeCol
-					stroke.Transparency = isDiscord and 0.5 or 0.45
+					stroke.Transparency = isDiscord and 0.55 or 0.4
 					stroke.Thickness = 1
 					stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 					stroke.Parent = card
-					local sheen = card:FindFirstChildOfClass("UIGradient") or Instance.new("UIGradient")
-					sheen.Rotation = isDiscord and 135 or 100
+
 					if isDiscord then
-						sheen.Color = ColorSequence.new{
+						local g = Instance.new("UIGradient")
+						g.Rotation = 135
+						g.Color = ColorSequence.new{
 							ColorSequenceKeypoint.new(0, Color3.fromRGB(104, 117, 250)),
-							ColorSequenceKeypoint.new(1, Color3.fromRGB(66, 76, 200)),
+							ColorSequenceKeypoint.new(1, Color3.fromRGB(62, 72, 196)),
 						}
-					else
-						sheen.Transparency = NumberSequence.new{
-							NumberSequenceKeypoint.new(0, 0.92),
-							NumberSequenceKeypoint.new(0.45, 1),
-							NumberSequenceKeypoint.new(1, 0.97),
-						}
+						g.Parent = card
 					end
-					sheen.Parent = card
+
+					for _, row in ipairs(card:GetDescendants()) do
+						if row ~= card and row:IsA("GuiObject") and not row:IsA("TextLabel") and not row:IsA("TextButton") and not row:IsA("ImageLabel") then
+							if row.BackgroundTransparency < 1 then
+								for _, g in ipairs(row:GetChildren()) do
+									if g:IsA("UIGradient") then g:Destroy() end
+								end
+								row.BackgroundColor3 = isDiscord and Color3.fromRGB(255, 255, 255) or elevated
+								row.BackgroundTransparency = isDiscord and 0.85 or 0
+								ensureCorner(row, 8)
+							end
+						elseif row:IsA("ImageLabel") and row.BackgroundTransparency < 1 then
+							row.BackgroundTransparency = 1
+						end
+					end
+
 					for _, d in ipairs(card:GetDescendants()) do
 						if d:IsA("TextLabel") or d:IsA("TextButton") then
 							if isDiscord then
@@ -3332,6 +3348,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 								d.Font = Enum.Font.GothamBold
 							elseif d.Name == "Value" then
 								d.TextColor3 = textPri
+								d.Font = Enum.Font.GothamBold
 							elseif d.Name == "Subtitle" then
 								d.TextColor3 = textMut
 							elseif d.Name ~= "Interact" then
