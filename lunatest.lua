@@ -95,19 +95,19 @@ Luna.Themes = {
 		MainTransparency = 0.04,
 	},
 	Light = {
-		Background = Color3.fromRGB(240, 240, 245),
+		Background = Color3.fromRGB(243, 244, 249),
 		Surface = Color3.fromRGB(255, 255, 255),
-		Elevated = Color3.fromRGB(228, 228, 236),
-		Stroke = Color3.fromRGB(205, 205, 218),
-		TextPrimary = Color3.fromRGB(28, 28, 36),
-		TextSecondary = Color3.fromRGB(92, 92, 106),
-		TextMuted = Color3.fromRGB(140, 140, 154),
-		Accent = Color3.fromRGB(79, 110, 247),
+		Elevated = Color3.fromRGB(232, 233, 241),
+		Stroke = Color3.fromRGB(208, 209, 223),
+		TextPrimary = Color3.fromRGB(24, 25, 33),
+		TextSecondary = Color3.fromRGB(84, 86, 100),
+		TextMuted = Color3.fromRGB(134, 136, 150),
+		Accent = Color3.fromRGB(74, 106, 246),
 		Gradient = ColorSequence.new{
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(79, 110, 247)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(109, 140, 250)),
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(74, 106, 246)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(105, 138, 250)),
 		},
-		MainTransparency = 0.04,
+		MainTransparency = 0.02,
 	},
 }
 Luna.ActiveTheme = nil
@@ -2424,14 +2424,32 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 		if obj:IsA("UICorner") then orig.Radius = obj.CornerRadius end
 		OriginalSkin[obj] = orig
 	end
-	if orig.BG and obj:IsA("GuiObject") and not obj:FindFirstChildOfClass("UIGradient") then
-		obj.BackgroundColor3 = MapBackgroundColor(orig.BG, T)
+	if orig.BG and obj:IsA("GuiObject") then
+		if orig.MappedBG and obj.BackgroundColor3 ~= orig.MappedBG then
+			orig.BG = obj.BackgroundColor3
+		end
+		if not obj:FindFirstChildOfClass("UIGradient") then
+			obj.BackgroundColor3 = MapBackgroundColor(orig.BG, T)
+			orig.MappedBG = obj.BackgroundColor3
+		else
+			orig.MappedBG = nil
+		end
 	end
 	if orig.Stroke and obj:IsA("UIStroke") then
+		if orig.MappedStroke and obj.Color ~= orig.MappedStroke then
+			orig.Stroke = obj.Color
+		end
 		obj.Color = MapStrokeColor(orig.Stroke, T)
+		orig.MappedStroke = obj.Color
 	end
 	if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-		if orig.Text then obj.TextColor3 = MapTextColor(orig.Text, T) end
+		if orig.Text then
+			if orig.MappedText and obj.TextColor3 ~= orig.MappedText then
+				orig.Text = obj.TextColor3
+			end
+			obj.TextColor3 = MapTextColor(orig.Text, T)
+			orig.MappedText = obj.TextColor3
+		end
 		if orig.Font and BuilderFontMap[orig.Font] then
 			obj.Font = BuilderFontMap[orig.Font]
 		end
@@ -2440,7 +2458,11 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 		end
 	end
 	if orig.Image and (obj:IsA("ImageLabel") or obj:IsA("ImageButton")) then
+		if orig.MappedImage and obj.ImageColor3 ~= orig.MappedImage then
+			orig.Image = obj.ImageColor3
+		end
 		obj.ImageColor3 = MapTextColor(orig.Image, T)
+		orig.MappedImage = obj.ImageColor3
 	end
 	if orig.Radius and obj:IsA("UICorner") then
 		local r = orig.Radius
@@ -3114,10 +3136,29 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end
 		local HomeTabPage = Elements.Home
 		HomeTabPage.Visible = true
+		local HomeAccentBar = HomeTabButton:FindFirstChild("LunaAccentBar")
+		if not HomeAccentBar then
+			HomeAccentBar = Instance.new("Frame")
+			HomeAccentBar.Name = "LunaAccentBar"
+			HomeAccentBar:SetAttribute("LunaAccent", true)
+			HomeAccentBar:SetAttribute("LunaNoTranslate", true)
+			HomeAccentBar.AnchorPoint = Vector2.new(0, 0.5)
+			HomeAccentBar.Position = UDim2.new(0, 5, 0.5, 0)
+			HomeAccentBar.Size = UDim2.new(0, 3, 0.55, 0)
+			HomeAccentBar.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+			HomeAccentBar.BackgroundTransparency = 1
+			HomeAccentBar.BorderSizePixel = 0
+			HomeAccentBar.ZIndex = HomeTabButton.ZIndex + 2
+			local barCorner = Instance.new("UICorner")
+			barCorner.CornerRadius = UDim.new(1, 0)
+			barCorner.Parent = HomeAccentBar
+			HomeAccentBar.Parent = HomeTabButton
+		end
 		function HomeTab:Activate()
 			tween(HomeTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
 			tween(HomeTabButton, {BackgroundTransparency = 0})
 			tween(HomeTabButton.UIStroke, {Transparency = 0.41})
+			tween(HomeAccentBar, {BackgroundTransparency = 0})
 			Elements.UIPageLayout:JumpTo(HomeTabPage)
 			task.wait(0.05)
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
@@ -3125,6 +3166,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
 					tween(OtherTabButton, {BackgroundTransparency = 1})
 					tween(OtherTabButton.UIStroke, {Transparency = 1})
+					local otherBar = OtherTabButton:FindFirstChild("LunaAccentBar")
+					if otherBar then
+						tween(otherBar, {BackgroundTransparency = 1})
+					end
 				end
 			end
 			Window.CurrentTab = "Home"
@@ -3266,6 +3311,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 
 			local iconFrame = HomeTabPage:FindFirstChild("icon")
+			if iconFrame then iconFrame:SetAttribute("LunaNoTheme", true) end
 			local avatar = iconFrame and iconFrame:FindFirstChild("ImageLabel")
 			if avatar then
 				ensureCorner(avatar, 0).CornerRadius = UDim.new(1, 0)
@@ -3284,6 +3330,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 
 			local playerFrame = HomeTabPage:FindFirstChild("player")
+			if playerFrame then playerFrame:SetAttribute("LunaNoTheme", true) end
 			local greet = playerFrame and playerFrame:FindFirstChild("Text")
 			if greet then
 				greet.TextColor3 = textPri
@@ -3300,6 +3347,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			for _, cardName in ipairs({"Client", "Discord", "Friends", "Server"}) do
 				local card = dash:FindFirstChild(cardName)
 				if card and card:IsA("GuiObject") then
+					card:SetAttribute("LunaNoTheme", true)
 					local isDiscord = cardName == "Discord"
 					killGradients(card)
 					card.BackgroundColor3 = isDiscord and Color3.fromRGB(78, 90, 230) or surface
@@ -4315,6 +4363,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				TweenService:Create(Toggle.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				local function Set(bool)
 					if bool then
+						Toggle.toggle.BackgroundColor3 = Color3.new(1, 1, 1)
 						Toggle.toggle.color.Enabled = true
 						tween(Toggle.toggle, {BackgroundTransparency = 0})
 						Toggle.toggle.UIStroke.color.Enabled = true
@@ -5707,6 +5756,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			TweenService:Create(Toggle.Title, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			local function Set(bool)
 				if bool then
+					Toggle.toggle.BackgroundColor3 = Color3.new(1, 1, 1)
 					Toggle.toggle.color.Enabled = true
 					tween(Toggle.toggle, {BackgroundTransparency = 0})
 					Toggle.toggle.UIStroke.color.Enabled = true
@@ -10463,6 +10513,16 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if dragBar.Visible then syncDragBarPosition(Main) end
 		end)
 	end
+	Main:GetPropertyChangedSignal("Visible"):Connect(function()
+		local vis = Main.Visible
+		if dragBar then dragBar.Visible = vis end
+		if Main.Parent and Main.Parent:FindFirstChild("ShadowHolder") then
+			Main.Parent.ShadowHolder.Visible = vis
+		end
+		if not vis and Window._ResizeHandle then
+			Window._ResizeHandle.Visible = false
+		end
+	end)
 				if WindowSettings.SearchBar then
 				local SearchControl = Main.Controls.Close:Clone()
 		SearchControl.Name = RandomName()
