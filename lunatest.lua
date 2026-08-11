@@ -1915,81 +1915,22 @@ local function LunaCallbackErrorNotification(response, ...)
         pcall(Luna.CallbackErrorReporter, tostring(response), elementName)
     end
 end
-local function IsMobileClient()
-	local vp = Camera.ViewportSize
-	local touch = UserInputService.TouchEnabled
-	local mouse = UserInputService.MouseEnabled
-	local keyboard = UserInputService.KeyboardEnabled
-	-- Real phones/tablets: touch without a hardware mouse
-	if touch and not mouse then
-		return true
-	end
-	-- Soft-keyboard / hybrid clients that still report KeyboardEnabled
-	if touch and (vp.X <= 1000 or vp.Y <= 700) then
-		return true
-	end
-	if touch and not keyboard then
-		return true
-	end
-	return false
-end
-
 local function IsDesktop()
-	-- Never treat mobile/touch-primary clients as desktop (fixes false KeyboardEnabled/MouseEnabled)
-	if IsMobileClient() then
-		return false
-	end
-	local vp = Camera.ViewportSize
-	return UserInputService.KeyboardEnabled
-		and UserInputService.MouseEnabled
-		and vp.X > 774
-		and vp.Y > 503
+    return UserInputService.KeyboardEnabled and UserInputService.MouseEnabled
 end
 
-local function GetPointerLocation(input)
-	if input and input.UserInputType == Enum.UserInputType.Touch then
-		return Vector2.new(input.Position.X, input.Position.Y)
-	end
-	return UserInputService:GetMouseLocation()
-end
-
-local function PointerToGuiLocal(gui, pointerScreen)
-	if not gui then
-		return Vector2.zero
-	end
-	local inset = Vector2.zero
-	local screenGui = gui:FindFirstAncestorWhichIsA("ScreenGui")
-	-- AbsolutePosition is below the topbar when IgnoreGuiInset is false; GetMouseLocation is from the true top-left
-	if not (screenGui and screenGui.IgnoreGuiInset) then
-		inset = GuiService:GetGuiInset()
-	end
-	return Vector2.new(
-		pointerScreen.X - inset.X - gui.AbsolutePosition.X,
-		pointerScreen.Y - inset.Y - gui.AbsolutePosition.Y
-	)
-end
-
-local function IsPointerInput(input)
-	if not input then
-		return false
-	end
-	local n = input.UserInputType.Name
-	return n == "MouseButton1" or n == "Touch"
-end
-
-local function IsPointerMove(input)
-	if not input then
-		return false
-	end
-	local n = input.UserInputType.Name
-	return n == "MouseMovement" or n == "Touch"
-end
-
--- Stable width for CreateInput: never shrink to empty TextBounds (breaks mobile typing)
 local function ResolveInputFrameSize(inputFrame, height)
 	height = height or 30
-	local minW = IsMobileClient() and 200 or 160
-	local maxW = IsMobileClient() and 480 or 380
+	local minW = 160
+	local maxW = 380
+	local touch = false
+	pcall(function()
+		touch = UserInputService.TouchEnabled and (not UserInputService.MouseEnabled or Camera.ViewportSize.X <= 1000)
+	end)
+	if touch then
+		minW = 200
+		maxW = 480
+	end
 	local width = minW
 	local box = inputFrame and inputFrame:FindFirstChild("InputBox")
 	if box then
@@ -2022,9 +1963,7 @@ local function ResolveInputFrameSize(inputFrame, height)
 end
 
 local function PrepareInputBox(box)
-	if not box then
-		return
-	end
+	if not box then return end
 	pcall(function()
 		box.ClearTextOnFocus = false
 		box.TextEditable = true
@@ -2365,13 +2304,7 @@ local function Hide(Window, bind, notif)
 	bind = string.split(tostring(bind), "Enum.KeyCode.")
 	bind = bind[2]
 	if notif then
-		local reopenHint
-		if IsMobileClient() or UserInputService.TouchEnabled then
-			reopenHint = "The interface has been hidden. Tap the floating Solara/Luna button on screen to reopen it."
-		else
-			reopenHint = "The interface has been hidden, you may reopen the interface by Pressing the UI Bind In Settings ("..tostring(bind)..")"
-		end
-		Luna:Notification({Title = "Interface Hidden", Content = reopenHint, Icon = "visibility_off"})
+		Luna:Notification({Title = "Interface Hidden", Content = "The interface has been hidden, you may reopen the interface by Pressing the UI Bind In Settings ("..tostring(bind)..")", Icon = "visibility_off"})
 	end
 	tween(Window, {BackgroundTransparency = 1})
 	tween(Window.Elements, {BackgroundTransparency = 1})
@@ -2741,16 +2674,18 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 		if not Bar or not Window then return end
 		local dragging = false
 		local relative = nil
-		local pointer = UserInputService:GetMouseLocation()
 		local inset = Vector2.zero
 		local screenGui = Window:FindFirstAncestorWhichIsA("ScreenGui")
 		if screenGui and screenGui.IgnoreGuiInset then
 			inset = GuiService:GetGuiInset()
 		end
-		local function beginDrag(input)
+		local function isPointerDown(input)
+			local n = input.UserInputType.Name
+			return n == "MouseButton1" or n == "Touch"
+		end
+		local function beginDrag()
 			dragging = true
-			pointer = GetPointerLocation(input)
-			relative = Window.AbsolutePosition + Window.AbsoluteSize * Window.AnchorPoint - pointer
+			relative = Window.AbsolutePosition + Window.AbsoluteSize * Window.AnchorPoint - UserInputService:GetMouseLocation()
 			if enableTaptic and dragBarCosmetic then
 				TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 110, 0, 4), BackgroundTransparency = 0}):Play()
 			end
@@ -2774,37 +2709,28 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 					TweenService:Create(dragBarCosmetic, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.7, Size = UDim2.new(0, 100, 0, 4)}):Play()
 				end
 			end)
-			-- Mobile has no hover: keep drag bar slightly more visible
-			if IsMobileClient() and dragBarCosmetic then
-				dragBarCosmetic.BackgroundTransparency = 0.35
-			end
 		end
 		local function hookDragTarget(gui)
 			if not gui then return end
 			gui.InputBegan:Connect(function(input)
-				if not IsPointerInput(input) then return end
-				beginDrag(input)
+				if not isPointerDown(input) then return end
+				beginDrag()
 			end)
 		end
 		hookDragTarget(Bar)
 		if enableTaptic and dragBar and Bar ~= dragBar then
 			hookDragTarget(dragBar)
 		end
-		UserInputService.InputChanged:Connect(function(input)
-			if not dragging then return end
-			if not IsPointerMove(input) then return end
-			pointer = GetPointerLocation(input)
-		end)
 		UserInputService.InputEnded:Connect(function(input)
 			if not dragging then return end
-			if IsPointerInput(input) then
+			if isPointerDown(input) then
 				endDrag()
 			end
 		end)
 		local dragTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 		RunService.RenderStepped:Connect(function()
 			if not dragging then return end
-			local position = pointer + relative + inset
+			local position = UserInputService:GetMouseLocation() + relative + inset
 			TweenService:Create(Window, dragTweenInfo, {Position = UDim2.fromOffset(position.X, position.Y)}):Play()
 			if enableTaptic and dragBar then
 				local yOff = getDragBarYOffset(Window)
@@ -2891,29 +2817,13 @@ function Luna:Notification(data)
 		if notifAccent then
 			TweenService:Create(notifAccent, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.1}):Play()
 		end
-		local dismissed = false
-		local function dismissNotification()
-			if dismissed then return end
-			dismissed = true
-		end
-		pcall(function()
-			newNotification.Active = true
-			newNotification.InputBegan:Connect(function(input)
-				if IsPointerInput(input) then
-					dismissNotification()
-				end
-			end)
-		end)
 		local waitDuration = math.min(math.max((#newNotification.Description.Text * 0.1) + 2.5, 3), 10)
 		local lifeDuration = data.Duration or waitDuration
 		if notifProgress then
 			TweenService:Create(notifProgress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.45}):Play()
 			TweenService:Create(notifProgress, TweenInfo.new(lifeDuration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 2)}):Play()
 		end
-		local elapsed = 0
-		while elapsed < lifeDuration and not dismissed do
-			elapsed = elapsed + task.wait(0.05)
-		end
+		task.wait(lifeDuration)
 		newNotification.Icon.Visible = false
 		TweenService:Create(newNotification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
 		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
@@ -2984,37 +2894,24 @@ local MainSize
 local MinSize
 local ResizeMin = Vector2.new(600, 360)
 local ResizeMax
-local vp = Camera.ViewportSize
-local inset = GuiService:GetGuiInset()
-local usableX = math.max(280, vp.X - inset.X)
-local usableY = math.max(220, vp.Y - inset.Y)
-if IsDesktop() and vp.X > 774 and vp.Y > 503 then
+if IsDesktop() and Camera.ViewportSize.X > 774 and Camera.ViewportSize.Y > 503 then
 		MainSize = UDim2.fromOffset(760, 478)
 	MinSize = UDim2.fromOffset(500, 42)
 	ResizeMax = Vector2.new(
-		math.max(ResizeMin.X, math.min(vp.X - 40, 1280)),
-		math.max(ResizeMin.Y, math.min(vp.Y - 40, 800))
+		math.max(ResizeMin.X, math.min(Camera.ViewportSize.X - 40, 1280)),
+		math.max(ResizeMin.Y, math.min(Camera.ViewportSize.Y - 40, 800))
 	)
-elseif IsMobileClient() then
-	-- Near-fullscreen on phones/tablets; leave a small margin for safe area / drag bar
-	local marginX = math.clamp(math.floor(usableX * 0.03), 8, 24)
-	local marginY = math.clamp(math.floor(usableY * 0.04), 12, 36)
-	MainSize = UDim2.fromOffset(math.max(280, usableX - marginX * 2), math.max(220, usableY - marginY * 2))
-	MinSize = UDim2.fromOffset(math.max(180, usableX - 120), 42)
-	ResizeMin = Vector2.new(280, 220)
-	ResizeMax = Vector2.new(usableX - 8, usableY - 8)
-elseif vp.X > 774 and vp.Y > 503 then
+elseif Camera.ViewportSize.X > 774 and Camera.ViewportSize.Y > 503 then
 	MainSize = UDim2.fromOffset(675, 424)
 	MinSize = UDim2.fromOffset(500, 42)
 	ResizeMax = Vector2.new(
-		math.max(ResizeMin.X, math.min(vp.X - 40, 1024)),
-		math.max(ResizeMin.Y, math.min(vp.Y - 40, 768))
+		math.max(ResizeMin.X, math.min(Camera.ViewportSize.X - 40, 1024)),
+		math.max(ResizeMin.Y, math.min(Camera.ViewportSize.Y - 40, 768))
 	)
 else
-	MainSize = UDim2.fromOffset(math.max(280, vp.X - 40), math.max(220, vp.Y - 60))
-	MinSize = UDim2.fromOffset(math.max(180, vp.X - 160), 42)
-	ResizeMin = Vector2.new(280, 220)
-	ResizeMax = Vector2.new(vp.X - 20, vp.Y - 20)
+	MainSize = UDim2.fromOffset(Camera.ViewportSize.X - 100, Camera.ViewportSize.Y - 100)
+	MinSize = UDim2.fromOffset(Camera.ViewportSize.X - 275, 42)
+	ResizeMax = Vector2.new(Camera.ViewportSize.X - 40, Camera.ViewportSize.Y - 40)
 end
 local function Maximise(Window)
 	Window.Controls.ToggleSize.ImageLabel.Image = "rbxassetid://10137941941"
@@ -3090,10 +2987,7 @@ function Luna:CreateWindow(WindowSettings)
 	Main.Visible = true
 	Main.BackgroundTransparency = 1
 	Main.Size = MainSize
-	-- Loading intro shrink is desktop-only; on mobile it made the window too small
-	if IsDesktop() then
-		Main.Size = UDim2.fromOffset(Main.Size.X.Offset - 70, Main.Size.Y.Offset - 55)
-	end
+	Main.Size = UDim2.fromOffset(Main.Size.X.Offset - 70, Main.Size.Y.Offset - 55)
 	Main.Parent.ShadowHolder.Size = Main.Size
 	LoadingFrame.Frame.Frame.Title.TextTransparency = 1
 	LoadingFrame.Frame.Frame.Subtitle.TextTransparency = 1
@@ -4371,20 +4265,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 						SLDragging = false
 					end
 				end)
-				local sliderPointerX = UserInputService:GetMouseLocation().X
-				UserInputService.InputChanged:Connect(function(input)
-					if SLDragging and IsPointerMove(input) then
-						sliderPointerX = GetPointerLocation(input).X
-					end
-				end)
 				Slider.Interact.MouseButton1Down:Connect(function()
 					local Current = Slider.Main.Progress.AbsolutePosition.X + Slider.Main.Progress.AbsoluteSize.X
 					local Start = Current
 					local Location
-					sliderPointerX = UserInputService:GetMouseLocation().X
 					local Loop; Loop = RunService.Stepped:Connect(function()
 						if SLDragging then
-							Location = sliderPointerX
+							Location = UserInputService:GetMouseLocation().X
 							Current = Current + 0.025 * (Location - Start)
 							if Location < Slider.Main.AbsolutePosition.X then
 								Location = Slider.Main.AbsolutePosition.X
@@ -4820,30 +4707,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				if Flag then
 					Luna.Options[Flag] = BindV
 				end
-				if IsMobileClient() then
-					pcall(function()
-						Bind.BindFrame.BindBox.Text = "TAP"
-						Bind.BindFrame.Size = UDim2.new(0, 56, 0, 42)
-					end)
-					local function fireMobileBind()
-						if CheckingForKey then return end
-						if BindSettings.HoldToInteract then
-							pcall(function() BindSettings.Callback(true) end)
-							task.delay(0.15, function() pcall(function() BindSettings.Callback(false) end) end)
-						else
-							BindV.Active = not BindV.Active
-							pcall(function() BindSettings.Callback(BindV.Active) end)
-						end
-					end
-					local interact = Bind:FindFirstChild("Interact")
-					if interact then
-						interact.MouseButton1Click:Connect(fireMobileBind)
-					else
-						Bind.InputBegan:Connect(function(input)
-							if IsPointerInput(input) then fireMobileBind() end
-						end)
-					end
-				end
 				return BindV
 			end
 						function Section:CreateInput(InputSettings, Flag)
@@ -4918,7 +4781,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 					if InputSettings.RemoveTextAfterFocusLost then
 						Input.InputFrame.InputBox.Text = ""
 					end
-					-- Resize only after focus ends (never while typing — kills mobile soft keyboard)
 					Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 				end)
 				if InputSettings.Numeric then
@@ -4969,10 +4831,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 						Input.Desc.Text = InputSettings.Description
 					end
-					if InputSettings.PlaceholderText then
-						Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
-					end
 					Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue or "")
+					PrepareInputBox(Input.InputFrame.InputBox)
 					Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 					InputV.CurrentValue = InputSettings.CurrentValue
 				end
@@ -4985,7 +4845,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 				return InputV
 			end
-						function Section:CreateDropdown(DropdownSettings, Flag)
+			function Section:CreateDropdown(DropdownSettings, Flag)
 				TabPage.Position = UDim2.new(0,0,0,28)
 				local DropdownV = { IgnoreConfig = false, Class = "Dropdown", Settings = DropdownSettings}
 				DropdownSettings = Kwargify({
@@ -5007,10 +4867,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 				local openedsize
 				if descriptionbool then
 					closedsize = 48
-					openedsize = IsMobileClient() and 210 or 170
+					openedsize = 170
 				elseif not descriptionbool then
 					closedsize = 38
-					openedsize = IsMobileClient() and 200 or 160
+					openedsize = 160
 				end
 				local opened = false
 				local Dropdown
@@ -5353,7 +5213,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 				end
 				local opened = false
-				local pointerPos = UserInputService:GetMouseLocation()
+				local mouse = game.Players.LocalPlayer:GetMouse()
 				Main.Image = "http://www.roblox.com/asset/?id=11415645739"
 				local mainDragging = false
 				local sliderDragging = false
@@ -5374,32 +5234,21 @@ function Window:CreateHomeTab(HomeTabSettings)
 						mainDragging = false
 						sliderDragging = false
 					end end)
-				UserInputService.InputChanged:Connect(function(input)
-					if mainDragging or sliderDragging then
-						if IsPointerMove(input) then
-							pointerPos = GetPointerLocation(input)
-						end
-					end
-				end)
 				Main.MouseButton1Down:Connect(function()
 					if opened then
 						mainDragging = true
-						pointerPos = UserInputService:GetMouseLocation()
 					end
 				end)
 				Main.MainPoint.MouseButton1Down:Connect(function()
 					if opened then
 						mainDragging = true
-						pointerPos = UserInputService:GetMouseLocation()
 					end
 				end)
 				Slider.MouseButton1Down:Connect(function()
 					sliderDragging = true
-					pointerPos = UserInputService:GetMouseLocation()
 				end)
 				Slider.SliderPoint.MouseButton1Down:Connect(function()
 					sliderDragging = true
-					pointerPos = UserInputService:GetMouseLocation()
 				end)
 				local h,s,v = ColorPickerSettings.Color:ToHSV()
 				local color = Color3.fromHSV(h,s,v)
@@ -5469,9 +5318,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end)
 				RunService.RenderStepped:connect(function()
 					if mainDragging then
-						local localPos = PointerToGuiLocal(Main, pointerPos)
-						local localX = math.clamp(localPos.X,0,Main.AbsoluteSize.X)
-						local localY = math.clamp(localPos.Y,0,Main.AbsoluteSize.Y)
+						local localX = math.clamp(mouse.X-Main.AbsolutePosition.X,0,Main.AbsoluteSize.X)
+						local localY = math.clamp(mouse.Y-Main.AbsolutePosition.Y,0,Main.AbsoluteSize.Y)
 						Main.MainPoint.Position = UDim2.new(0,localX-Main.MainPoint.AbsoluteSize.X/2,0,localY-Main.MainPoint.AbsoluteSize.Y/2)
 						s = localX / Main.AbsoluteSize.X
 						v = 1 - (localY / Main.AbsoluteSize.Y)
@@ -5489,8 +5337,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						ColorPickerV.Color = ColorPickerSettings.Color
 					end
 					if sliderDragging then
-						local localPos = PointerToGuiLocal(Slider, pointerPos)
-						local localX = math.clamp(localPos.X,0,Slider.AbsoluteSize.X)
+						local localX = math.clamp(mouse.X-Slider.AbsolutePosition.X,0,Slider.AbsoluteSize.X)
 						h = localX / Slider.AbsoluteSize.X
 						Display.BackgroundColor3 = Color3.fromHSV(h,s,v)
 						Slider.SliderPoint.Position = UDim2.new(0,localX-Slider.SliderPoint.AbsoluteSize.X/2,0.5,0)
@@ -5812,20 +5659,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 					SLDragging = false
 				end
 			end)
-			local sliderPointerX = UserInputService:GetMouseLocation().X
-			UserInputService.InputChanged:Connect(function(input)
-				if SLDragging and IsPointerMove(input) then
-					sliderPointerX = GetPointerLocation(input).X
-				end
-			end)
 			Slider.Interact.MouseButton1Down:Connect(function()
 				local Current = Slider.Main.Progress.AbsolutePosition.X + Slider.Main.Progress.AbsoluteSize.X
 				local Start = Current
 				local Location
-				sliderPointerX = UserInputService:GetMouseLocation().X
 				local Loop; Loop = RunService.Stepped:Connect(function()
 					if SLDragging then
-						Location = sliderPointerX
+						Location = UserInputService:GetMouseLocation().X
 						Current = Current + 0.025 * (Location - Start)
 						if Location < Slider.Main.AbsolutePosition.X then
 							Location = Slider.Main.AbsolutePosition.X
@@ -6259,30 +6099,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 			if Flag then
 				Luna.Options[Flag] = BindV
 			end
-			if IsMobileClient() then
-				pcall(function()
-					Bind.BindFrame.BindBox.Text = "TAP"
-					Bind.BindFrame.Size = UDim2.new(0, 56, 0, 42)
-				end)
-				local function fireMobileBind()
-					if CheckingForKey then return end
-					if BindSettings.HoldToInteract then
-						pcall(function() BindSettings.Callback(true) end)
-						task.delay(0.15, function() pcall(function() BindSettings.Callback(false) end) end)
-					else
-						BindV.Active = not BindV.Active
-						pcall(function() BindSettings.Callback(BindV.Active) end)
-					end
-				end
-				local interact = Bind:FindFirstChild("Interact")
-				if interact then
-					interact.MouseButton1Click:Connect(fireMobileBind)
-				else
-					Bind.InputBegan:Connect(function(input)
-						if IsPointerInput(input) then fireMobileBind() end
-					end)
-				end
-			end
 			return BindV
 		end
 		function Tab:CreateKeybind(BindSettings)
@@ -6445,30 +6261,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Bind.Visible = false
 				Bind:Destroy()
 			end
-			if IsMobileClient() then
-				pcall(function()
-					Bind.BindFrame.BindBox.Text = "TAP"
-					Bind.BindFrame.Size = UDim2.new(0, 56, 0, 42)
-				end)
-				local function fireMobileBind()
-					if CheckingForKey then return end
-					if BindSettings.HoldToInteract then
-						pcall(function() BindSettings.Callback(true) end)
-						task.delay(0.15, function() pcall(function() BindSettings.Callback(false) end) end)
-					else
-						BindV.Active = not BindV.Active
-						pcall(function() BindSettings.Callback(BindV.Active) end)
-					end
-				end
-				local interact = Bind:FindFirstChild("Interact")
-				if interact then
-					interact.MouseButton1Click:Connect(fireMobileBind)
-				else
-					Bind.InputBegan:Connect(function(input)
-						if IsPointerInput(input) then fireMobileBind() end
-					end)
-				end
-			end
 			return BindV
 		end
 				function Tab:CreateInput(InputSettings, Flag)
@@ -6542,7 +6334,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				if InputSettings.RemoveTextAfterFocusLost then
 					Input.InputFrame.InputBox.Text = ""
 				end
-				-- Resize only after focus ends (never while typing — kills mobile soft keyboard)
 				Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 			end)
 			if InputSettings.Numeric then
@@ -6593,10 +6384,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 					Input.Desc.Text = InputSettings.Description
 				end
-				if InputSettings.PlaceholderText then
-					Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
-				end
 				Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue or "")
+				PrepareInputBox(Input.InputFrame.InputBox)
 				Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 				InputV.CurrentValue = InputSettings.CurrentValue
 			end
@@ -6630,10 +6419,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 			local openedsize
 			if descriptionbool then
 				closedsize = 48
-				openedsize = IsMobileClient() and 210 or 170
+				openedsize = 170
 			elseif not descriptionbool then
 				closedsize = 38
-				openedsize = IsMobileClient() and 200 or 160
+				openedsize = 160
 			end
 			local opened = false
 			local Dropdown
@@ -6975,7 +6764,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 			local opened = false
-			local pointerPos = UserInputService:GetMouseLocation()
+			local mouse = game.Players.LocalPlayer:GetMouse()
 			Main.Image = "http://www.roblox.com/asset/?id=11415645739"
 			local mainDragging = false
 			local sliderDragging = false
@@ -6996,32 +6785,21 @@ function Window:CreateHomeTab(HomeTabSettings)
 					mainDragging = false
 					sliderDragging = false
 				end end)
-			UserInputService.InputChanged:Connect(function(input)
-				if mainDragging or sliderDragging then
-					if IsPointerMove(input) then
-						pointerPos = GetPointerLocation(input)
-					end
-				end
-			end)
 			Main.MouseButton1Down:Connect(function()
 				if opened then
 					mainDragging = true
-					pointerPos = UserInputService:GetMouseLocation()
 				end
 			end)
 			Main.MainPoint.MouseButton1Down:Connect(function()
 				if opened then
 					mainDragging = true
-					pointerPos = UserInputService:GetMouseLocation()
 				end
 			end)
 			Slider.MouseButton1Down:Connect(function()
 				sliderDragging = true
-				pointerPos = UserInputService:GetMouseLocation()
 			end)
 			Slider.SliderPoint.MouseButton1Down:Connect(function()
 				sliderDragging = true
-				pointerPos = UserInputService:GetMouseLocation()
 			end)
 			local h,s,v = ColorPickerSettings.Color:ToHSV()
 			local color = Color3.fromHSV(h,s,v)
@@ -7091,9 +6869,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end)
 			RunService.RenderStepped:connect(function()
 				if mainDragging then
-					local localPos = PointerToGuiLocal(Main, pointerPos)
-					local localX = math.clamp(localPos.X,0,Main.AbsoluteSize.X)
-					local localY = math.clamp(localPos.Y,0,Main.AbsoluteSize.Y)
+					local localX = math.clamp(mouse.X-Main.AbsolutePosition.X,0,Main.AbsoluteSize.X)
+					local localY = math.clamp(mouse.Y-Main.AbsolutePosition.Y,0,Main.AbsoluteSize.Y)
 					Main.MainPoint.Position = UDim2.new(0,localX-Main.MainPoint.AbsoluteSize.X/2,0,localY-Main.MainPoint.AbsoluteSize.Y/2)
 					s = localX / Main.AbsoluteSize.X
 					v = 1 - (localY / Main.AbsoluteSize.Y)
@@ -7111,8 +6888,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					ColorPickerV.Color = ColorPickerSettings.Color
 				end
 				if sliderDragging then
-					local localPos = PointerToGuiLocal(Slider, pointerPos)
-					local localX = math.clamp(localPos.X,0,Slider.AbsoluteSize.X)
+					local localX = math.clamp(mouse.X-Slider.AbsolutePosition.X,0,Slider.AbsoluteSize.X)
 					h = localX / Slider.AbsoluteSize.X
 					Display.BackgroundColor3 = Color3.fromHSV(h,s,v)
 					Slider.SliderPoint.Position = UDim2.new(0,localX-Slider.SliderPoint.AbsoluteSize.X/2,0.5,0)
@@ -7611,8 +7387,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		if Page:IsA("ScrollingFrame") then
 			Page.CanvasSize = UDim2.new(0, 0, 0, 0)
 			Page.AutomaticCanvasSize = Enum.AutomaticSize.None
-			-- Keep page fixed on desktop; allow scroll on mobile when soft keyboard covers the input
-			Page.ScrollingEnabled = IsMobileClient()
+			Page.ScrollingEnabled = false
 		end
 														local function buildSystemPrompt()
 									local base = opts.SystemPrompt or [==[You are **Solara Hub AI** — an expert Luau/Roblox assistant embedded inside the Solara Hub script-executor UI. You are precise, brutally honest, and never sloppy. Always reply in the **exact same language the user wrote in** (Russian → Russian, English → English, mixed → mirror the dominant one).
@@ -7733,8 +7508,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 		loadToken()
 						local generation = { token = 0, active = false, chatId = nil }
-		local sidebarOpen = not IsMobileClient()
-		local mobileAi = IsMobileClient()
+		local sidebarOpen = true
 		local function nowSec() return os.time() end
 		local function newChatId()
 												local hi = math.random(0, 0xFFFF)
@@ -7921,9 +7695,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			btn.Name = RandomName()
 			btn.AnchorPoint = Vector2.new(1, 0.5)
 			btn.Position = UDim2.new(1, xOffset, 0.5, 0)
-			local btnSize = mobileAi and 34 or 28
-			local btnH = mobileAi and 32 or 26
-			btn.Size = UDim2.fromOffset(btnSize, btnH)
+			btn.Size = UDim2.fromOffset(28, 26)
 			btn.BackgroundColor3 = PANEL_BG_LT
 			btn.BackgroundTransparency = 0.2
 			btn.ImageColor3 = Color3.fromRGB(230, 225, 245)
@@ -7937,9 +7709,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			return btn
 		end
 		local ClearBtn   = makeHeaderBtn("delete",       -0)
-		local SaveBtn    = makeHeaderBtn("save",         mobileAi and -40 or -34)
-		local SidebarBtn = makeHeaderBtn("view_sidebar", mobileAi and -80 or -68)
-								local SIDEBAR_W   = mobileAi and math.min(210, math.max(160, math.floor(Camera.ViewportSize.X * 0.55))) or 210
+		local SaveBtn    = makeHeaderBtn("save",         -34)
+		local SidebarBtn = makeHeaderBtn("view_sidebar", -68)
+								local SIDEBAR_W   = 210
 		local SIDEBAR_GAP = 8
 		local Body = Instance.new("Frame")
 		Body.Name = RandomName()
@@ -7951,11 +7723,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Sidebar.Name = RandomName()
 		Sidebar.AnchorPoint = Vector2.new(1, 0)
 		Sidebar.Position = UDim2.new(1, 0, 0, 0)
-		Sidebar.Size = UDim2.new(0, sidebarOpen and SIDEBAR_W or 0, 1, 0)
+		Sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
 		Sidebar.BackgroundColor3 = PANEL_BG
-		Sidebar.BackgroundTransparency = sidebarOpen and 0.15 or 1
+		Sidebar.BackgroundTransparency = 0.15
 		Sidebar.BorderSizePixel = 0
-		Sidebar.Visible = sidebarOpen
 		Sidebar.Parent = Body
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = Sidebar
@@ -7968,25 +7739,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local ChatPane = Instance.new("Frame")
 		ChatPane.Name = RandomName()
 		ChatPane.Position = UDim2.new(0, 0, 0, 0)
-		ChatPane.Size = UDim2.new(1, sidebarOpen and -(SIDEBAR_W + SIDEBAR_GAP) or 0, 1, 0)
+		ChatPane.Size = UDim2.new(1, -(SIDEBAR_W + SIDEBAR_GAP), 1, 0)
 		ChatPane.BackgroundTransparency = 1
 		ChatPane.Parent = Body
 		local function applySidebarLayout(animated)
 			local ti = animated == false and TweenInfo.new(0) or nil
 			if sidebarOpen then
 				Sidebar.Visible = true
-				-- On mobile, overlay the sidebar so chat keeps full width underneath
-				if mobileAi then
-					TweenService:Create(Sidebar, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-						{Size = UDim2.new(0, SIDEBAR_W, 1, 0), BackgroundTransparency = 0.05}):Play()
-					TweenService:Create(ChatPane, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-						{Size = UDim2.new(1, 0, 1, 0)}):Play()
-				else
-					TweenService:Create(Sidebar, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-						{Size = UDim2.new(0, SIDEBAR_W, 1, 0), BackgroundTransparency = 0.15}):Play()
-					TweenService:Create(ChatPane, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-						{Size = UDim2.new(1, -(SIDEBAR_W + SIDEBAR_GAP), 1, 0)}):Play()
-				end
+				TweenService:Create(Sidebar, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{Size = UDim2.new(0, SIDEBAR_W, 1, 0), BackgroundTransparency = 0.15}):Play()
+				TweenService:Create(ChatPane, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{Size = UDim2.new(1, -(SIDEBAR_W + SIDEBAR_GAP), 1, 0)}):Play()
 			else
 				TweenService:Create(Sidebar, ti or TweenInfo.new(0.18),
 					{Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1}):Play()
@@ -7995,7 +7758,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				task.delay(0.2, function() if not sidebarOpen then Sidebar.Visible = false end end)
 			end
 		end
-		applySidebarLayout(false)
 		SidebarBtn.MouseButton1Click:Connect(function()
 			sidebarOpen = not sidebarOpen
 			applySidebarLayout(true)
@@ -8122,7 +7884,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		InputBar.BorderSizePixel = 0
 		InputBar.AnchorPoint = Vector2.new(0, 1)
 		InputBar.Position = UDim2.new(0, 0, 1, 0)
-		InputBar.Size = UDim2.new(1, 0, 0, mobileAi and 56 or 48)
+		InputBar.Size = UDim2.new(1, 0, 0, 48)
 		InputBar.Parent = ChatPane
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = InputBar
@@ -8133,13 +7895,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		InputBox.Name = RandomName()
 		InputBox.BackgroundTransparency = 1
 		InputBox.Position = UDim2.new(0, 14, 0, 0)
-		InputBox.Size = UDim2.new(1, mobileAi and -76 or -68, 1, 0)
+		InputBox.Size = UDim2.new(1, -68, 1, 0)
 		InputBox.PlaceholderText = "Ask anything — code, Solara Hub, errors..."
 		InputBox.PlaceholderColor3 = TEXT_DIM
 		InputBox.Text = ""
 		InputBox.TextColor3 = TEXT_PRIMARY
 		InputBox.Font = Enum.Font.GothamMedium
-		InputBox.TextSize = mobileAi and 16 or 15
+		InputBox.TextSize = 15
 		InputBox.TextXAlignment = Enum.TextXAlignment.Left
 		InputBox.TextYAlignment = Enum.TextYAlignment.Center
 		InputBox.ClearTextOnFocus = false
@@ -8150,7 +7912,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SendButton.Name = RandomName()
 		SendButton.AnchorPoint = Vector2.new(1, 0.5)
 		SendButton.Position = UDim2.new(1, -8, 0.5, 0)
-		SendButton.Size = UDim2.fromOffset(mobileAi and 44 or 40, mobileAi and 36 or 32)
+		SendButton.Size = UDim2.fromOffset(40, 32)
 		SendButton.BackgroundColor3 = ACCENT
 		SendButton.BackgroundTransparency = 0.05
 		SendButton.AutoButtonColor = false
@@ -8990,8 +8752,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			actionsRow.BackgroundTransparency = 1
 			actionsRow.AnchorPoint = Vector2.new(1, 1)
 			actionsRow.Position = UDim2.new(1, -6, 1, -4)
-			actionsRow.Size = UDim2.new(0, mobileAi and 96 or 64, 0, mobileAi and 28 or 18)
-			actionsRow.Visible = mobileAi and true or false
+			actionsRow.Size = UDim2.new(0, 64, 0, 18)
+			actionsRow.Visible = false
 			actionsRow.Parent = Item
 			do
 				local arl = Instance.new("UIListLayout")
@@ -9003,7 +8765,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			local function actBtn(iconName, color, order)
 				local b = Instance.new("ImageButton")
-				b.Size = UDim2.fromOffset(mobileAi and 28 or 18, mobileAi and 28 or 18)
+				b.Size = UDim2.fromOffset(18, 18)
 				b.BackgroundColor3 = PANEL_BG
 				b.BackgroundTransparency = 0.2
 				b.ImageColor3 = color or TEXT_PRIMARY
@@ -9019,12 +8781,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local pinBtn    = actBtn("push_pin", chat.pinned and ACCENT or TEXT_DIM, 1)
 			local renameBtn = actBtn("edit",     TEXT_DIM,                            2)
 			local delBtn    = actBtn("delete",   Color3.fromRGB(220, 120, 120),       3)
-			if mobileAi then
-				timeLbl.Visible = false
-			else
-				Item.MouseEnter:Connect(function() actionsRow.Visible = true; timeLbl.Visible = false end)
-				Item.MouseLeave:Connect(function() actionsRow.Visible = false; timeLbl.Visible = true end)
-			end
+			Item.MouseEnter:Connect(function() actionsRow.Visible = true; timeLbl.Visible = false end)
+			Item.MouseLeave:Connect(function() actionsRow.Visible = false; timeLbl.Visible = true end)
 			pinBtn.MouseButton1Click:Connect(function()
 				chat.pinned = not chat.pinned
 				saveAll(); renderSidebar()
@@ -9871,7 +9629,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		resultsHost.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
 		resultsHost.BackgroundTransparency = 0.15
 		resultsHost.BorderSizePixel = 0
-		resultsHost.Size = UDim2.new(1, 0, 0, IsMobileClient() and math.clamp(math.floor(Camera.ViewportSize.Y * 0.32), 180, 280) or 340)
+		resultsHost.Size = UDim2.new(1, 0, 0, 340)
 		resultsHost.LayoutOrder = 8
 		resultsHost.Parent = searchPage
 		local hostCorner = Instance.new("UICorner")
@@ -10724,15 +10482,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		dragBar.Visible = false
 		Window.State = false
 		if Window._ResizeHandle then Window._ResizeHandle.Visible = false end
-		-- Always show mobile reopen FAB on touch/mobile (don't rely on KeyboardEnabled)
-		if IsMobileClient() or UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false then
+		if UserInputService.KeyboardEnabled == false then
 			LunaUI.MobileSupport.Visible = true
-			pcall(function()
-				-- Bigger, easier tap target on phones
-				if IsMobileClient() then
-					LunaUI.MobileSupport.Size = UDim2.fromOffset(64, 64)
-				end
-			end)
 		end
 	end)
 	Main.Controls.Close["MouseEnter"]:Connect(function()
@@ -10805,13 +10556,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 		LunaUI.MobileSupport.Visible = false
 	end)
-	-- Collapse sidebar nav on phones so content gets full width
-	if IsMobileClient() then
-		pcall(function()
-			Elements.Parent.Size = UDim2.new(1, -55, Elements.Parent.Size.Y.Scale, Elements.Parent.Size.Y.Offset)
-			Navigation.Size = UDim2.new(Navigation.Size.X.Scale, 55, Navigation.Size.Y.Scale, Navigation.Size.Y.Offset)
-		end)
-	end
 	if dragBar then
 		dragBar.Active = true
 		if dragInteract then
@@ -11282,12 +11026,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 	end
-				if WindowSettings.Resizable then
+				if WindowSettings.Resizable and IsDesktop() then
 				local HandleBack = Instance.new("Frame")
 		HandleBack.Name = RandomName()
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
 		HandleBack.Position = UDim2.new(1, -8, 1, -8)
-		HandleBack.Size = UDim2.fromOffset(IsMobileClient() and 36 or 24, IsMobileClient() and 36 or 24)
+		HandleBack.Size = UDim2.fromOffset(24, 24)
 		HandleBack.BackgroundColor3 = Color3.fromRGB(32, 30, 38)
 		HandleBack.BackgroundTransparency = 0.3
 		HandleBack.BorderSizePixel = 0
@@ -11304,7 +11048,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Handle.Name = RandomName()
 		Handle.AnchorPoint = Vector2.new(0.5, 0.5)
 		Handle.Position = UDim2.fromScale(0.5, 0.5)
-		Handle.Size = UDim2.fromOffset(IsMobileClient() and 22 or 16, IsMobileClient() and 22 or 16)
+		Handle.Size = UDim2.fromOffset(16, 16)
 		Handle.BackgroundTransparency = 1
 				ApplyIcon(Handle, GetIcon("open_in_full", "Material"))
 		Handle.ImageColor3 = Color3.fromRGB(235, 235, 245)
@@ -11323,15 +11067,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local resizing = false
 		local startMouse, startSize
 		Handle.InputBegan:Connect(function(input)
-			if not IsPointerInput(input) then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 			resizing = true
-			startMouse = GetPointerLocation(input)
+			startMouse = UserInputService:GetMouseLocation()
 			startSize = Main.AbsoluteSize
 		end)
 		UserInputService.InputChanged:Connect(function(input)
 			if not resizing then return end
-			if not IsPointerMove(input) then return end
-			local cur = GetPointerLocation(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			local cur = UserInputService:GetMouseLocation()
 			local delta = cur - startMouse
 			local nx = math.clamp(startSize.X + delta.X, ResizeMin.X, ResizeMax.X)
 			local ny = math.clamp(startSize.Y + delta.Y, ResizeMin.Y, ResizeMax.Y)
@@ -11340,7 +11084,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			syncDragBarPosition(Main)
 		end)
 		UserInputService.InputEnded:Connect(function(input)
-			if IsPointerInput(input) then
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				resizing = false
 			end
 		end)
