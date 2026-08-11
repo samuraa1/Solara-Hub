@@ -94,20 +94,127 @@ Luna.Themes = {
 		},
 		MainTransparency = 0.04,
 	},
-	Light = {
-		Background = Color3.fromRGB(243, 244, 249),
-		Surface = Color3.fromRGB(255, 255, 255),
-		Elevated = Color3.fromRGB(232, 233, 241),
-		Stroke = Color3.fromRGB(208, 209, 223),
-		TextPrimary = Color3.fromRGB(24, 25, 33),
-		TextSecondary = Color3.fromRGB(84, 86, 100),
-		TextMuted = Color3.fromRGB(134, 136, 150),
-		Accent = Color3.fromRGB(74, 106, 246),
+	Solara = {
+		Background = Color3.fromRGB(14, 12, 22),
+		Surface = Color3.fromRGB(24, 20, 36),
+		Elevated = Color3.fromRGB(36, 30, 52),
+		Stroke = Color3.fromRGB(58, 50, 82),
+		TextPrimary = Color3.fromRGB(242, 238, 255),
+		TextSecondary = Color3.fromRGB(168, 158, 196),
+		TextMuted = Color3.fromRGB(118, 110, 148),
+		Accent = Color3.fromRGB(132, 112, 220),
 		Gradient = ColorSequence.new{
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(74, 106, 246)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(105, 138, 250)),
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(110, 102, 153)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(132, 112, 220)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(176, 140, 255)),
 		},
-		MainTransparency = 0.02,
+		MainTransparency = 0.04,
+	},
+	Nord = {
+		Background = Color3.fromRGB(36, 41, 51),
+		Surface = Color3.fromRGB(46, 52, 64),
+		Elevated = Color3.fromRGB(59, 66, 82),
+		Stroke = Color3.fromRGB(76, 86, 106),
+		TextPrimary = Color3.fromRGB(236, 239, 244),
+		TextSecondary = Color3.fromRGB(216, 222, 233),
+		TextMuted = Color3.fromRGB(129, 161, 193),
+		Accent = Color3.fromRGB(136, 192, 208),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(94, 129, 172)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(136, 192, 208)),
+		},
+		MainTransparency = 0.04,
+	},
+	Dracula = {
+		Background = Color3.fromRGB(40, 42, 54),
+		Surface = Color3.fromRGB(48, 51, 66),
+		Elevated = Color3.fromRGB(68, 71, 90),
+		Stroke = Color3.fromRGB(98, 114, 164),
+		TextPrimary = Color3.fromRGB(248, 248, 242),
+		TextSecondary = Color3.fromRGB(189, 147, 249),
+		TextMuted = Color3.fromRGB(98, 114, 164),
+		Accent = Color3.fromRGB(255, 121, 198),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(189, 147, 249)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 121, 198)),
+		},
+		MainTransparency = 0.04,
+	},
+	["Tokyo Night"] = {
+		Background = Color3.fromRGB(26, 27, 38),
+		Surface = Color3.fromRGB(36, 40, 59),
+		Elevated = Color3.fromRGB(41, 46, 66),
+		Stroke = Color3.fromRGB(65, 72, 104),
+		TextPrimary = Color3.fromRGB(192, 202, 245),
+		TextSecondary = Color3.fromRGB(169, 177, 214),
+		TextMuted = Color3.fromRGB(86, 95, 137),
+		Accent = Color3.fromRGB(122, 162, 247),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(122, 162, 247)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(125, 207, 255)),
+		},
+		MainTransparency = 0.04,
+	},
+	["Rose Pine"] = {
+		Background = Color3.fromRGB(25, 23, 36),
+		Surface = Color3.fromRGB(31, 29, 46),
+		Elevated = Color3.fromRGB(38, 35, 58),
+		Stroke = Color3.fromRGB(82, 79, 103),
+		TextPrimary = Color3.fromRGB(224, 222, 244),
+		TextSecondary = Color3.fromRGB(144, 140, 170),
+		TextMuted = Color3.fromRGB(110, 106, 134),
+		Accent = Color3.fromRGB(235, 111, 146),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(196, 167, 231)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(235, 111, 146)),
+		},
+		MainTransparency = 0.04,
+	},
+	Everforest = {
+		Background = Color3.fromRGB(39, 46, 51),
+		Surface = Color3.fromRGB(45, 53, 59),
+		Elevated = Color3.fromRGB(55, 64, 70),
+		Stroke = Color3.fromRGB(75, 86, 90),
+		TextPrimary = Color3.fromRGB(211, 198, 170),
+		TextSecondary = Color3.fromRGB(167, 192, 128),
+		TextMuted = Color3.fromRGB(133, 146, 137),
+		Accent = Color3.fromRGB(167, 192, 128),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(167, 192, 128)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(127, 187, 179)),
+		},
+		MainTransparency = 0.04,
+	},
+	Crimson = {
+		Background = Color3.fromRGB(12, 10, 12),
+		Surface = Color3.fromRGB(22, 16, 18),
+		Elevated = Color3.fromRGB(34, 22, 26),
+		Stroke = Color3.fromRGB(64, 36, 42),
+		TextPrimary = Color3.fromRGB(245, 236, 238),
+		TextSecondary = Color3.fromRGB(186, 150, 156),
+		TextMuted = Color3.fromRGB(128, 100, 106),
+		Accent = Color3.fromRGB(220, 60, 80),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(180, 40, 55)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(240, 90, 110)),
+		},
+		MainTransparency = 0.03,
+	},
+	Cyberpunk = {
+		Background = Color3.fromRGB(10, 8, 18),
+		Surface = Color3.fromRGB(18, 14, 32),
+		Elevated = Color3.fromRGB(28, 20, 48),
+		Stroke = Color3.fromRGB(70, 40, 100),
+		TextPrimary = Color3.fromRGB(236, 240, 255),
+		TextSecondary = Color3.fromRGB(160, 150, 210),
+		TextMuted = Color3.fromRGB(110, 100, 150),
+		Accent = Color3.fromRGB(0, 245, 212),
+		Gradient = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 245, 212)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 45, 149)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 80, 255)),
+		},
+		MainTransparency = 0.04,
 	},
 }
 Luna.ActiveTheme = nil
@@ -1919,6 +2026,38 @@ local function IsDesktop()
     return UserInputService.KeyboardEnabled and UserInputService.MouseEnabled
 end
 
+-- Phone / primary-touch clients: no window resize grip
+local function IsPhoneClient()
+	local touch = false
+	local mouse = false
+	local keyboard = false
+	pcall(function()
+		touch = UserInputService.TouchEnabled == true
+		mouse = UserInputService.MouseEnabled == true
+		keyboard = UserInputService.KeyboardEnabled == true
+	end)
+	if not touch then
+		return false
+	end
+	if not mouse then
+		return true
+	end
+	local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
+	-- Touch + small viewport = phone even if a soft mouse is reported
+	if vp.X <= 700 or (vp.X <= 1000 and vp.Y <= 700) then
+		return true
+	end
+	-- Touch primary, no real keyboard (mobile)
+	if not keyboard then
+		return true
+	end
+	return false
+end
+
+local function CanShowResizeHandle()
+	return IsDesktop() and not IsPhoneClient()
+end
+
 local function ResolveInputFrameSize(inputFrame, height)
 	height = height or 30
 	local minW = 180
@@ -2655,6 +2794,9 @@ local function ApplyLunaTheme(nameOrTokens)
 	if not Luna.ThemeEnabled then return false end
 	local tokens
 	if type(nameOrTokens) == "string" then
+		if nameOrTokens == "Light" then
+			nameOrTokens = "Midnight"
+		end
 		tokens = Luna.Themes[nameOrTokens]
 		if not tokens then return false end
 		Luna.CurrentTheme = nameOrTokens
@@ -10579,7 +10721,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			dragBar.Visible = true
 			task.defer(function() syncDragBarPosition(Main) end)
 			Window.State = true
-			if Window._ResizeHandle and Window.Size == false then
+			if Window._ResizeHandle and Window.Size == false and CanShowResizeHandle() then
 				Window._ResizeHandle.Visible = true
 			end
 		end
@@ -10603,7 +10745,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Maximise(Main)
 			dragBar.Visible = true
 			task.defer(function() syncDragBarPosition(Main) end)
-			if Window._ResizeHandle then Window._ResizeHandle.Visible = true end
+			if Window._ResizeHandle and CanShowResizeHandle() then Window._ResizeHandle.Visible = true end
 		end
 	end)
 	Main.Controls.ToggleSize["MouseEnter"]:Connect(function()
@@ -10629,8 +10771,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		dragBar.Visible = true
 		task.defer(function() syncDragBarPosition(Main) end)
 		Window.State = true
-		if Window._ResizeHandle and Window.Size == false then
-			Window._ResizeHandle.Visible = true
+		if Window._ResizeHandle then
+			Window._ResizeHandle.Visible = Window.Size == false and CanShowResizeHandle()
 		end
 		LunaUI.MobileSupport.Visible = false
 	end)
@@ -11104,55 +11246,82 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 	end
-				if WindowSettings.Resizable and IsDesktop() then
-				local HandleBack = Instance.new("Frame")
+				if WindowSettings.Resizable and CanShowResizeHandle() then
+		local HandleBack = Instance.new("TextButton")
 		HandleBack.Name = RandomName()
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
-		HandleBack.Position = UDim2.new(1, -8, 1, -8)
-		HandleBack.Size = UDim2.fromOffset(24, 24)
-		HandleBack.BackgroundColor3 = Color3.fromRGB(32, 30, 38)
-		HandleBack.BackgroundTransparency = 0.3
+		HandleBack.Position = UDim2.new(1, -6, 1, -6)
+		HandleBack.Size = UDim2.fromOffset(30, 30)
+		HandleBack.BackgroundColor3 = Color3.fromRGB(52, 50, 68)
+		HandleBack.BackgroundTransparency = 0.08
 		HandleBack.BorderSizePixel = 0
-		HandleBack.ZIndex = 30
+		HandleBack.Text = ""
+		HandleBack.AutoButtonColor = false
+		HandleBack.ZIndex = 40
 		HandleBack.Parent = Main
 		local backCorner = Instance.new("UICorner")
-		backCorner.CornerRadius = UDim.new(0, 6)
+		backCorner.CornerRadius = UDim.new(0, 8)
 		backCorner.Parent = HandleBack
 		local backStroke = Instance.new("UIStroke")
-		backStroke.Color = Color3.fromRGB(120, 117, 140)
-		backStroke.Transparency = 0.5
+		backStroke.Color = Color3.fromRGB(190, 185, 220)
+		backStroke.Thickness = 1.4
+		backStroke.Transparency = 0.2
 		backStroke.Parent = HandleBack
-		local Handle = Instance.new("ImageButton")
-		Handle.Name = RandomName()
-		Handle.AnchorPoint = Vector2.new(0.5, 0.5)
-		Handle.Position = UDim2.fromScale(0.5, 0.5)
-		Handle.Size = UDim2.fromOffset(16, 16)
-		Handle.BackgroundTransparency = 1
-				ApplyIcon(Handle, GetIcon("open_in_full", "Material"))
-		Handle.ImageColor3 = Color3.fromRGB(235, 235, 245)
-		Handle.ImageTransparency = 0
-		Handle.AutoButtonColor = false
-		Handle.ZIndex = 31
-		Handle.Parent = HandleBack
+		local gripBars = {}
+		local function makeGripBar(offset)
+			local bar = Instance.new("Frame")
+			bar.Name = RandomName()
+			bar.AnchorPoint = Vector2.new(1, 1)
+			bar.Position = UDim2.new(1, -6 - offset, 1, -6 - offset)
+			bar.Size = UDim2.fromOffset(14, 2)
+			bar.Rotation = -45
+			bar.BackgroundColor3 = Color3.fromRGB(235, 233, 250)
+			bar.BackgroundTransparency = 0.05
+			bar.BorderSizePixel = 0
+			bar.ZIndex = 41
+			bar.Active = false
+			local barCorner = Instance.new("UICorner")
+			barCorner.CornerRadius = UDim.new(1, 0)
+			barCorner.Parent = bar
+			bar.Parent = HandleBack
+			table.insert(gripBars, bar)
+			return bar
+		end
+		makeGripBar(0)
+		makeGripBar(5)
+		makeGripBar(10)
 		HandleBack.MouseEnter:Connect(function()
-			tween(HandleBack, {BackgroundTransparency = 0.05})
-			tween(backStroke, {Transparency = 0.1})
+			tween(HandleBack, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(72, 68, 98)})
+			tween(backStroke, {Transparency = 0, Color = Color3.fromRGB(220, 215, 245)})
+			for _, bar in ipairs(gripBars) do
+				tween(bar, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255, 255, 255)})
+			end
 		end)
 		HandleBack.MouseLeave:Connect(function()
-			tween(HandleBack, {BackgroundTransparency = 0.3})
-			tween(backStroke, {Transparency = 0.5})
+			tween(HandleBack, {BackgroundTransparency = 0.08, BackgroundColor3 = Color3.fromRGB(52, 50, 68)})
+			tween(backStroke, {Transparency = 0.2, Color = Color3.fromRGB(190, 185, 220)})
+			for _, bar in ipairs(gripBars) do
+				tween(bar, {BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(235, 233, 250)})
+			end
 		end)
 		local resizing = false
 		local startMouse, startSize
-		Handle.InputBegan:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+		local function beginResize(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1
+				and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
 			resizing = true
 			startMouse = UserInputService:GetMouseLocation()
 			startSize = Main.AbsoluteSize
-		end)
+		end
+		HandleBack.InputBegan:Connect(beginResize)
 		UserInputService.InputChanged:Connect(function(input)
 			if not resizing then return end
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement
+				and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
 			local cur = UserInputService:GetMouseLocation()
 			local delta = cur - startMouse
 			local nx = math.clamp(startSize.X + delta.X, ResizeMin.X, ResizeMax.X)
@@ -11162,24 +11331,30 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			syncDragBarPosition(Main)
 		end)
 		UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch then
 				resizing = false
 			end
 		end)
-						Window._ResizeHandle = HandleBack
-				local function syncHandleVisibility()
-			HandleBack.Visible = (Window.Size == false) and Window.State
+		Window._ResizeHandle = HandleBack
+		local function syncHandleVisibility()
+			if IsPhoneClient() then
+				HandleBack.Visible = false
+				return
+			end
+			HandleBack.Visible = (Window.Size == false) and Window.State and Main.Visible
 		end
-				Main:GetPropertyChangedSignal("Size"):Connect(function()
-						if Main.AbsoluteSize.Y < 60 then
+		Main:GetPropertyChangedSignal("Size"):Connect(function()
+			if Main.AbsoluteSize.Y < 60 then
 				HandleBack.Visible = false
 			else
 				syncHandleVisibility()
 			end
 		end)
 		Main:GetPropertyChangedSignal("Visible"):Connect(function()
-			if not Main.Visible then HandleBack.Visible = false end
+			syncHandleVisibility()
 		end)
+		syncHandleVisibility()
 	end
 							do
 		local mainScale = Main:FindFirstChildOfClass("UIScale")
