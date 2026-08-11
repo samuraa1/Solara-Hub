@@ -3451,65 +3451,721 @@ function Window:CreateHomeTab(HomeTabSettings)
 		HomeTabButton.Interact.MouseButton1Click:Connect(function()
 			HomeTab:Activate()
 		end)
-		HomeTabPage.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
-		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
-		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
-		local dashRoot = HomeTabPage.detailsholder.dashboard
+		-- Legacy template kept alive (hidden) for Solara fallbacks / value sync
+		local legacyIcon = HomeTabPage:FindFirstChild("icon")
+		local legacyPlayer = HomeTabPage:FindFirstChild("player")
+		local legacyDetails = HomeTabPage:FindFirstChild("detailsholder")
+		local dashRoot = legacyDetails and legacyDetails:FindFirstChild("dashboard")
+
+		local avatarImage = ""
+		pcall(function()
+			avatarImage = Players:GetUserThumbnailAsync(
+				Players.LocalPlayer.UserId,
+				Enum.ThumbnailType.HeadShot,
+				Enum.ThumbnailSize.Size420x420
+			)
+		end)
+		if legacyIcon and legacyIcon:FindFirstChild("ImageLabel") then
+			legacyIcon.ImageLabel.Image = avatarImage
+		end
+		if legacyPlayer then
+			if legacyPlayer:FindFirstChild("Text") then
+				legacyPlayer.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
+			end
+			if legacyPlayer:FindFirstChild("user") then
+				legacyPlayer.user.Text = Players.LocalPlayer.Name .. " - " .. WindowSettings.Name
+			end
+		end
+
+		local executorName = (isStudio and "Debugging (Studio)")
+			or (identifyexecutor and identifyexecutor())
+			or "Unknown Executor"
+		local executorSupported = isStudio and true or false
+		if not isStudio and type(HomeTabSettings.SupportedExecutors) == "table" then
+			for _, v in pairs(HomeTabSettings.SupportedExecutors) do
+				if v == executorName then
+					executorSupported = true
+					break
+				end
+			end
+		end
+		local executorSubtitle = isStudio and "Luna Interface Suite - Debugging Mode"
+			or (executorSupported and "Your Executor Supports This Script." or "Executor not listed — script may still work.")
+
+		if dashRoot and dashRoot:FindFirstChild("Client") then
+			pcall(function()
+				dashRoot.Client.Title.Text = executorName
+				dashRoot.Client.Subtitle.Text = executorSubtitle
+			end)
+		end
+		if dashRoot and dashRoot:FindFirstChild("Discord") and dashRoot.Discord:FindFirstChild("Interact") then
+			dashRoot.Discord.Interact.MouseButton1Click:Connect(function()
+				pcall(function()
+					setclipboard(tostring("https://discord.gg/" .. HomeTabSettings.DiscordInvite))
+				end)
+				if request then
+					pcall(function()
+						request({
+							Url = "http://127.0.0.1:6463/rpc?v=1",
+							Method = "POST",
+							Headers = {
+								["Content-Type"] = "application/json",
+								Origin = "https://discord.com",
+							},
+							Body = HttpService:JSONEncode({
+								cmd = "INVITE_BROWSER",
+								nonce = HttpService:GenerateGUID(false),
+								args = { code = HomeTabSettings.DiscordInvite },
+							}),
+						})
+					end)
+				end
+			end)
+		end
+
+		local function themeTokens()
+			local theme = Luna.ActiveTheme or Luna.Themes[Luna.CurrentTheme] or {}
+			return {
+				surface = theme.Surface or Color3.fromRGB(22, 22, 28),
+				elevated = theme.Elevated or Color3.fromRGB(31, 31, 40),
+				stroke = theme.Stroke or Color3.fromRGB(46, 46, 58),
+				accent = theme.Accent or Color3.fromRGB(122, 162, 247),
+				textPri = theme.TextPrimary or Color3.fromRGB(240, 240, 245),
+				textSec = theme.TextSecondary or Color3.fromRGB(160, 160, 172),
+				textMut = theme.TextMuted or Color3.fromRGB(110, 110, 124),
+				gradient = theme.Gradient,
+			}
+		end
+
+		local function ensureCorner(inst, radius)
+			local c = inst:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, radius)
+			c.Parent = inst
+			return c
+		end
+
+		local function ensureStroke(inst, color, transparency, thickness)
+			local s = inst:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+			s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			s.Color = color
+			s.Transparency = transparency or 0.4
+			s.Thickness = thickness or 1
+			s.Parent = inst
+			return s
+		end
+
+		local function clearGradients(root)
+			for _, g in ipairs(root:GetDescendants()) do
+				if g:IsA("UIGradient") then
+					g:Destroy()
+				end
+			end
+			for _, g in ipairs(root:GetChildren()) do
+				if g:IsA("UIGradient") then
+					g:Destroy()
+				end
+			end
+		end
+
+		local function addCornerWash(card, color)
+			clearGradients(card)
+			local g = Instance.new("UIGradient")
+			g.Rotation = 135
+			g.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, color),
+				ColorSequenceKeypoint.new(0.42, color),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 8, 12)),
+			})
+			g.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.55),
+				NumberSequenceKeypoint.new(0.35, 0.82),
+				NumberSequenceKeypoint.new(1, 0.08),
+			})
+			g.Parent = card
+			return g
+		end
+
+		-- Hide legacy chrome; new dashboard owns the page
+		if legacyIcon then legacyIcon.Visible = false end
+		if legacyPlayer then legacyPlayer.Visible = false end
+		if legacyDetails then legacyDetails.Visible = false end
+
+		pcall(function()
+			if HomeTabPage:IsA("ScrollingFrame") then
+				HomeTabPage.ScrollingEnabled = true
+				HomeTabPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+				HomeTabPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+				HomeTabPage.ScrollBarThickness = 3
+				HomeTabPage.ScrollBarImageTransparency = 0.4
+			end
+		end)
+
+		local existingDash = HomeTabPage:FindFirstChild("LunaDashboard")
+		if existingDash then
+			existingDash:Destroy()
+		end
+
+		local DashRoot = Instance.new("Frame")
+		DashRoot.Name = "LunaDashboard"
+		DashRoot:SetAttribute("LunaNoTheme", true)
+		DashRoot:SetAttribute("LunaNoTranslate", true)
+		DashRoot.BackgroundTransparency = 1
+		DashRoot.BorderSizePixel = 0
+		DashRoot.Size = UDim2.new(1, -20, 0, 0)
+		DashRoot.Position = UDim2.new(0, 10, 0, 8)
+		DashRoot.AutomaticSize = Enum.AutomaticSize.Y
+		DashRoot.ZIndex = 2
+		DashRoot.Parent = HomeTabPage
+
+		local rootPad = Instance.new("UIPadding")
+		rootPad.PaddingBottom = UDim.new(0, 16)
+		rootPad.Parent = DashRoot
+
+		local rootList = Instance.new("UIListLayout")
+		rootList.FillDirection = Enum.FillDirection.Vertical
+		rootList.SortOrder = Enum.SortOrder.LayoutOrder
+		rootList.Padding = UDim.new(0, 12)
+		rootList.Parent = DashRoot
+
+		-- Hero
+		local Hero = Instance.new("Frame")
+		Hero.Name = "Hero"
+		Hero.LayoutOrder = 1
+		Hero.Size = UDim2.new(1, 0, 0, 92)
+		Hero.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+		Hero.BorderSizePixel = 0
+		Hero.Parent = DashRoot
+		ensureCorner(Hero, 14)
+		ensureStroke(Hero, Color3.fromRGB(46, 46, 58), 0.35, 1)
+
+		local HeroAvatar = Instance.new("ImageLabel")
+		HeroAvatar.Name = "Avatar"
+		HeroAvatar.AnchorPoint = Vector2.new(0, 0.5)
+		HeroAvatar.Position = UDim2.new(0, 16, 0.5, 0)
+		HeroAvatar.Size = UDim2.fromOffset(60, 60)
+		HeroAvatar.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+		HeroAvatar.BackgroundTransparency = 0
+		HeroAvatar.BorderSizePixel = 0
+		HeroAvatar.Image = avatarImage
+		HeroAvatar.Parent = Hero
+		ensureCorner(HeroAvatar, 0).CornerRadius = UDim.new(1, 0)
+		local avatarRing = ensureStroke(HeroAvatar, Color3.fromRGB(122, 162, 247), 0.1, 2)
+
+		local HeroGreeting = Instance.new("TextLabel")
+		HeroGreeting.Name = "Greeting"
+		HeroGreeting.BackgroundTransparency = 1
+		HeroGreeting.Position = UDim2.new(0, 92, 0, 18)
+		HeroGreeting.Size = UDim2.new(1, -250, 0, 28)
+		HeroGreeting.Font = Enum.Font.GothamBold
+		HeroGreeting.TextSize = 22
+		HeroGreeting.TextXAlignment = Enum.TextXAlignment.Left
+		HeroGreeting.TextTruncate = Enum.TextTruncate.AtEnd
+		HeroGreeting.Text = "Hello, " .. Players.LocalPlayer.DisplayName
+		HeroGreeting.TextColor3 = Color3.fromRGB(240, 240, 245)
+		HeroGreeting.Parent = Hero
+
+		local HeroUserLine = Instance.new("TextLabel")
+		HeroUserLine.Name = "UserLine"
+		HeroUserLine.BackgroundTransparency = 1
+		HeroUserLine.Position = UDim2.new(0, 92, 0, 46)
+		HeroUserLine.Size = UDim2.new(1, -250, 0, 18)
+		HeroUserLine.Font = Enum.Font.Gotham
+		HeroUserLine.TextSize = 13
+		HeroUserLine.TextXAlignment = Enum.TextXAlignment.Left
+		HeroUserLine.TextTruncate = Enum.TextTruncate.AtEnd
+		HeroUserLine.Text = Players.LocalPlayer.Name .. " · " .. WindowSettings.Name
+		HeroUserLine.TextColor3 = Color3.fromRGB(110, 110, 124)
+		HeroUserLine.Parent = Hero
+
+		local HeroMeta = Instance.new("TextLabel")
+		HeroMeta.Name = "SessionMeta"
+		HeroMeta.BackgroundTransparency = 1
+		HeroMeta.Position = UDim2.new(0, 92, 0, 64)
+		HeroMeta.Size = UDim2.new(1, -250, 0, 16)
+		HeroMeta.Font = Enum.Font.Gotham
+		HeroMeta.TextSize = 12
+		HeroMeta.TextXAlignment = Enum.TextXAlignment.Left
+		HeroMeta.Text = "Session 00:00:00"
+		HeroMeta.TextColor3 = Color3.fromRGB(110, 110, 124)
+		HeroMeta.Parent = Hero
+
+		local function makePill(name, anchorX)
+			local pill = Instance.new("Frame")
+			pill.Name = name
+			pill.AnchorPoint = Vector2.new(1, 0)
+			pill.Position = UDim2.new(1, anchorX, 0, 18)
+			pill.Size = UDim2.fromOffset(128, 28)
+			pill.BackgroundColor3 = Color3.fromRGB(31, 31, 40)
+			pill.BorderSizePixel = 0
+			pill.Parent = Hero
+			ensureCorner(pill, 8)
+			ensureStroke(pill, Color3.fromRGB(46, 46, 58), 0.45, 1)
+			local label = Instance.new("TextLabel")
+			label.Name = "Value"
+			label.BackgroundTransparency = 1
+			label.Size = UDim2.fromScale(1, 1)
+			label.Font = Enum.Font.GothamMedium
+			label.TextSize = 12
+			label.TextTruncate = Enum.TextTruncate.AtEnd
+			label.Text = ""
+			label.TextColor3 = Color3.fromRGB(240, 240, 245)
+			label.Parent = pill
+			return pill, label
+		end
+
+		local ExecPill, ExecPillValue = makePill("ExecutorPill", -16)
+		ExecPill.Position = UDim2.new(1, -16, 0, 18)
+		ExecPillValue.Text = executorName
+
+		local PingPill, PingPillValue = makePill("PingPill", -16)
+		PingPill.Position = UDim2.new(1, -16, 0, 52)
+		PingPillValue.Text = "— ms"
+
+		local SupportHint = Instance.new("TextLabel")
+		SupportHint.Name = "SupportHint"
+		SupportHint.BackgroundTransparency = 1
+		SupportHint.AnchorPoint = Vector2.new(1, 1)
+		SupportHint.Position = UDim2.new(1, -16, 1, -10)
+		SupportHint.Size = UDim2.new(0, 200, 0, 14)
+		SupportHint.Font = Enum.Font.Gotham
+		SupportHint.TextSize = 11
+		SupportHint.TextXAlignment = Enum.TextXAlignment.Right
+		SupportHint.TextTruncate = Enum.TextTruncate.AtEnd
+		SupportHint.Text = executorSubtitle
+		SupportHint.TextColor3 = Color3.fromRGB(110, 110, 124)
+		SupportHint.Visible = false
+		SupportHint.Parent = Hero
+
+		-- Stats row
+		local StatsRow = Instance.new("Frame")
+		StatsRow.Name = "Stats"
+		StatsRow.LayoutOrder = 2
+		StatsRow.Size = UDim2.new(1, 0, 0, 78)
+		StatsRow.BackgroundTransparency = 1
+		StatsRow.BorderSizePixel = 0
+		StatsRow.Parent = DashRoot
+
+		local statsGrid = Instance.new("UIGridLayout")
+		statsGrid.CellPadding = UDim2.fromOffset(10, 0)
+		statsGrid.CellSize = UDim2.new(0.25, -8, 1, 0)
+		statsGrid.FillDirectionMaxCells = 4
+		statsGrid.FillDirection = Enum.FillDirection.Horizontal
+		statsGrid.SortOrder = Enum.SortOrder.LayoutOrder
+		statsGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		statsGrid.VerticalAlignment = Enum.VerticalAlignment.Center
+		statsGrid.Parent = StatsRow
+
+		local statLabels = {}
+		local function makeStatTile(order, titleText, wash)
+			local tile = Instance.new("Frame")
+			tile.Name = titleText
+			tile.LayoutOrder = order
+			tile.Size = UDim2.new(0.25, -8, 1, 0)
+			tile.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+			tile.BorderSizePixel = 0
+			tile.Parent = StatsRow
+			ensureCorner(tile, 12)
+			ensureStroke(tile, Color3.fromRGB(46, 46, 58), 0.35, 1)
+			addCornerWash(tile, wash)
+			local title = Instance.new("TextLabel")
+			title.Name = "Title"
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 12, 0, 12)
+			title.Size = UDim2.new(1, -20, 0, 16)
+			title.Font = Enum.Font.GothamMedium
+			title.TextSize = 12
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.Text = titleText
+			title.TextColor3 = Color3.fromRGB(160, 160, 172)
+			title.Parent = tile
+			local value = Instance.new("TextLabel")
+			value.Name = "Value"
+			value.BackgroundTransparency = 1
+			value.Position = UDim2.new(0, 12, 0, 34)
+			value.Size = UDim2.new(1, -20, 0, 28)
+			value.Font = Enum.Font.GothamBold
+			value.TextSize = 20
+			value.TextXAlignment = Enum.TextXAlignment.Left
+			value.TextTruncate = Enum.TextTruncate.AtEnd
+			value.Text = "—"
+			value.TextColor3 = Color3.fromRGB(240, 240, 245)
+			value.Parent = tile
+			statLabels[titleText] = value
+			return tile
+		end
+
+		makeStatTile(1, "Online", Color3.fromRGB(80, 170, 120))
+		makeStatTile(2, "In Server", Color3.fromRGB(220, 160, 70))
+		makeStatTile(3, "Players", Color3.fromRGB(70, 140, 220))
+		makeStatTile(4, "Region", Color3.fromRGB(160, 100, 220))
+
+		-- Detail cards: Server + Friends (compact, same vibe as before)
+		local DetailRow = Instance.new("Frame")
+		DetailRow.Name = "Details"
+		DetailRow.LayoutOrder = 3
+		DetailRow.Size = UDim2.new(1, 0, 0, 168)
+		DetailRow.BackgroundTransparency = 1
+		DetailRow.BorderSizePixel = 0
+		DetailRow.Parent = DashRoot
+
+		local detailList = Instance.new("UIListLayout")
+		detailList.FillDirection = Enum.FillDirection.Horizontal
+		detailList.SortOrder = Enum.SortOrder.LayoutOrder
+		detailList.Padding = UDim.new(0, 10)
+		detailList.Parent = DetailRow
+
+		local function makeDetailCard(order, titleText, subtitleText, wash, widthScale)
+			local card = Instance.new("Frame")
+			card.Name = titleText
+			card.LayoutOrder = order
+			card.Size = UDim2.new(widthScale, -5, 1, 0)
+			card.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+			card.BorderSizePixel = 0
+			card.Parent = DetailRow
+			ensureCorner(card, 14)
+			ensureStroke(card, Color3.fromRGB(46, 46, 58), 0.35, 1)
+			addCornerWash(card, wash)
+			local title = Instance.new("TextLabel")
+			title.Name = "Title"
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 14, 0, 12)
+			title.Size = UDim2.new(1, -28, 0, 20)
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 16
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.Text = titleText
+			title.TextColor3 = Color3.fromRGB(240, 240, 245)
+			title.Parent = card
+			local subtitle = Instance.new("TextLabel")
+			subtitle.Name = "Subtitle"
+			subtitle.BackgroundTransparency = 1
+			subtitle.Position = UDim2.new(0, 14, 0, 34)
+			subtitle.Size = UDim2.new(1, -28, 0, 16)
+			subtitle.Font = Enum.Font.Gotham
+			subtitle.TextSize = 12
+			subtitle.TextXAlignment = Enum.TextXAlignment.Left
+			subtitle.TextTruncate = Enum.TextTruncate.AtEnd
+			subtitle.Text = subtitleText
+			subtitle.TextColor3 = Color3.fromRGB(110, 110, 124)
+			subtitle.Parent = card
+			local body = Instance.new("Frame")
+			body.Name = "Body"
+			body.BackgroundTransparency = 1
+			body.Position = UDim2.new(0, 12, 0, 58)
+			body.Size = UDim2.new(1, -24, 1, -68)
+			body.Parent = card
+			local bodyGrid = Instance.new("UIGridLayout")
+			bodyGrid.CellPadding = UDim2.fromOffset(8, 8)
+			bodyGrid.CellSize = UDim2.new(0.5, -4, 0, 42)
+			bodyGrid.FillDirectionMaxCells = 2
+			bodyGrid.SortOrder = Enum.SortOrder.LayoutOrder
+			bodyGrid.Parent = body
+			return card, body
+		end
+
+		local ServerCard, ServerBody = makeDetailCard(1, "Server", "Session you're in right now", Color3.fromRGB(70, 190, 120), 0.58)
+		local FriendsCard, FriendsBody = makeDetailCard(2, "Friends", "What your friends are up to", Color3.fromRGB(230, 170, 70), 0.42)
+
+		local detailValues = {}
+		local function makeMiniStat(parent, order, labelText, key)
+			local cell = Instance.new("Frame")
+			cell.Name = key
+			cell.LayoutOrder = order
+			cell.BackgroundColor3 = Color3.fromRGB(31, 31, 40)
+			cell.BackgroundTransparency = 0.15
+			cell.BorderSizePixel = 0
+			cell.Parent = parent
+			ensureCorner(cell, 8)
+			local lab = Instance.new("TextLabel")
+			lab.Name = "Label"
+			lab.BackgroundTransparency = 1
+			lab.Position = UDim2.new(0, 8, 0, 4)
+			lab.Size = UDim2.new(1, -12, 0, 14)
+			lab.Font = Enum.Font.Gotham
+			lab.TextSize = 11
+			lab.TextXAlignment = Enum.TextXAlignment.Left
+			lab.Text = labelText
+			lab.TextColor3 = Color3.fromRGB(160, 160, 172)
+			lab.Parent = cell
+			local val = Instance.new("TextLabel")
+			val.Name = "Value"
+			val.BackgroundTransparency = 1
+			val.Position = UDim2.new(0, 8, 0, 18)
+			val.Size = UDim2.new(1, -12, 0, 18)
+			val.Font = Enum.Font.GothamBold
+			val.TextSize = 13
+			val.TextXAlignment = Enum.TextXAlignment.Left
+			val.TextTruncate = Enum.TextTruncate.AtEnd
+			val.Text = "—"
+			val.TextColor3 = Color3.fromRGB(240, 240, 245)
+			val.Parent = cell
+			detailValues[key] = val
+			return cell
+		end
+
+		makeMiniStat(ServerBody, 1, "Players", "Players")
+		makeMiniStat(ServerBody, 2, "Max Players", "MaxPlayers")
+		makeMiniStat(ServerBody, 3, "Latency", "Latency")
+		makeMiniStat(ServerBody, 4, "Region", "Region")
+
+		local JoinBtn = Instance.new("TextButton")
+		JoinBtn.Name = "JoinScript"
+		JoinBtn.AutoButtonColor = false
+		JoinBtn.AnchorPoint = Vector2.new(0.5, 1)
+		JoinBtn.Position = UDim2.new(0.5, 0, 1, -10)
+		JoinBtn.Size = UDim2.new(1, -24, 0, 26)
+		JoinBtn.BackgroundColor3 = Color3.fromRGB(31, 31, 40)
+		JoinBtn.BackgroundTransparency = 0.1
+		JoinBtn.BorderSizePixel = 0
+		JoinBtn.Font = Enum.Font.GothamMedium
+		JoinBtn.TextSize = 12
+		JoinBtn.Text = "Tap to copy join script"
+		JoinBtn.TextColor3 = Color3.fromRGB(200, 200, 215)
+		JoinBtn.ZIndex = 3
+		JoinBtn.Parent = ServerCard
+		ensureCorner(JoinBtn, 8)
+		ServerBody.Size = UDim2.new(1, -24, 1, -98)
+		JoinBtn.MouseEnter:Connect(function()
+			tween(JoinBtn, { BackgroundTransparency = 0, TextColor3 = Color3.fromRGB(255, 255, 255) })
+		end)
+		JoinBtn.MouseLeave:Connect(function()
+			tween(JoinBtn, { BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(200, 200, 215) })
+		end)
+		JoinBtn.MouseButton1Click:Connect(function()
+			local ok = pcall(function()
+				local scriptText = string.format(
+					'game:GetService("TeleportService"):TeleportToPlaceInstance(%d, %q)',
+					game.PlaceId,
+					game.JobId
+				)
+				setclipboard(scriptText)
+			end)
+			pcall(function()
+				Luna:Notification({
+					Title = ok and "Copied" or "Copy Failed",
+					Content = ok and "Join script copied to clipboard." or "Could not copy join script.",
+					Icon = ok and "content_copy" or "error",
+				})
+			end)
+		end)
+
+		makeMiniStat(FriendsBody, 1, "In Server", "FriendsInGame")
+		makeMiniStat(FriendsBody, 2, "Online", "FriendsOnline")
+		makeMiniStat(FriendsBody, 3, "Offline", "FriendsOffline")
+		makeMiniStat(FriendsBody, 4, "All", "FriendsAll")
+
+		-- Actions (Changelogs / Supported Games)
+		local Actions = Instance.new("Frame")
+		Actions.Name = "Actions"
+		Actions.LayoutOrder = 4
+		Actions.Size = UDim2.new(1, 0, 0, 0)
+		Actions.AutomaticSize = Enum.AutomaticSize.Y
+		Actions.BackgroundTransparency = 1
+		Actions.BorderSizePixel = 0
+		Actions.Parent = DashRoot
+
+		local actionsGrid = Instance.new("UIGridLayout")
+		actionsGrid.SortOrder = Enum.SortOrder.LayoutOrder
+		actionsGrid.CellPadding = UDim2.fromOffset(10, 10)
+		actionsGrid.CellSize = UDim2.new(0.5, -5, 0, 72)
+		actionsGrid.FillDirectionMaxCells = 2
+		actionsGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		actionsGrid.Parent = Actions
+
+		local actionsPad = Instance.new("UIPadding")
+		actionsPad.PaddingTop = UDim.new(0, 0)
+		actionsPad.PaddingBottom = UDim.new(0, 0)
+		actionsPad.Parent = Actions
+
+		-- Discord CTA
+		local DiscordCard = Instance.new("Frame")
+		DiscordCard.Name = "Discord"
+		DiscordCard.LayoutOrder = 5
+		DiscordCard.Size = UDim2.new(1, 0, 0, 64)
+		DiscordCard.BackgroundColor3 = Color3.fromRGB(78, 90, 230)
+		DiscordCard.BorderSizePixel = 0
+		DiscordCard.Parent = DashRoot
+		ensureCorner(DiscordCard, 14)
+		ensureStroke(DiscordCard, Color3.fromRGB(140, 150, 250), 0.5, 1)
+		local discordGrad = Instance.new("UIGradient")
+		discordGrad.Rotation = 135
+		discordGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(104, 117, 250)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(52, 60, 170)),
+		})
+		discordGrad.Parent = DiscordCard
+
+		local discordIcon = Instance.new("ImageLabel")
+		discordIcon.Name = "Icon"
+		discordIcon.AnchorPoint = Vector2.new(0, 0.5)
+		discordIcon.Position = UDim2.new(0, 16, 0.5, 0)
+		discordIcon.Size = UDim2.fromOffset(28, 28)
+		discordIcon.BackgroundTransparency = 1
+		discordIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		discordIcon.Parent = DiscordCard
+		pcall(function()
+			ApplyIcon(discordIcon, GetIcon("chat", "Material"))
+		end)
+
+		local discordTitle = Instance.new("TextLabel")
+		discordTitle.Name = "Title"
+		discordTitle.BackgroundTransparency = 1
+		discordTitle.Position = UDim2.new(0, 56, 0, 12)
+		discordTitle.Size = UDim2.new(1, -140, 0, 22)
+		discordTitle.Font = Enum.Font.GothamBold
+		discordTitle.TextSize = 16
+		discordTitle.TextXAlignment = Enum.TextXAlignment.Left
+		discordTitle.Text = "Discord"
+		discordTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+		discordTitle.Parent = DiscordCard
+
+		local discordSub = Instance.new("TextLabel")
+		discordSub.Name = "Subtitle"
+		discordSub.BackgroundTransparency = 1
+		discordSub.Position = UDim2.new(0, 56, 0, 34)
+		discordSub.Size = UDim2.new(1, -140, 0, 18)
+		discordSub.Font = Enum.Font.Gotham
+		discordSub.TextSize = 12
+		discordSub.TextXAlignment = Enum.TextXAlignment.Left
+		discordSub.Text = "Tap to join the Discord server"
+		discordSub.TextColor3 = Color3.fromRGB(230, 230, 245)
+		discordSub.TextTransparency = 0.1
+		discordSub.Parent = DiscordCard
+
+		local discordJoin = Instance.new("TextLabel")
+		discordJoin.Name = "JoinHint"
+		discordJoin.AnchorPoint = Vector2.new(1, 0.5)
+		discordJoin.BackgroundTransparency = 1
+		discordJoin.Position = UDim2.new(1, -18, 0.5, 0)
+		discordJoin.Size = UDim2.fromOffset(70, 20)
+		discordJoin.Font = Enum.Font.GothamBold
+		discordJoin.TextSize = 13
+		discordJoin.TextXAlignment = Enum.TextXAlignment.Right
+		discordJoin.Text = "Join →"
+		discordJoin.TextColor3 = Color3.fromRGB(255, 255, 255)
+		discordJoin.Parent = DiscordCard
+
+		local discordBtn = Instance.new("TextButton")
+		discordBtn.Name = "Interact"
+		discordBtn.AutoButtonColor = false
+		discordBtn.BackgroundTransparency = 1
+		discordBtn.Size = UDim2.fromScale(1, 1)
+		discordBtn.Text = ""
+		discordBtn.ZIndex = 3
+		discordBtn.Parent = DiscordCard
+		discordBtn.MouseEnter:Connect(function()
+			tween(DiscordCard, {BackgroundTransparency = 0.05})
+		end)
+		discordBtn.MouseLeave:Connect(function()
+			tween(DiscordCard, {BackgroundTransparency = 0})
+		end)
+		discordBtn.MouseButton1Click:Connect(function()
+			pcall(function()
+				setclipboard(tostring("https://discord.gg/" .. HomeTabSettings.DiscordInvite))
+			end)
+			if request then
+				pcall(function()
+					request({
+						Url = "http://127.0.0.1:6463/rpc?v=1",
+						Method = "POST",
+						Headers = {
+							["Content-Type"] = "application/json",
+							Origin = "https://discord.com",
+						},
+						Body = HttpService:JSONEncode({
+							cmd = "INVITE_BROWSER",
+							nonce = HttpService:GenerateGUID(false),
+							args = { code = HomeTabSettings.DiscordInvite },
+						}),
+					})
+				end)
+			end
+			pcall(function()
+				Luna:Notification({
+					Title = "Discord",
+					Content = "Invite link copied.",
+					Icon = "chat",
+				})
+			end)
+		end)
+
+		-- Profile refs (Anonymous Mode + Solara hub)
 		Window._ProfileRefs = {
 			NavIcon = Navigation.Player.icon.ImageLabel,
 			NavDisplay = Navigation.Player.Namez,
 			NavUser = Navigation.Player.TextLabel,
-			HomeIcon = HomeTabPage.icon.ImageLabel,
-			HomeGreeting = HomeTabPage.player.Text,
-			HomeUserLine = HomeTabPage.player.user,
-			FriendsAll = dashRoot.Friends.All.Value,
-			FriendsOffline = dashRoot.Friends.Offline.Value,
-			FriendsOnline = dashRoot.Friends.Online.Value,
-			FriendsInGame = dashRoot.Friends.InGame.Value,
-			ServerRegion = dashRoot.Server.Region.Value,
-			ServerLatency = dashRoot.Server.Latency.Value,
+			HomeIcon = HeroAvatar,
+			HomeGreeting = HeroGreeting,
+			HomeUserLine = HeroUserLine,
+			FriendsAll = detailValues.FriendsAll,
+			FriendsOffline = detailValues.FriendsOffline,
+			FriendsOnline = detailValues.FriendsOnline,
+			FriendsInGame = detailValues.FriendsInGame,
+			ServerRegion = detailValues.Region,
+			ServerLatency = detailValues.Latency,
 		}
 		Window._AnonymousMode = false
-		HomeTabPage.detailsholder.dashboard.Client.Title.Text = (isStudio and "Debugging (Studio)" or identifyexecutor()) or "Your Executor Does Not Support identifyexecutor."
-        for i,v in pairs(HomeTabSettings.SupportedExecutors) do
-                if isStudio then HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Luna Interface Suite - Debugging Mode" break end
-                if v == identifyexecutor() then
-                        HomeTabPage.detailsholder.dashboard.Client.Subtitle.Text = "Your Executor Supports This Script."
-                        break
-                end
-        end
-				HomeTabPage.detailsholder.dashboard.Discord.Interact.MouseButton1Click:Connect(function()
-			setclipboard(tostring("https://discord.gg/"..HomeTabSettings.DiscordInvite))
-			if request then
-				request({
-					Url = 'http://127.0.0.1:6463/rpc?v=1',
-					Method = 'POST',
-					Headers = {
-						['Content-Type'] = 'application/json',
-						Origin = 'https://discord.com'
-					},
-					Body = HttpService:JSONEncode({
-						cmd = 'INVITE_BROWSER',
-						nonce = HttpService:GenerateGUID(false),
-						args = {code = HomeTabSettings.DiscordInvite}
-					})
-				})
-			end
-		end)
+		Window._DashboardRoot = DashRoot
+
 		local friendsCooldown = 0
-		local function getPing() return math.clamp(Stats.Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
+		local function getPing()
+			local ok, ping = pcall(function()
+				return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+			end)
+			if ok and typeof(ping) == "number" then
+				return math.clamp(ping, 10, 700)
+			end
+			return 0
+		end
+		local function format(Int)
+			return string.format("%02i", Int)
+		end
+		local function convertToHMS(Seconds)
+			local Minutes = (Seconds - Seconds % 60) / 60
+			Seconds = Seconds - Minutes * 60
+			local Hours = (Minutes - Minutes % 60) / 60
+			Minutes = Minutes - Hours * 60
+			return format(Hours) .. ":" .. format(Minutes) .. ":" .. format(Seconds)
+		end
+
+		local function setText(label, text)
+			if label and label.Parent then
+				label.Text = tostring(text)
+			end
+		end
+
+		local function syncLegacy(pathParts, text)
+			if not dashRoot then return end
+			pcall(function()
+				local node = dashRoot
+				for _, part in ipairs(pathParts) do
+					node = node:FindFirstChild(part)
+					if not node then return end
+				end
+				if node:IsA("TextLabel") or node:IsA("TextButton") then
+					node.Text = tostring(text)
+				end
+			end)
+		end
+
 		local function checkFriends()
-			if friendsCooldown == 0 then
-				friendsCooldown = 25
-				local playersFriends = {}
-				local friendsInTotal = 0
-				local onlineFriends = 0
-				local friendsInGame = 0
-				local list = Players:GetFriendsAsync(Player.UserId)
+			if friendsCooldown ~= 0 then
+				friendsCooldown -= 1
+				return
+			end
+			friendsCooldown = 25
+			local playersFriends = {}
+			local friendsInTotal = 0
+			local onlineFriends = 0
+			local friendsInGame = 0
+			local okList, list = pcall(function()
+				return Players:GetFriendsAsync(Player.UserId)
+			end)
+			if okList and list then
 				while true do
 					for _, data in list:GetCurrentPage() do
-						friendsInTotal +=1
-						table.insert(playersFriends, Data)
+						friendsInTotal += 1
+						table.insert(playersFriends, data)
 					end
 					if list.IsFinished then
 						break
@@ -3517,226 +4173,161 @@ function Window:CreateHomeTab(HomeTabSettings)
 						list:AdvanceToNextPageAsync()
 					end
 				end
-				for i, v in pairs(Player:GetFriendsOnline()) do
+			end
+			pcall(function()
+				for _ in pairs(Player:GetFriendsOnline()) do
 					onlineFriends += 1
 				end
-				for i,v in pairs(playersFriends) do
-					if Players:FindFirstChild(v.Username) then
-						friendsInGame = friendsInGame + 1
-					end
+			end)
+			for _, v in pairs(playersFriends) do
+				local uname = v.Username or v.Name
+				if uname and Players:FindFirstChild(uname) then
+					friendsInGame += 1
 				end
-				HomeTabPage.detailsholder.dashboard.Friends.All.Value.Text = tostring(friendsInTotal).." friends"
-				HomeTabPage.detailsholder.dashboard.Friends.Offline.Value.Text = tostring(friendsInTotal - onlineFriends).." friends"
-				HomeTabPage.detailsholder.dashboard.Friends.Online.Value.Text = tostring(onlineFriends).." friends"
-				HomeTabPage.detailsholder.dashboard.Friends.InGame.Value.Text = tostring(friendsInGame).." friends"
-			else
-				friendsCooldown -= 1
 			end
+			local offline = math.max(0, friendsInTotal - onlineFriends)
+			setText(statLabels["Online"], tostring(onlineFriends))
+			setText(statLabels["In Server"], tostring(friendsInGame))
+			setText(detailValues.FriendsAll, tostring(friendsInTotal) .. " friends")
+			setText(detailValues.FriendsOffline, tostring(offline) .. " friends")
+			setText(detailValues.FriendsOnline, tostring(onlineFriends) .. (onlineFriends == 1 and " friend" or " friends"))
+			setText(detailValues.FriendsInGame, tostring(friendsInGame) .. (friendsInGame == 1 and " friend" or " friends"))
+			syncLegacy({"Friends", "All", "Value"}, tostring(friendsInTotal) .. " friends")
+			syncLegacy({"Friends", "Offline", "Value"}, tostring(offline) .. " friends")
+			syncLegacy({"Friends", "Online", "Value"}, tostring(onlineFriends) .. " friends")
+			syncLegacy({"Friends", "InGame", "Value"}, tostring(friendsInGame) .. " friends")
 		end
-		local function format(Int)
-			return string.format("%02i", Int)
-		end
-		local function convertToHMS(Seconds)
-			local Minutes = (Seconds - Seconds%60)/60
-			Seconds = Seconds - Minutes*60
-			local Hours = (Minutes - Minutes%60)/60
-			Minutes = Minutes - Hours*60
-			return format(Hours)..":"..format(Minutes)..":"..format(Seconds)
-		end
+
 		coroutine.wrap(function()
-			while task.wait() do
-				local dash = HomeTabPage.detailsholder.dashboard
-				dash.Server.Players.Value.Text = #Players:GetPlayers().." playing"
-				dash.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
-				dash.Server.Time.Value.Text = convertToHMS(time())
-				dash.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
-				if Window._AnonymousMode then
-					dash.Server.Region.Value.Text = "Hidden"
+			while task.wait(0.5) do
+				if not DashRoot.Parent then
+					break
+				end
+				local playersCount = #Players:GetPlayers()
+				local maxPlayers = Players.MaxPlayers
+				local pingText
+				if isStudio then
+					local ok, p = pcall(function()
+						return math.round((Players.LocalPlayer:GetNetworkPing() * 2) / 0.01)
+					end)
+					pingText = tostring(ok and p or 0) .. "ms"
 				else
-					dash.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
+					pingText = tostring(math.floor(getPing())) .. "ms"
+				end
+				local regionText = "—"
+				if Window._AnonymousMode then
+					regionText = "Hidden"
+				else
+					pcall(function()
+						regionText = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
+					end)
 					checkFriends()
 				end
+				local sessionText = convertToHMS(time())
+				setText(HeroMeta, "Session " .. sessionText)
+				setText(PingPillValue, pingText)
+				setText(statLabels["Players"], tostring(playersCount) .. "/" .. tostring(maxPlayers))
+				setText(statLabels["Region"], regionText)
+				setText(detailValues.Players, tostring(playersCount) .. " playing")
+				setText(detailValues.MaxPlayers, tostring(maxPlayers) .. " max")
+				setText(detailValues.Latency, pingText)
+				setText(detailValues.Region, regionText)
+				syncLegacy({"Server", "Players", "Value"}, tostring(playersCount) .. " playing")
+				syncLegacy({"Server", "MaxPlayers", "Value"}, tostring(maxPlayers) .. " players can join this server")
+				syncLegacy({"Server", "Time", "Value"}, sessionText)
+				syncLegacy({"Server", "Latency", "Value"}, pingText)
+				syncLegacy({"Server", "Region", "Value"}, regionText)
 			end
 		end)()
-						local function RestyleDashboard()
-			local theme = Luna.ActiveTheme or Luna.Themes[Luna.CurrentTheme] or {}
-			local surface = theme.Surface or Color3.fromRGB(22, 22, 28)
-			local elevated = theme.Elevated or Color3.fromRGB(31, 31, 40)
-			local strokeCol = theme.Stroke or Color3.fromRGB(46, 46, 58)
-			local accent = theme.Accent or Color3.fromRGB(122, 162, 247)
-			local textPri = theme.TextPrimary or Color3.fromRGB(240, 240, 245)
-			local textSec = theme.TextSecondary or Color3.fromRGB(160, 160, 172)
-			local textMut = theme.TextMuted or Color3.fromRGB(110, 110, 124)
 
-			local function killGradients(root)
-				for _, g in ipairs(root:GetDescendants()) do
-					if g:IsA("UIGradient") then g:Destroy() end
+		local function RestyleDashboard()
+			local t = themeTokens()
+			Hero.BackgroundColor3 = t.surface
+			ensureStroke(Hero, t.stroke, 0.35, 1)
+			HeroGreeting.TextColor3 = t.textPri
+			HeroUserLine.TextColor3 = t.textMut
+			HeroMeta.TextColor3 = t.textMut
+			avatarRing.Color = t.accent
+			if t.gradient then
+				local existing = avatarRing:FindFirstChildOfClass("UIGradient")
+				if existing then existing:Destroy() end
+				local g = Instance.new("UIGradient")
+				g.Rotation = 45
+				g.Color = t.gradient
+				g.Parent = avatarRing
+			end
+			for _, pill in ipairs({ExecPill, PingPill}) do
+				pill.BackgroundColor3 = t.elevated
+				ensureStroke(pill, t.stroke, 0.45, 1)
+			end
+			ExecPillValue.TextColor3 = t.textPri
+			PingPillValue.TextColor3 = t.textPri
+			SupportHint.TextColor3 = t.textMut
+
+			local washes = {
+				Online = Color3.fromRGB(80, 170, 120),
+				["In Server"] = Color3.fromRGB(220, 160, 70),
+				Players = Color3.fromRGB(70, 140, 220),
+				Region = Color3.fromRGB(160, 100, 220),
+			}
+			for _, tile in ipairs(StatsRow:GetChildren()) do
+				if tile:IsA("Frame") then
+					tile.BackgroundColor3 = t.surface
+					ensureStroke(tile, t.stroke, 0.35, 1)
+					addCornerWash(tile, washes[tile.Name] or t.accent)
+					local title = tile:FindFirstChild("Title")
+					local value = tile:FindFirstChild("Value")
+					if title then title.TextColor3 = t.textSec end
+					if value then value.TextColor3 = t.textPri end
 				end
 			end
-			local function ensureCorner(inst, radius)
-				local c = inst:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
-				c.CornerRadius = UDim.new(0, radius)
-				c.Parent = inst
-			end
 
-			local iconFrame = HomeTabPage:FindFirstChild("icon")
-			if iconFrame then iconFrame:SetAttribute("LunaNoTheme", true) end
-			local avatar = iconFrame and iconFrame:FindFirstChild("ImageLabel")
-			if avatar then
-				ensureCorner(avatar, 0).CornerRadius = UDim.new(1, 0)
-				local ring = avatar:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
-				ring.Thickness = 2
-				ring.Transparency = 0.1
-				ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-				ring.Color = accent
-				ring.Parent = avatar
-				if theme.Gradient and not ring:FindFirstChildOfClass("UIGradient") then
-					local g = Instance.new("UIGradient")
-					g.Rotation = 45
-					g.Color = theme.Gradient
-					g.Parent = ring
+			ServerCard.BackgroundColor3 = t.surface
+			FriendsCard.BackgroundColor3 = t.surface
+			ensureStroke(ServerCard, t.stroke, 0.35, 1)
+			ensureStroke(FriendsCard, t.stroke, 0.35, 1)
+			addCornerWash(ServerCard, Color3.fromRGB(70, 190, 120))
+			addCornerWash(FriendsCard, Color3.fromRGB(230, 170, 70))
+			for _, card in ipairs({ServerCard, FriendsCard}) do
+				local title = card:FindFirstChild("Title")
+				local subtitle = card:FindFirstChild("Subtitle")
+				if title then title.TextColor3 = t.textPri end
+				if subtitle then subtitle.TextColor3 = t.textMut end
+				local body = card:FindFirstChild("Body")
+				if body then
+					for _, cell in ipairs(body:GetChildren()) do
+						if cell:IsA("Frame") then
+							cell.BackgroundColor3 = t.elevated
+							local lab = cell:FindFirstChild("Label")
+							local val = cell:FindFirstChild("Value")
+							if lab then lab.TextColor3 = t.textSec end
+							if val then val.TextColor3 = t.textPri end
+						end
+					end
 				end
 			end
-
-			local playerFrame = HomeTabPage:FindFirstChild("player")
-			if playerFrame then playerFrame:SetAttribute("LunaNoTheme", true) end
-			local greet = playerFrame and playerFrame:FindFirstChild("Text")
-			if greet then
-				greet.TextColor3 = textPri
-				greet.Font = Enum.Font.GothamBold
-				if greet.TextSize < 20 then greet.TextSize = 20 end
+			if JoinBtn and JoinBtn.Parent then
+				JoinBtn.BackgroundColor3 = t.elevated
+				JoinBtn.TextColor3 = t.textSec
 			end
-			local userLine = playerFrame and playerFrame:FindFirstChild("user")
-			if userLine then userLine.TextColor3 = textMut end
 
-			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
-			local dash = detailsholder and detailsholder:FindFirstChild("dashboard")
-			if not dash then return end
-
-			for _, cardName in ipairs({"Client", "Discord", "Friends", "Server"}) do
-				local card = dash:FindFirstChild(cardName)
-				if card and card:IsA("GuiObject") then
-					card:SetAttribute("LunaNoTheme", true)
-					local isDiscord = cardName == "Discord"
-					killGradients(card)
-					card.BackgroundColor3 = isDiscord and Color3.fromRGB(78, 90, 230) or surface
-					card.BackgroundTransparency = 0
-					ensureCorner(card, 12)
-
-					local stroke = card:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
-					stroke.Color = isDiscord and Color3.fromRGB(140, 150, 250) or strokeCol
-					stroke.Transparency = isDiscord and 0.55 or 0.4
-					stroke.Thickness = 1
-					stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-					stroke.Parent = card
-
-					if isDiscord then
-						local g = Instance.new("UIGradient")
-						g.Rotation = 135
-						g.Color = ColorSequence.new{
-							ColorSequenceKeypoint.new(0, Color3.fromRGB(104, 117, 250)),
-							ColorSequenceKeypoint.new(1, Color3.fromRGB(62, 72, 196)),
-						}
-						g.Parent = card
-					end
-
-					for _, row in ipairs(card:GetDescendants()) do
-						if row ~= card and row:IsA("GuiObject") and not row:IsA("TextLabel") and not row:IsA("TextButton") and not row:IsA("ImageLabel") then
-							if row.BackgroundTransparency < 1 then
-								for _, g in ipairs(row:GetChildren()) do
-									if g:IsA("UIGradient") then g:Destroy() end
-								end
-								row.BackgroundColor3 = isDiscord and Color3.fromRGB(255, 255, 255) or elevated
-								row.BackgroundTransparency = isDiscord and 0.85 or 0
-								ensureCorner(row, 8)
-							end
-						elseif row:IsA("ImageLabel") and row.BackgroundTransparency < 1 then
-							row.BackgroundTransparency = 1
-						end
-					end
-
-					for _, d in ipairs(card:GetDescendants()) do
-						if d:IsA("TextLabel") or d:IsA("TextButton") then
-							if isDiscord then
-								d.TextColor3 = Color3.fromRGB(255, 255, 255)
-								if d.Name == "Title" then d.Font = Enum.Font.GothamBold end
-							elseif d.Name == "Title" then
-								d.TextColor3 = accent
-								d.Font = Enum.Font.GothamBold
-							elseif d.Name == "Value" then
-								d.TextColor3 = textPri
-								d.Font = Enum.Font.GothamBold
-							elseif d.Name == "Subtitle" then
-								d.TextColor3 = textMut
-							elseif d.Name ~= "Interact" then
-								d.TextColor3 = textSec
-							end
-						end
-					end
+			for _, card in ipairs(Actions:GetChildren()) do
+				if card:IsA("Frame") then
+					local stroke = card:FindFirstChildOfClass("UIStroke")
+					if stroke then stroke.Color = Color3.fromRGB(255, 255, 255) end
 				end
 			end
 		end
+
 		task.defer(RestyleDashboard)
-		task.delay(0.5, RestyleDashboard)
+		task.delay(0.35, RestyleDashboard)
 		pcall(function()
 			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 				task.defer(RestyleDashboard)
 			end)
 		end)
-										local ExtraCards
-		local function ensureExtraCards()
-			if ExtraCards and ExtraCards.Parent then return ExtraCards end
-			ExtraCards = Instance.new("Frame")
-			ExtraCards.Name = RandomName()
-			ExtraCards.BackgroundTransparency = 1
-			ExtraCards.BorderSizePixel = 0
-			ExtraCards.Size = UDim2.new(1, -20, 0, 0)
-			ExtraCards.Position = UDim2.new(0, 10, 0, 240)
-			ExtraCards.AutomaticSize = Enum.AutomaticSize.Y
-			ExtraCards.ZIndex = 1
-			ExtraCards.Parent = HomeTabPage
-						local grid = Instance.new("UIGridLayout")
-			grid.SortOrder = Enum.SortOrder.LayoutOrder
-			grid.CellPadding = UDim2.fromOffset(10, 10)
-			grid.CellSize = UDim2.new(0.5, -8, 0, 76)
-			grid.FillDirectionMaxCells = 2
-			grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
-			grid.StartCorner = Enum.StartCorner.TopLeft
-			grid.Parent = ExtraCards
-			local padding = Instance.new("UIPadding")
-			padding.PaddingTop = UDim.new(0, 14)
-			padding.PaddingBottom = UDim.new(0, 14)
-			padding.Parent = ExtraCards
-																					local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
-			local dashboard = detailsholder and detailsholder:FindFirstChild("dashboard")
-			if dashboard then
-				local function reposition()
-					if not dashboard or not dashboard.Parent then return end
-										local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
-					local relY = dashboard.AbsolutePosition.Y - pageAbsY + dashboard.AbsoluteSize.Y
-					if relY > 0 then
-						ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(relY) + 12)
-					end
-				end
-				reposition()
-				dashboard:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-				dashboard:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
-				HomeTabPage:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-								task.defer(function() task.wait(0.05); reposition() end)
-				task.delay(0.4, reposition)
-			elseif detailsholder then
-								local function reposition()
-					if not detailsholder or not detailsholder.Parent then return end
-					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
-					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + 200
-					ExtraCards.Position = UDim2.new(0, 10, 0, math.max(120, math.floor(relY)))
-				end
-				reposition()
-				detailsholder:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-			end
-			return ExtraCards
-		end
-								function HomeTab:CreateButton(opts)
+
+		function HomeTab:CreateButton(opts)
 			opts = Kwargify({
 				Name = "Button",
 				Description = "",
@@ -3746,63 +4337,61 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Color2 = Color3.fromRGB(40, 30, 100),
 				Callback = function() end,
 			}, opts or {})
-			local holder = ensureExtraCards()
 			local card = Instance.new("Frame")
 			card.Name = RandomName()
+			card:SetAttribute("LunaNoTheme", true)
 			card.BackgroundColor3 = opts.Color
 			card.BackgroundTransparency = 0
 			card.BorderSizePixel = 0
-			card.Size = UDim2.new(0.5, -8, 0, 76)
-			card.Parent = holder
-			local corner = Instance.new("UICorner")
-			corner.CornerRadius = UDim.new(0, 10)
-			corner.Parent = card
-									local gradient = Instance.new("UIGradient")
+			card.Size = UDim2.new(0.5, -5, 0, 72)
+			card.Parent = Actions
+			ensureCorner(card, 12)
+			local gradient = Instance.new("UIGradient")
 			gradient.Rotation = 135
 			gradient.Color = ColorSequence.new(opts.Color, opts.Color2)
 			gradient.Parent = card
 			local stroke = Instance.new("UIStroke")
 			stroke.Color = Color3.fromRGB(255, 255, 255)
-			stroke.Transparency = 0.85
+			stroke.Transparency = 0.82
+			stroke.Thickness = 1
 			stroke.Parent = card
-						local iconLabel
+			local iconLabel
 			if opts.Icon then
 				iconLabel = Instance.new("ImageLabel")
 				iconLabel.Name = "Icon"
 				iconLabel.AnchorPoint = Vector2.new(0, 0.5)
 				iconLabel.Position = UDim2.new(0, 14, 0.5, 0)
-				iconLabel.Size = UDim2.fromOffset(28, 28)
+				iconLabel.Size = UDim2.fromOffset(26, 26)
 				iconLabel.BackgroundTransparency = 1
 				iconLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
 				iconLabel.ImageTransparency = 0.05
 				iconLabel.Parent = card
 				ApplyIcon(iconLabel, GetIcon(opts.Icon, opts.ImageSource))
 			end
-			local titleOffset = iconLabel and 52 or 16
+			local titleOffset = iconLabel and 50 or 16
 			local title = Instance.new("TextLabel")
 			title.Name = "Title"
 			title.BackgroundTransparency = 1
-			title.Position = UDim2.new(0, titleOffset, 0, 12)
+			title.Position = UDim2.new(0, titleOffset, 0, 14)
 			title.Size = UDim2.new(1, -titleOffset - 12, 0, 22)
 			title.Text = tostring(opts.Name)
 			title.TextColor3 = Color3.fromRGB(255, 255, 255)
 			title.Font = Enum.Font.GothamBold
-			title.TextSize = 18
+			title.TextSize = 16
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Parent = card
 			local subtitle = Instance.new("TextLabel")
 			subtitle.Name = "Subtitle"
 			subtitle.BackgroundTransparency = 1
-			subtitle.Position = UDim2.new(0, titleOffset, 0, 36)
-			subtitle.Size = UDim2.new(1, -titleOffset - 12, 0, 28)
+			subtitle.Position = UDim2.new(0, titleOffset, 0, 38)
+			subtitle.Size = UDim2.new(1, -titleOffset - 12, 0, 22)
 			subtitle.Text = tostring(opts.Description)
 			subtitle.TextColor3 = Color3.fromRGB(230, 230, 240)
-			subtitle.TextTransparency = 0.15
+			subtitle.TextTransparency = 0.12
 			subtitle.Font = Enum.Font.Gotham
-			subtitle.TextSize = 13
+			subtitle.TextSize = 12
 			subtitle.TextXAlignment = Enum.TextXAlignment.Left
-			subtitle.TextYAlignment = Enum.TextYAlignment.Top
-			subtitle.TextWrapped = true
+			subtitle.TextTruncate = Enum.TextTruncate.AtEnd
 			subtitle.Parent = card
 			local interact = Instance.new("TextButton")
 			interact.Name = "Interact"
@@ -3810,14 +4399,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 			interact.BackgroundTransparency = 1
 			interact.Size = UDim2.fromScale(1, 1)
 			interact.Text = ""
+			interact.ZIndex = 3
 			interact.Parent = card
 			interact.MouseEnter:Connect(function()
-				tween(stroke, {Transparency = 0.4})
-				tween(card, {BackgroundTransparency = 0.05})
+				tween(stroke, { Transparency = 0.45 })
+				tween(card, { BackgroundTransparency = 0.04 })
 			end)
 			interact.MouseLeave:Connect(function()
-				tween(stroke, {Transparency = 0.85})
-				tween(card, {BackgroundTransparency = 0})
+				tween(stroke, { Transparency = 0.82 })
+				tween(card, { BackgroundTransparency = 0 })
 			end)
 			interact.MouseButton1Click:Connect(function()
 				local ok, err = pcall(opts.Callback)
