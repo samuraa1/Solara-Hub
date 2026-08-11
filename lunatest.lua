@@ -1984,6 +1984,54 @@ local function IsPointerMove(input)
 	local n = input.UserInputType.Name
 	return n == "MouseMovement" or n == "Touch"
 end
+
+-- Stable width for CreateInput: never shrink to empty TextBounds (breaks mobile typing)
+local function ResolveInputFrameSize(inputFrame, height)
+	height = height or 30
+	local minW = IsMobileClient() and 200 or 160
+	local maxW = IsMobileClient() and 480 or 380
+	local width = minW
+	local box = inputFrame and inputFrame:FindFirstChild("InputBox")
+	if box then
+		local sample = tostring(box.Text or "")
+		if sample == "" then
+			sample = tostring(box.PlaceholderText or "")
+		end
+		if sample ~= "" then
+			local ok, bounds = pcall(function()
+				return game:GetService("TextService"):GetTextSize(
+					sample,
+					box.TextSize or 14,
+					box.Font,
+					Vector2.new(2000, 80)
+				)
+			end)
+			if ok and bounds then
+				width = math.clamp(math.floor(bounds.X + 52), minW, maxW)
+			end
+		end
+	end
+	pcall(function()
+		local parent = inputFrame and inputFrame.Parent
+		if parent and parent.AbsoluteSize.X > 0 then
+			local avail = math.max(minW, math.floor(parent.AbsoluteSize.X - 140))
+			width = math.clamp(width, minW, math.min(maxW, avail))
+		end
+	end)
+	return UDim2.new(0, width, 0, height)
+end
+
+local function PrepareInputBox(box)
+	if not box then
+		return
+	end
+	pcall(function()
+		box.ClearTextOnFocus = false
+		box.TextEditable = true
+		box.Active = true
+		box.Selectable = true
+	end)
+end
 local function RegisterElement(window, frame, displayName, elementType, tabName)
     if not frame then return end
     pcall(function()
@@ -4844,7 +4892,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				TweenService:Create(Input.InputFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 				TweenService:Create(Input.InputFrame.InputBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
-				Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 30)
+				PrepareInputBox(Input.InputFrame.InputBox)
+				Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 				Input.InputFrame.InputBox.FocusLost:Connect(function(bleh)
 					if InputSettings.Enter then
 						if bleh then
@@ -4869,6 +4918,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					if InputSettings.RemoveTextAfterFocusLost then
 						Input.InputFrame.InputBox.Text = ""
 					end
+					-- Resize only after focus ends (never while typing — kills mobile soft keyboard)
+					Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 				end)
 				if InputSettings.Numeric then
 					Input.InputFrame.InputBox:GetPropertyChangedSignal("Text"):Connect(function()
@@ -4884,7 +4935,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 							Input.InputFrame.InputBox.Text = Input.InputFrame.InputBox.Text:sub(1, InputSettings.MaxCharacters)
 						end
 					end
-					TweenService:Create(Input.InputFrame, TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 30)}):Play()
 					if not InputSettings.Enter then
 						local Success, Response = pcall(function()
 							InputSettings.Callback(Input.InputFrame.InputBox.Text)
@@ -4919,10 +4969,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 					if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 						Input.Desc.Text = InputSettings.Description
 					end
-					Input.InputFrame.InputBox:CaptureFocus()
-					Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue)
-					Input.InputFrame.InputBox:ReleaseFocus()
-					Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 42)
+					if InputSettings.PlaceholderText then
+						Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
+					end
+					Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue or "")
+					Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 					InputV.CurrentValue = InputSettings.CurrentValue
 				end
 				function InputV:Destroy()
@@ -6465,7 +6516,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			TweenService:Create(Input.InputFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 			TweenService:Create(Input.InputFrame.InputBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
-			Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 30)
+			PrepareInputBox(Input.InputFrame.InputBox)
+			Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 			Input.InputFrame.InputBox.FocusLost:Connect(function(bleh)
 				if InputSettings.Enter then
 					if bleh then
@@ -6490,6 +6542,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				if InputSettings.RemoveTextAfterFocusLost then
 					Input.InputFrame.InputBox.Text = ""
 				end
+				-- Resize only after focus ends (never while typing — kills mobile soft keyboard)
+				Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 			end)
 			if InputSettings.Numeric then
 				Input.InputFrame.InputBox:GetPropertyChangedSignal("Text"):Connect(function()
@@ -6505,7 +6559,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 						Input.InputFrame.InputBox.Text = Input.InputFrame.InputBox.Text:sub(1, InputSettings.MaxCharacters)
 					end
 				end
-				TweenService:Create(Input.InputFrame, TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 30)}):Play()
 				if not InputSettings.Enter then
 					local Success, Response = pcall(function()
 						InputSettings.Callback(Input.InputFrame.InputBox.Text)
@@ -6540,10 +6593,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 				if InputSettings.Description ~= nil and InputSettings.Description ~= "" and Input.Desc ~= nil then
 					Input.Desc.Text = InputSettings.Description
 				end
-				Input.InputFrame.InputBox:CaptureFocus()
-				Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue)
-				Input.InputFrame.InputBox:ReleaseFocus()
-				Input.InputFrame.Size = UDim2.new(0, Input.InputFrame.InputBox.TextBounds.X + 52, 0, 42)
+				if InputSettings.PlaceholderText then
+					Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
+				end
+				Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue or "")
+				Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
 				InputV.CurrentValue = InputSettings.CurrentValue
 			end
 			function InputV:Destroy()
