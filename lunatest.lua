@@ -3573,16 +3573,22 @@ function Window:CreateHomeTab(HomeTabSettings)
 			g.Rotation = 135
 			g.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, color),
-				ColorSequenceKeypoint.new(0.42, color),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 8, 12)),
+				ColorSequenceKeypoint.new(0.35, color),
+				ColorSequenceKeypoint.new(0.75, Color3.fromRGB(28, 28, 38)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 16, 22)),
 			})
 			g.Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.55),
-				NumberSequenceKeypoint.new(0.35, 0.82),
-				NumberSequenceKeypoint.new(1, 0.08),
+				NumberSequenceKeypoint.new(0, 0.18),
+				NumberSequenceKeypoint.new(0.4, 0.55),
+				NumberSequenceKeypoint.new(1, 0.05),
 			})
 			g.Parent = card
 			return g
+		end
+
+		local function tintCell(cell, color)
+			cell.BackgroundColor3 = color
+			cell.BackgroundTransparency = 0.72
 		end
 
 		-- Hide legacy chrome; new dashboard owns the page
@@ -3631,94 +3637,95 @@ function Window:CreateHomeTab(HomeTabSettings)
 		local Hero = Instance.new("Frame")
 		Hero.Name = "Hero"
 		Hero.LayoutOrder = 1
-		Hero.Size = UDim2.new(1, 0, 0, 92)
-		Hero.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+		Hero.Size = UDim2.new(1, 0, 0, 96)
+		Hero.BackgroundColor3 = Color3.fromRGB(34, 34, 48)
 		Hero.BorderSizePixel = 0
 		Hero.Parent = DashRoot
 		ensureCorner(Hero, 14)
-		ensureStroke(Hero, Color3.fromRGB(46, 46, 58), 0.35, 1)
+		ensureStroke(Hero, Color3.fromRGB(90, 100, 160), 0.45, 1)
+		addCornerWash(Hero, Color3.fromRGB(110, 120, 230))
 
 		local HeroAvatar = Instance.new("ImageLabel")
 		HeroAvatar.Name = "Avatar"
 		HeroAvatar.AnchorPoint = Vector2.new(0, 0.5)
 		HeroAvatar.Position = UDim2.new(0, 16, 0.5, 0)
-		HeroAvatar.Size = UDim2.fromOffset(60, 60)
-		HeroAvatar.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+		HeroAvatar.Size = UDim2.fromOffset(62, 62)
+		HeroAvatar.BackgroundColor3 = Color3.fromRGB(24, 24, 34)
 		HeroAvatar.BackgroundTransparency = 0
 		HeroAvatar.BorderSizePixel = 0
 		HeroAvatar.Image = avatarImage
 		HeroAvatar.Parent = Hero
 		ensureCorner(HeroAvatar, 0).CornerRadius = UDim.new(1, 0)
-		local avatarRing = ensureStroke(HeroAvatar, Color3.fromRGB(122, 162, 247), 0.1, 2)
+		local avatarRing = ensureStroke(HeroAvatar, Color3.fromRGB(140, 170, 255), 0.05, 2.5)
 
 		local HeroGreeting = Instance.new("TextLabel")
 		HeroGreeting.Name = "Greeting"
 		HeroGreeting.BackgroundTransparency = 1
-		HeroGreeting.Position = UDim2.new(0, 92, 0, 18)
+		HeroGreeting.Position = UDim2.new(0, 94, 0, 16)
 		HeroGreeting.Size = UDim2.new(1, -250, 0, 28)
 		HeroGreeting.Font = Enum.Font.GothamBold
 		HeroGreeting.TextSize = 22
 		HeroGreeting.TextXAlignment = Enum.TextXAlignment.Left
 		HeroGreeting.TextTruncate = Enum.TextTruncate.AtEnd
 		HeroGreeting.Text = "Hello, " .. Players.LocalPlayer.DisplayName
-		HeroGreeting.TextColor3 = Color3.fromRGB(240, 240, 245)
+		HeroGreeting.TextColor3 = Color3.fromRGB(248, 248, 255)
 		HeroGreeting.Parent = Hero
 
 		local HeroUserLine = Instance.new("TextLabel")
 		HeroUserLine.Name = "UserLine"
 		HeroUserLine.BackgroundTransparency = 1
-		HeroUserLine.Position = UDim2.new(0, 92, 0, 46)
+		HeroUserLine.Position = UDim2.new(0, 94, 0, 46)
 		HeroUserLine.Size = UDim2.new(1, -250, 0, 18)
 		HeroUserLine.Font = Enum.Font.Gotham
 		HeroUserLine.TextSize = 13
 		HeroUserLine.TextXAlignment = Enum.TextXAlignment.Left
 		HeroUserLine.TextTruncate = Enum.TextTruncate.AtEnd
 		HeroUserLine.Text = Players.LocalPlayer.Name .. " · " .. WindowSettings.Name
-		HeroUserLine.TextColor3 = Color3.fromRGB(110, 110, 124)
+		HeroUserLine.TextColor3 = Color3.fromRGB(170, 175, 205)
 		HeroUserLine.Parent = Hero
 
 		local HeroMeta = Instance.new("TextLabel")
 		HeroMeta.Name = "SessionMeta"
 		HeroMeta.BackgroundTransparency = 1
-		HeroMeta.Position = UDim2.new(0, 92, 0, 64)
+		HeroMeta.Position = UDim2.new(0, 94, 0, 66)
 		HeroMeta.Size = UDim2.new(1, -250, 0, 16)
 		HeroMeta.Font = Enum.Font.Gotham
 		HeroMeta.TextSize = 12
 		HeroMeta.TextXAlignment = Enum.TextXAlignment.Left
 		HeroMeta.Text = "Session 00:00:00"
-		HeroMeta.TextColor3 = Color3.fromRGB(110, 110, 124)
+		HeroMeta.TextColor3 = Color3.fromRGB(140, 150, 190)
 		HeroMeta.Parent = Hero
 
-		local function makePill(name, anchorX)
+		local function makePill(name, bgColor, strokeColor)
 			local pill = Instance.new("Frame")
 			pill.Name = name
 			pill.AnchorPoint = Vector2.new(1, 0)
-			pill.Position = UDim2.new(1, anchorX, 0, 18)
-			pill.Size = UDim2.fromOffset(128, 28)
-			pill.BackgroundColor3 = Color3.fromRGB(31, 31, 40)
+			pill.Size = UDim2.fromOffset(132, 30)
+			pill.BackgroundColor3 = bgColor
+			pill.BackgroundTransparency = 0.25
 			pill.BorderSizePixel = 0
 			pill.Parent = Hero
-			ensureCorner(pill, 8)
-			ensureStroke(pill, Color3.fromRGB(46, 46, 58), 0.45, 1)
+			ensureCorner(pill, 9)
+			ensureStroke(pill, strokeColor, 0.35, 1.2)
 			local label = Instance.new("TextLabel")
 			label.Name = "Value"
 			label.BackgroundTransparency = 1
 			label.Size = UDim2.fromScale(1, 1)
-			label.Font = Enum.Font.GothamMedium
+			label.Font = Enum.Font.GothamBold
 			label.TextSize = 12
 			label.TextTruncate = Enum.TextTruncate.AtEnd
 			label.Text = ""
-			label.TextColor3 = Color3.fromRGB(240, 240, 245)
+			label.TextColor3 = Color3.fromRGB(255, 255, 255)
 			label.Parent = pill
 			return pill, label
 		end
 
-		local ExecPill, ExecPillValue = makePill("ExecutorPill", -16)
+		local ExecPill, ExecPillValue = makePill("ExecutorPill", Color3.fromRGB(90, 70, 200), Color3.fromRGB(170, 150, 255))
 		ExecPill.Position = UDim2.new(1, -16, 0, 18)
 		ExecPillValue.Text = executorName
 
-		local PingPill, PingPillValue = makePill("PingPill", -16)
-		PingPill.Position = UDim2.new(1, -16, 0, 52)
+		local PingPill, PingPillValue = makePill("PingPill", Color3.fromRGB(40, 140, 130), Color3.fromRGB(100, 230, 210))
+		PingPill.Position = UDim2.new(1, -16, 0, 54)
 		PingPillValue.Text = "— ms"
 
 		local SupportHint = Instance.new("TextLabel")
@@ -3740,7 +3747,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		local StatsRow = Instance.new("Frame")
 		StatsRow.Name = "Stats"
 		StatsRow.LayoutOrder = 2
-		StatsRow.Size = UDim2.new(1, 0, 0, 78)
+		StatsRow.Size = UDim2.new(1, 0, 0, 84)
 		StatsRow.BackgroundTransparency = 1
 		StatsRow.BorderSizePixel = 0
 		StatsRow.Parent = DashRoot
@@ -3761,49 +3768,57 @@ function Window:CreateHomeTab(HomeTabSettings)
 			tile.Name = titleText
 			tile.LayoutOrder = order
 			tile.Size = UDim2.new(0.25, -8, 1, 0)
-			tile.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+			tile.BackgroundColor3 = Color3.fromRGB(34, 36, 52)
 			tile.BorderSizePixel = 0
 			tile.Parent = StatsRow
 			ensureCorner(tile, 12)
-			ensureStroke(tile, Color3.fromRGB(46, 46, 58), 0.35, 1)
+			ensureStroke(tile, wash, 0.55, 1.2)
 			addCornerWash(tile, wash)
+			local accentBar = Instance.new("Frame")
+			accentBar.Name = "AccentBar"
+			accentBar.Size = UDim2.new(0, 3, 1, -16)
+			accentBar.Position = UDim2.new(0, 8, 0, 8)
+			accentBar.BackgroundColor3 = wash
+			accentBar.BorderSizePixel = 0
+			accentBar.Parent = tile
+			ensureCorner(accentBar, 2)
 			local title = Instance.new("TextLabel")
 			title.Name = "Title"
 			title.BackgroundTransparency = 1
-			title.Position = UDim2.new(0, 12, 0, 12)
-			title.Size = UDim2.new(1, -20, 0, 16)
+			title.Position = UDim2.new(0, 18, 0, 12)
+			title.Size = UDim2.new(1, -28, 0, 16)
 			title.Font = Enum.Font.GothamMedium
 			title.TextSize = 12
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Text = titleText
-			title.TextColor3 = Color3.fromRGB(160, 160, 172)
+			title.TextColor3 = wash
 			title.Parent = tile
 			local value = Instance.new("TextLabel")
 			value.Name = "Value"
 			value.BackgroundTransparency = 1
-			value.Position = UDim2.new(0, 12, 0, 34)
-			value.Size = UDim2.new(1, -20, 0, 28)
+			value.Position = UDim2.new(0, 18, 0, 36)
+			value.Size = UDim2.new(1, -28, 0, 28)
 			value.Font = Enum.Font.GothamBold
-			value.TextSize = 20
+			value.TextSize = 22
 			value.TextXAlignment = Enum.TextXAlignment.Left
 			value.TextTruncate = Enum.TextTruncate.AtEnd
 			value.Text = "—"
-			value.TextColor3 = Color3.fromRGB(240, 240, 245)
+			value.TextColor3 = Color3.fromRGB(250, 250, 255)
 			value.Parent = tile
 			statLabels[titleText] = value
 			return tile
 		end
 
-		makeStatTile(1, "Online", Color3.fromRGB(80, 170, 120))
-		makeStatTile(2, "In Server", Color3.fromRGB(220, 160, 70))
-		makeStatTile(3, "Players", Color3.fromRGB(70, 140, 220))
-		makeStatTile(4, "Region", Color3.fromRGB(160, 100, 220))
+		makeStatTile(1, "Online", Color3.fromRGB(90, 220, 140))
+		makeStatTile(2, "In Server", Color3.fromRGB(255, 170, 70))
+		makeStatTile(3, "Players", Color3.fromRGB(90, 170, 255))
+		makeStatTile(4, "Region", Color3.fromRGB(190, 120, 255))
 
-		-- Detail cards: Server + Friends (compact, same vibe as before)
+		-- Detail cards: Server + Friends
 		local DetailRow = Instance.new("Frame")
 		DetailRow.Name = "Details"
 		DetailRow.LayoutOrder = 3
-		DetailRow.Size = UDim2.new(1, 0, 0, 168)
+		DetailRow.Size = UDim2.new(1, 0, 0, 220)
 		DetailRow.BackgroundTransparency = 1
 		DetailRow.BorderSizePixel = 0
 		DetailRow.Parent = DashRoot
@@ -3811,19 +3826,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 		local detailList = Instance.new("UIListLayout")
 		detailList.FillDirection = Enum.FillDirection.Horizontal
 		detailList.SortOrder = Enum.SortOrder.LayoutOrder
-		detailList.Padding = UDim.new(0, 10)
+		detailList.Padding = UDim.new(0, 12)
 		detailList.Parent = DetailRow
 
 		local function makeDetailCard(order, titleText, subtitleText, wash, widthScale)
 			local card = Instance.new("Frame")
 			card.Name = titleText
 			card.LayoutOrder = order
-			card.Size = UDim2.new(widthScale, -5, 1, 0)
-			card.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+			card.Size = UDim2.new(widthScale, -6, 1, 0)
+			card.BackgroundColor3 = Color3.fromRGB(34, 36, 52)
 			card.BorderSizePixel = 0
+			card.ClipsDescendants = true
 			card.Parent = DetailRow
 			ensureCorner(card, 14)
-			ensureStroke(card, Color3.fromRGB(46, 46, 58), 0.35, 1)
+			ensureStroke(card, wash, 0.55, 1.2)
 			addCornerWash(card, wash)
 			local title = Instance.new("TextLabel")
 			title.Name = "Title"
@@ -3834,7 +3850,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			title.TextSize = 16
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Text = titleText
-			title.TextColor3 = Color3.fromRGB(240, 240, 245)
+			title.TextColor3 = Color3.fromRGB(250, 250, 255)
 			title.Parent = card
 			local subtitle = Instance.new("TextLabel")
 			subtitle.Name = "Subtitle"
@@ -3846,90 +3862,94 @@ function Window:CreateHomeTab(HomeTabSettings)
 			subtitle.TextXAlignment = Enum.TextXAlignment.Left
 			subtitle.TextTruncate = Enum.TextTruncate.AtEnd
 			subtitle.Text = subtitleText
-			subtitle.TextColor3 = Color3.fromRGB(110, 110, 124)
+			subtitle.TextColor3 = Color3.fromRGB(170, 175, 205)
 			subtitle.Parent = card
 			local body = Instance.new("Frame")
 			body.Name = "Body"
 			body.BackgroundTransparency = 1
-			body.Position = UDim2.new(0, 12, 0, 58)
-			body.Size = UDim2.new(1, -24, 1, -68)
+			body.Position = UDim2.new(0, 12, 0, 56)
+			body.Size = UDim2.new(1, -24, 0, 108)
+			body.ClipsDescendants = true
 			body.Parent = card
 			local bodyGrid = Instance.new("UIGridLayout")
-			bodyGrid.CellPadding = UDim2.fromOffset(8, 8)
-			bodyGrid.CellSize = UDim2.new(0.5, -4, 0, 42)
+			bodyGrid.CellPadding = UDim2.fromOffset(10, 10)
+			bodyGrid.CellSize = UDim2.new(0.5, -5, 0, 46)
 			bodyGrid.FillDirectionMaxCells = 2
 			bodyGrid.SortOrder = Enum.SortOrder.LayoutOrder
 			bodyGrid.Parent = body
 			return card, body
 		end
 
-		local ServerCard, ServerBody = makeDetailCard(1, "Server", "Session you're in right now", Color3.fromRGB(70, 190, 120), 0.58)
-		local FriendsCard, FriendsBody = makeDetailCard(2, "Friends", "What your friends are up to", Color3.fromRGB(230, 170, 70), 0.42)
+		local ServerCard, ServerBody = makeDetailCard(1, "Server", "Session you're in right now", Color3.fromRGB(70, 210, 130), 0.58)
+		local FriendsCard, FriendsBody = makeDetailCard(2, "Friends", "What your friends are up to", Color3.fromRGB(255, 175, 70), 0.42)
+		-- Friends uses full leftover height under header
+		FriendsBody.Size = UDim2.new(1, -24, 1, -68)
 
 		local detailValues = {}
-		local function makeMiniStat(parent, order, labelText, key)
+		local function makeMiniStat(parent, order, labelText, key, tint)
 			local cell = Instance.new("Frame")
 			cell.Name = key
 			cell.LayoutOrder = order
-			cell.BackgroundColor3 = Color3.fromRGB(31, 31, 40)
-			cell.BackgroundTransparency = 0.15
+			cell.BackgroundColor3 = tint or Color3.fromRGB(48, 50, 70)
+			cell.BackgroundTransparency = 0.35
 			cell.BorderSizePixel = 0
 			cell.Parent = parent
-			ensureCorner(cell, 8)
+			ensureCorner(cell, 9)
+			ensureStroke(cell, Color3.fromRGB(255, 255, 255), 0.88, 1)
 			local lab = Instance.new("TextLabel")
 			lab.Name = "Label"
 			lab.BackgroundTransparency = 1
-			lab.Position = UDim2.new(0, 8, 0, 4)
-			lab.Size = UDim2.new(1, -12, 0, 14)
+			lab.Position = UDim2.new(0, 10, 0, 5)
+			lab.Size = UDim2.new(1, -16, 0, 14)
 			lab.Font = Enum.Font.Gotham
 			lab.TextSize = 11
 			lab.TextXAlignment = Enum.TextXAlignment.Left
 			lab.Text = labelText
-			lab.TextColor3 = Color3.fromRGB(160, 160, 172)
+			lab.TextColor3 = Color3.fromRGB(190, 195, 220)
 			lab.Parent = cell
 			local val = Instance.new("TextLabel")
 			val.Name = "Value"
 			val.BackgroundTransparency = 1
-			val.Position = UDim2.new(0, 8, 0, 18)
-			val.Size = UDim2.new(1, -12, 0, 18)
+			val.Position = UDim2.new(0, 10, 0, 20)
+			val.Size = UDim2.new(1, -16, 0, 20)
 			val.Font = Enum.Font.GothamBold
-			val.TextSize = 13
+			val.TextSize = 14
 			val.TextXAlignment = Enum.TextXAlignment.Left
 			val.TextTruncate = Enum.TextTruncate.AtEnd
 			val.Text = "—"
-			val.TextColor3 = Color3.fromRGB(240, 240, 245)
+			val.TextColor3 = Color3.fromRGB(250, 250, 255)
 			val.Parent = cell
 			detailValues[key] = val
 			return cell
 		end
 
-		makeMiniStat(ServerBody, 1, "Players", "Players")
-		makeMiniStat(ServerBody, 2, "Max Players", "MaxPlayers")
-		makeMiniStat(ServerBody, 3, "Latency", "Latency")
-		makeMiniStat(ServerBody, 4, "Region", "Region")
+		makeMiniStat(ServerBody, 1, "Players", "Players", Color3.fromRGB(50, 110, 90))
+		makeMiniStat(ServerBody, 2, "Max Players", "MaxPlayers", Color3.fromRGB(50, 90, 120))
+		makeMiniStat(ServerBody, 3, "Latency", "Latency", Color3.fromRGB(90, 70, 120))
+		makeMiniStat(ServerBody, 4, "Region", "Region", Color3.fromRGB(100, 70, 130))
 
 		local JoinBtn = Instance.new("TextButton")
 		JoinBtn.Name = "JoinScript"
 		JoinBtn.AutoButtonColor = false
 		JoinBtn.AnchorPoint = Vector2.new(0.5, 1)
-		JoinBtn.Position = UDim2.new(0.5, 0, 1, -10)
-		JoinBtn.Size = UDim2.new(1, -24, 0, 26)
-		JoinBtn.BackgroundColor3 = Color3.fromRGB(31, 31, 40)
-		JoinBtn.BackgroundTransparency = 0.1
+		JoinBtn.Position = UDim2.new(0.5, 0, 1, -12)
+		JoinBtn.Size = UDim2.new(1, -24, 0, 30)
+		JoinBtn.BackgroundColor3 = Color3.fromRGB(55, 140, 100)
+		JoinBtn.BackgroundTransparency = 0.25
 		JoinBtn.BorderSizePixel = 0
-		JoinBtn.Font = Enum.Font.GothamMedium
+		JoinBtn.Font = Enum.Font.GothamBold
 		JoinBtn.TextSize = 12
 		JoinBtn.Text = "Tap to copy join script"
-		JoinBtn.TextColor3 = Color3.fromRGB(200, 200, 215)
-		JoinBtn.ZIndex = 3
+		JoinBtn.TextColor3 = Color3.fromRGB(230, 255, 240)
+		JoinBtn.ZIndex = 4
 		JoinBtn.Parent = ServerCard
-		ensureCorner(JoinBtn, 8)
-		ServerBody.Size = UDim2.new(1, -24, 1, -98)
+		ensureCorner(JoinBtn, 9)
+		ensureStroke(JoinBtn, Color3.fromRGB(120, 230, 170), 0.45, 1)
 		JoinBtn.MouseEnter:Connect(function()
-			tween(JoinBtn, { BackgroundTransparency = 0, TextColor3 = Color3.fromRGB(255, 255, 255) })
+			tween(JoinBtn, { BackgroundTransparency = 0.05, TextColor3 = Color3.fromRGB(255, 255, 255) })
 		end)
 		JoinBtn.MouseLeave:Connect(function()
-			tween(JoinBtn, { BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(200, 200, 215) })
+			tween(JoinBtn, { BackgroundTransparency = 0.25, TextColor3 = Color3.fromRGB(230, 255, 240) })
 		end)
 		JoinBtn.MouseButton1Click:Connect(function()
 			local ok = pcall(function()
@@ -3949,10 +3969,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end)
 		end)
 
-		makeMiniStat(FriendsBody, 1, "In Server", "FriendsInGame")
-		makeMiniStat(FriendsBody, 2, "Online", "FriendsOnline")
-		makeMiniStat(FriendsBody, 3, "Offline", "FriendsOffline")
-		makeMiniStat(FriendsBody, 4, "All", "FriendsAll")
+		makeMiniStat(FriendsBody, 1, "In Server", "FriendsInGame", Color3.fromRGB(120, 90, 50))
+		makeMiniStat(FriendsBody, 2, "Online", "FriendsOnline", Color3.fromRGB(50, 110, 80))
+		makeMiniStat(FriendsBody, 3, "Offline", "FriendsOffline", Color3.fromRGB(70, 70, 95))
+		makeMiniStat(FriendsBody, 4, "All", "FriendsAll", Color3.fromRGB(90, 80, 120))
 
 		-- Actions (Changelogs / Supported Games)
 		local Actions = Instance.new("Frame")
@@ -4242,73 +4262,83 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 		local function RestyleDashboard()
 			local t = themeTokens()
-			Hero.BackgroundColor3 = t.surface
-			ensureStroke(Hero, t.stroke, 0.35, 1)
+			local accentWash = t.accent or Color3.fromRGB(110, 120, 230)
+			Hero.BackgroundColor3 = Color3.fromRGB(34, 34, 48)
+			ensureStroke(Hero, accentWash, 0.5, 1)
+			addCornerWash(Hero, accentWash)
 			HeroGreeting.TextColor3 = t.textPri
-			HeroUserLine.TextColor3 = t.textMut
-			HeroMeta.TextColor3 = t.textMut
-			avatarRing.Color = t.accent
+			HeroUserLine.TextColor3 = Color3.fromRGB(170, 175, 205)
+			HeroMeta.TextColor3 = Color3.fromRGB(140, 150, 190)
+			avatarRing.Color = accentWash
+			local ringGrad = avatarRing:FindFirstChildOfClass("UIGradient")
+			if ringGrad then ringGrad:Destroy() end
 			if t.gradient then
-				local existing = avatarRing:FindFirstChildOfClass("UIGradient")
-				if existing then existing:Destroy() end
 				local g = Instance.new("UIGradient")
 				g.Rotation = 45
 				g.Color = t.gradient
 				g.Parent = avatarRing
 			end
-			for _, pill in ipairs({ExecPill, PingPill}) do
-				pill.BackgroundColor3 = t.elevated
-				ensureStroke(pill, t.stroke, 0.45, 1)
-			end
-			ExecPillValue.TextColor3 = t.textPri
-			PingPillValue.TextColor3 = t.textPri
-			SupportHint.TextColor3 = t.textMut
+			ExecPill.BackgroundColor3 = Color3.fromRGB(90, 70, 200)
+			ExecPill.BackgroundTransparency = 0.25
+			ensureStroke(ExecPill, Color3.fromRGB(170, 150, 255), 0.35, 1.2)
+			PingPill.BackgroundColor3 = Color3.fromRGB(40, 140, 130)
+			PingPill.BackgroundTransparency = 0.25
+			ensureStroke(PingPill, Color3.fromRGB(100, 230, 210), 0.35, 1.2)
+			ExecPillValue.TextColor3 = Color3.fromRGB(255, 255, 255)
+			PingPillValue.TextColor3 = Color3.fromRGB(255, 255, 255)
+			if SupportHint then SupportHint.TextColor3 = t.textMut end
 
 			local washes = {
-				Online = Color3.fromRGB(80, 170, 120),
-				["In Server"] = Color3.fromRGB(220, 160, 70),
-				Players = Color3.fromRGB(70, 140, 220),
-				Region = Color3.fromRGB(160, 100, 220),
+				Online = Color3.fromRGB(90, 220, 140),
+				["In Server"] = Color3.fromRGB(255, 170, 70),
+				Players = Color3.fromRGB(90, 170, 255),
+				Region = Color3.fromRGB(190, 120, 255),
 			}
 			for _, tile in ipairs(StatsRow:GetChildren()) do
 				if tile:IsA("Frame") then
-					tile.BackgroundColor3 = t.surface
-					ensureStroke(tile, t.stroke, 0.35, 1)
-					addCornerWash(tile, washes[tile.Name] or t.accent)
+					local wash = washes[tile.Name] or accentWash
+					tile.BackgroundColor3 = Color3.fromRGB(34, 36, 52)
+					ensureStroke(tile, wash, 0.55, 1.2)
+					addCornerWash(tile, wash)
+					local bar = tile:FindFirstChild("AccentBar")
+					if bar then bar.BackgroundColor3 = wash end
 					local title = tile:FindFirstChild("Title")
 					local value = tile:FindFirstChild("Value")
-					if title then title.TextColor3 = t.textSec end
+					if title then title.TextColor3 = wash end
 					if value then value.TextColor3 = t.textPri end
 				end
 			end
 
-			ServerCard.BackgroundColor3 = t.surface
-			FriendsCard.BackgroundColor3 = t.surface
-			ensureStroke(ServerCard, t.stroke, 0.35, 1)
-			ensureStroke(FriendsCard, t.stroke, 0.35, 1)
-			addCornerWash(ServerCard, Color3.fromRGB(70, 190, 120))
-			addCornerWash(FriendsCard, Color3.fromRGB(230, 170, 70))
+			local serverWash = Color3.fromRGB(70, 210, 130)
+			local friendsWash = Color3.fromRGB(255, 175, 70)
+			ServerCard.BackgroundColor3 = Color3.fromRGB(34, 36, 52)
+			FriendsCard.BackgroundColor3 = Color3.fromRGB(34, 36, 52)
+			ensureStroke(ServerCard, serverWash, 0.55, 1.2)
+			ensureStroke(FriendsCard, friendsWash, 0.55, 1.2)
+			addCornerWash(ServerCard, serverWash)
+			addCornerWash(FriendsCard, friendsWash)
 			for _, card in ipairs({ServerCard, FriendsCard}) do
 				local title = card:FindFirstChild("Title")
 				local subtitle = card:FindFirstChild("Subtitle")
 				if title then title.TextColor3 = t.textPri end
-				if subtitle then subtitle.TextColor3 = t.textMut end
+				if subtitle then subtitle.TextColor3 = Color3.fromRGB(170, 175, 205) end
 				local body = card:FindFirstChild("Body")
 				if body then
 					for _, cell in ipairs(body:GetChildren()) do
 						if cell:IsA("Frame") then
-							cell.BackgroundColor3 = t.elevated
 							local lab = cell:FindFirstChild("Label")
 							local val = cell:FindFirstChild("Value")
-							if lab then lab.TextColor3 = t.textSec end
+							if lab then lab.TextColor3 = Color3.fromRGB(190, 195, 220) end
 							if val then val.TextColor3 = t.textPri end
 						end
 					end
 				end
 			end
 			if JoinBtn and JoinBtn.Parent then
-				JoinBtn.BackgroundColor3 = t.elevated
-				JoinBtn.TextColor3 = t.textSec
+				JoinBtn.BackgroundColor3 = Color3.fromRGB(55, 140, 100)
+				JoinBtn.BackgroundTransparency = 0.25
+				JoinBtn.TextColor3 = Color3.fromRGB(230, 255, 240)
+				ensureStroke(JoinBtn, Color3.fromRGB(120, 230, 170), 0.45, 1)
 			end
 
 			for _, card in ipairs(Actions:GetChildren()) do
