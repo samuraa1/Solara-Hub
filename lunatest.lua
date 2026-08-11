@@ -1921,15 +1921,15 @@ end
 
 local function ResolveInputFrameSize(inputFrame, height)
 	height = height or 30
-	local minW = 160
-	local maxW = 380
+	local minW = 180
+	local maxW = 420
 	local touch = false
 	pcall(function()
 		touch = UserInputService.TouchEnabled and (not UserInputService.MouseEnabled or Camera.ViewportSize.X <= 1000)
 	end)
 	if touch then
-		minW = 200
-		maxW = 480
+		minW = 220
+		maxW = 520
 	end
 	local width = minW
 	local box = inputFrame and inputFrame:FindFirstChild("InputBox")
@@ -1969,6 +1969,80 @@ local function PrepareInputBox(box)
 		box.TextEditable = true
 		box.Active = true
 		box.Selectable = true
+		box.Visible = true
+		if box.Interactable ~= nil then
+			box.Interactable = true
+		end
+	end)
+end
+
+-- Luna Input templates often include a full-size Interact TextButton (hand cursor)
+-- that sits above InputBox and eats clicks so typing never starts.
+local function WireInputFocus(inputRoot)
+	if not inputRoot then return end
+	local frame = inputRoot:FindFirstChild("InputFrame")
+	local box = frame and frame:FindFirstChild("InputBox")
+	if not (box and box:IsA("TextBox")) then return end
+	PrepareInputBox(box)
+	pcall(function()
+		if box.AbsoluteSize.X < 80 or box.AbsoluteSize.Y < 14 then
+			box.AnchorPoint = Vector2.new(0, 0)
+			box.Position = UDim2.new(0, 6, 0, 2)
+			box.Size = UDim2.new(1, -12, 1, -4)
+		end
+	end)
+	local topZ = frame.ZIndex or 1
+	for _, d in ipairs(inputRoot:GetDescendants()) do
+		if d:IsA("GuiObject") then
+			topZ = math.max(topZ, d.ZIndex)
+		end
+	end
+	pcall(function()
+		frame.ZIndex = math.max(frame.ZIndex, topZ)
+		box.ZIndex = topZ + 2
+	end)
+	local function focusBox()
+		pcall(function()
+			PrepareInputBox(box)
+			box:CaptureFocus()
+		end)
+	end
+	for _, d in ipairs(inputRoot:GetDescendants()) do
+		if d ~= box and d:IsA("GuiButton") then
+			local n = string.lower(tostring(d.Name))
+			if n == "interact" or n == "hitbox" or n == "button" then
+				pcall(function()
+					d.Visible = false
+					d.Active = false
+					d.AutoButtonColor = false
+					if d.Interactable ~= nil then
+						d.Interactable = false
+					end
+				end)
+			else
+				pcall(function()
+					d.MouseButton1Click:Connect(focusBox)
+					d.InputBegan:Connect(function(inp)
+						if inp.UserInputType == Enum.UserInputType.MouseButton1
+							or inp.UserInputType == Enum.UserInputType.Touch then
+							focusBox()
+						end
+					end)
+				end)
+			end
+		end
+	end
+	pcall(function()
+		frame.Active = true
+		if frame.Interactable ~= nil then
+			frame.Interactable = true
+		end
+		frame.InputBegan:Connect(function(inp)
+			if inp.UserInputType == Enum.UserInputType.MouseButton1
+				or inp.UserInputType == Enum.UserInputType.Touch then
+				focusBox()
+			end
+		end)
 	end)
 end
 local function RegisterElement(window, frame, displayName, elementType, tabName)
@@ -4755,8 +4829,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 				TweenService:Create(Input.InputFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 				TweenService:Create(Input.InputFrame.InputBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 				Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
+				Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue or "")
 				PrepareInputBox(Input.InputFrame.InputBox)
 				Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
+				WireInputFocus(Input)
 				Input.InputFrame.InputBox.FocusLost:Connect(function(bleh)
 					if InputSettings.Enter then
 						if bleh then
@@ -6308,8 +6384,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 			TweenService:Create(Input.InputFrame.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 0.3}):Play()
 			TweenService:Create(Input.InputFrame.InputBox, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
 			Input.InputFrame.InputBox.PlaceholderText = InputSettings.PlaceholderText
+			Input.InputFrame.InputBox.Text = tostring(InputSettings.CurrentValue or "")
 			PrepareInputBox(Input.InputFrame.InputBox)
 			Input.InputFrame.Size = ResolveInputFrameSize(Input.InputFrame, 30)
+			WireInputFocus(Input)
 			Input.InputFrame.InputBox.FocusLost:Connect(function(bleh)
 				if InputSettings.Enter then
 					if bleh then
