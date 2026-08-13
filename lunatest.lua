@@ -4048,13 +4048,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 			if #Tab._SubTabs > 0 then
 				bar = Tab._SubTabs[1]._Bar
 			else
-				bar = Instance.new("Frame")
+				bar = Instance.new("ScrollingFrame")
 				bar.Name = RandomName()
 				bar.BackgroundTransparency = 1
 				bar.BorderSizePixel = 0
 				bar.Position = UDim2.new(0, 12, 0, 8)
 				bar.Size = UDim2.new(1, -24, 0, 32)
 				bar.ZIndex = 5
+				bar.ClipsDescendants = true
+				bar.ScrollingDirection = Enum.ScrollingDirection.X
+				bar.AutomaticCanvasSize = Enum.AutomaticSize.X
+				bar.CanvasSize = UDim2.new(0, 0, 0, 0)
+				bar.ScrollBarThickness = 0
+				bar.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+				bar.ElasticBehavior = Enum.ElasticBehavior.Never
 				bar.Parent = wrapper
 				local barLayout = Instance.new("UIListLayout")
 				barLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -11247,62 +11254,86 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 	end
 				if WindowSettings.Resizable and CanShowResizeHandle() then
+		local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
 		local HandleBack = Instance.new("TextButton")
 		HandleBack.Name = RandomName()
+		HandleBack:SetAttribute("LunaNoTheme", true)
+		HandleBack:SetAttribute("LunaNoTranslate", true)
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
-		HandleBack.Position = UDim2.new(1, -6, 1, -6)
-		HandleBack.Size = UDim2.fromOffset(30, 30)
-		HandleBack.BackgroundColor3 = Color3.fromRGB(52, 50, 68)
-		HandleBack.BackgroundTransparency = 0.08
+		HandleBack.Position = UDim2.new(1, -4, 1, -4)
+		HandleBack.Size = UDim2.fromOffset(36, 36)
+		HandleBack.BackgroundColor3 = accent
+		HandleBack.BackgroundTransparency = 0.12
 		HandleBack.BorderSizePixel = 0
 		HandleBack.Text = ""
 		HandleBack.AutoButtonColor = false
-		HandleBack.ZIndex = 40
+		HandleBack.ZIndex = 120
 		HandleBack.Parent = Main
 		local backCorner = Instance.new("UICorner")
-		backCorner.CornerRadius = UDim.new(0, 8)
+		backCorner.CornerRadius = UDim.new(0, 10)
 		backCorner.Parent = HandleBack
 		local backStroke = Instance.new("UIStroke")
-		backStroke.Color = Color3.fromRGB(190, 185, 220)
-		backStroke.Thickness = 1.4
-		backStroke.Transparency = 0.2
+		backStroke.Color = Color3.fromRGB(255, 255, 255)
+		backStroke.Thickness = 1.8
+		backStroke.Transparency = 0.15
 		backStroke.Parent = HandleBack
 		local gripBars = {}
 		local function makeGripBar(offset)
 			local bar = Instance.new("Frame")
 			bar.Name = RandomName()
+			bar:SetAttribute("LunaNoTheme", true)
 			bar.AnchorPoint = Vector2.new(1, 1)
-			bar.Position = UDim2.new(1, -6 - offset, 1, -6 - offset)
-			bar.Size = UDim2.fromOffset(14, 2)
+			bar.Position = UDim2.new(1, -7 - offset, 1, -7 - offset)
+			bar.Size = UDim2.fromOffset(16, 3)
 			bar.Rotation = -45
-			bar.BackgroundColor3 = Color3.fromRGB(235, 233, 250)
-			bar.BackgroundTransparency = 0.05
+			bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			bar.BackgroundTransparency = 0
 			bar.BorderSizePixel = 0
-			bar.ZIndex = 41
+			bar.ZIndex = 121
 			bar.Active = false
 			local barCorner = Instance.new("UICorner")
 			barCorner.CornerRadius = UDim.new(1, 0)
 			barCorner.Parent = bar
+			local barStroke = Instance.new("UIStroke")
+			barStroke.Color = Color3.fromRGB(20, 20, 28)
+			barStroke.Thickness = 1
+			barStroke.Transparency = 0.35
+			barStroke.Parent = bar
 			bar.Parent = HandleBack
 			table.insert(gripBars, bar)
 			return bar
 		end
 		makeGripBar(0)
-		makeGripBar(5)
-		makeGripBar(10)
+		makeGripBar(6)
+		makeGripBar(12)
+		local function refreshHandleAccent()
+			accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+			HandleBack.BackgroundColor3 = accent
+			HandleBack.BackgroundTransparency = 0.12
+			backStroke.Color = Color3.fromRGB(255, 255, 255)
+			backStroke.Transparency = 0.15
+			for _, bar in ipairs(gripBars) do
+				bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				bar.BackgroundTransparency = 0
+			end
+		end
 		HandleBack.MouseEnter:Connect(function()
-			tween(HandleBack, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(72, 68, 98)})
-			tween(backStroke, {Transparency = 0, Color = Color3.fromRGB(220, 215, 245)})
+			refreshHandleAccent()
+			tween(HandleBack, {BackgroundTransparency = 0, Size = UDim2.fromOffset(38, 38)})
+			tween(backStroke, {Transparency = 0})
 			for _, bar in ipairs(gripBars) do
 				tween(bar, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255, 255, 255)})
 			end
 		end)
 		HandleBack.MouseLeave:Connect(function()
-			tween(HandleBack, {BackgroundTransparency = 0.08, BackgroundColor3 = Color3.fromRGB(52, 50, 68)})
-			tween(backStroke, {Transparency = 0.2, Color = Color3.fromRGB(190, 185, 220)})
-			for _, bar in ipairs(gripBars) do
-				tween(bar, {BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(235, 233, 250)})
-			end
+			refreshHandleAccent()
+			tween(HandleBack, {BackgroundTransparency = 0.12, Size = UDim2.fromOffset(36, 36)})
+			tween(backStroke, {Transparency = 0.15})
+		end)
+		pcall(function()
+			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
+				task.defer(refreshHandleAccent)
+			end)
 		end)
 		local resizing = false
 		local startMouse, startSize
