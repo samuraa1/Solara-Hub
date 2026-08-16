@@ -2913,6 +2913,31 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 				TweenService:Create(dragBarCosmetic, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 100, 0, 4), BackgroundTransparency = 0.7}):Play()
 				syncDragBarPosition(Window)
 			end
+			pcall(function()
+				local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
+				local abs = Window.AbsolutePosition
+				local size = Window.AbsoluteSize
+				local ap = Window.AnchorPoint
+				local margin = 10
+				local thresh = 28
+				local nx, ny = abs.X, abs.Y
+				if nx < margin + thresh then nx = margin end
+				if ny < margin + thresh then ny = margin end
+				if nx + size.X > vp.X - margin - thresh then nx = vp.X - size.X - margin end
+				if ny + size.Y > vp.Y - margin - thresh then ny = vp.Y - size.Y - margin end
+				if nx ~= abs.X or ny ~= abs.Y then
+					local anchor = Vector2.new(nx, ny) + size * ap
+					TweenService:Create(Window, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+						Position = UDim2.fromOffset(anchor.X, anchor.Y),
+					}):Play()
+					if enableTaptic and dragBar then
+						task.defer(function()
+							task.wait(0.02)
+							syncDragBarPosition(Window)
+						end)
+					end
+				end
+			end)
 		end
 		if enableTaptic and dragBar then
 			dragBar.MouseEnter:Connect(function()
@@ -3011,50 +3036,62 @@ function Luna:Notification(data)
 		newNotification.Shadow.ImageTransparency = 1
 		newNotification.Icon.ImageTransparency = 1
 		newNotification.Icon.BackgroundTransparency = 1
+		local notifScale = newNotification:FindFirstChildOfClass("UIScale")
+		if not notifScale then
+			notifScale = Instance.new("UIScale")
+			notifScale.Parent = newNotification
+		end
+		notifScale.Scale = 0.92
 		task.wait()
 				newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
 		newNotification.Icon.Size = UDim2.new(0, 28, 0, 28)
-		newNotification.Icon.Position = UDim2.new(0, 16, 0.5, -1)
+		newNotification.Icon.Position = UDim2.new(0, 10, 0.5, -1)
 		newNotification.Visible = true
 		newNotification.Description.Size = UDim2.new(1, -65, 0, math.huge)
 		local bounds = newNotification.Description.TextBounds.Y + 55
 		newNotification.Description.Size = UDim2.new(1,-65,0, bounds - 35)
-		newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
-		TweenService:Create(newNotification, TweenInfo.new(0.6, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, 0, 0, bounds)}):Play()
-		task.wait(0.15)
-		TweenService:Create(newNotification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.45}):Play()
-		TweenService:Create(newNotification.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0}):Play()
-		task.wait(0.05)
-		TweenService:Create(newNotification.Icon, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 0}):Play()
-		task.wait(0.05)
-		TweenService:Create(newNotification.Description, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0.35}):Play()
-		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 0.95}):Play()
-		TweenService:Create(newNotification.Shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 0.82}):Play()
+		newNotification.Size = UDim2.new(1, 12, 0, math.max(8, bounds - 16))
+		local inSize = TweenInfo.new(0.48, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		local inScale = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		local inFade = TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		local inFadeLate = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, 0.05)
+		TweenService:Create(newNotification, inSize, {Size = UDim2.new(1, 0, 0, bounds)}):Play()
+		TweenService:Create(notifScale, inScale, {Scale = 1}):Play()
+		TweenService:Create(newNotification, inFade, {BackgroundTransparency = 0.42}):Play()
+		TweenService:Create(newNotification.Title, inFade, {TextTransparency = 0}):Play()
+		TweenService:Create(newNotification.Icon, inFade, {ImageTransparency = 0}):Play()
+		TweenService:Create(newNotification.Icon, inSize, {Position = UDim2.new(0, 16, 0.5, -1)}):Play()
+		TweenService:Create(newNotification.Description, inFadeLate, {TextTransparency = 0.32}):Play()
+		TweenService:Create(newNotification.UIStroke, inFade, {Transparency = 0.92}):Play()
+		TweenService:Create(newNotification.Shadow, inFade, {ImageTransparency = 0.78}):Play()
 		if notifAccent then
-			TweenService:Create(notifAccent, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.1}):Play()
+			TweenService:Create(notifAccent, inFade, {BackgroundTransparency = 0.08}):Play()
 		end
 		local waitDuration = math.min(math.max((#newNotification.Description.Text * 0.1) + 2.5, 3), 10)
 		local lifeDuration = data.Duration or waitDuration
 		if notifProgress then
-			TweenService:Create(notifProgress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.45}):Play()
+			TweenService:Create(notifProgress, inFadeLate, {BackgroundTransparency = 0.4}):Play()
 			TweenService:Create(notifProgress, TweenInfo.new(lifeDuration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 2)}):Play()
 		end
 		task.wait(lifeDuration)
-		newNotification.Icon.Visible = false
-		TweenService:Create(newNotification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
-		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
-		TweenService:Create(newNotification.Shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play()
-		TweenService:Create(newNotification.Title, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 1}):Play()
-		TweenService:Create(newNotification.Description, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 1}):Play()
+		local outFade = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		local outSize = TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		TweenService:Create(notifScale, outFade, {Scale = 0.96}):Play()
+		TweenService:Create(newNotification, outFade, {BackgroundTransparency = 1}):Play()
+		TweenService:Create(newNotification.UIStroke, outFade, {Transparency = 1}):Play()
+		TweenService:Create(newNotification.Shadow, outFade, {ImageTransparency = 1}):Play()
+		TweenService:Create(newNotification.Title, outFade, {TextTransparency = 1}):Play()
+		TweenService:Create(newNotification.Description, outFade, {TextTransparency = 1}):Play()
+		TweenService:Create(newNotification.Icon, outFade, {ImageTransparency = 1}):Play()
 		if notifAccent then
-			TweenService:Create(notifAccent, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
+			TweenService:Create(notifAccent, outFade, {BackgroundTransparency = 1}):Play()
 		end
 		if notifProgress then
-			TweenService:Create(notifProgress, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
+			TweenService:Create(notifProgress, outFade, {BackgroundTransparency = 1}):Play()
 		end
-		TweenService:Create(newNotification, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, -90, 0, 0)}):Play()
-		task.wait(1)
-		TweenService:Create(newNotification, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Size = UDim2.new(1, -90, 0, -NotificationsPaddingOffset)}):Play()
+		task.wait(0.18)
+		TweenService:Create(newNotification, outSize, {Size = UDim2.new(1, -28, 0, 0)}):Play()
+		task.wait(0.36)
 		newNotification.Visible = false
 		newNotification:Destroy()
 	end)
@@ -3220,6 +3257,83 @@ function Luna:CreateWindow(WindowSettings)
 			end)
 		end
 	end
+	local navTip
+	local navTipLabel
+	local navTipScale
+	local function hideNavTooltip()
+		if not navTip then return end
+		navTip.Visible = false
+	end
+	local function showNavTooltip(anchor, text)
+		if not anchor or not text or text == "" then return end
+		if Navigation and Navigation.AbsoluteSize.X > 110 then
+			hideNavTooltip()
+			return
+		end
+		if not navTip then
+			navTip = Instance.new("Frame")
+			navTip:SetAttribute("LunaNoTheme", true)
+			navTip:SetAttribute("LunaNoTranslate", true)
+			navTip.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(28, 28, 36)
+			navTip.BackgroundTransparency = 0.04
+			navTip.BorderSizePixel = 0
+			navTip.ZIndex = 7000
+			navTip.Parent = LunaUI
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, 8)
+			c.Parent = navTip
+			local s = Instance.new("UIStroke")
+			s.Color = Color3.fromRGB(255, 255, 255)
+			s.Transparency = 0.82
+			s.Parent = navTip
+			navTipLabel = Instance.new("TextLabel")
+			navTipLabel.BackgroundTransparency = 1
+			navTipLabel.Font = Enum.Font.GothamMedium
+			navTipLabel.TextSize = 13
+			navTipLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+			navTipLabel.TextXAlignment = Enum.TextXAlignment.Left
+			navTipLabel.ZIndex = 7001
+			navTipLabel.Parent = navTip
+			navTipScale = Instance.new("UIScale")
+			navTipScale.Scale = 0.94
+			navTipScale.Parent = navTip
+		end
+		navTipLabel.Text = tostring(text)
+		local width = 80
+		pcall(function()
+			width = game:GetService("TextService"):GetTextSize(tostring(text), 13, Enum.Font.GothamMedium, Vector2.new(280, 24)).X + 20
+		end)
+		width = math.clamp(width, 72, 240)
+		navTip.Size = UDim2.fromOffset(width, 28)
+		navTipLabel.Size = UDim2.new(1, -14, 1, 0)
+		navTipLabel.Position = UDim2.fromOffset(10, 0)
+		local origin = LunaUI.AbsolutePosition
+		local pos = anchor.AbsolutePosition
+		local sz = anchor.AbsoluteSize
+		navTip.Position = UDim2.fromOffset(pos.X - origin.X + sz.X + 10, pos.Y - origin.Y + sz.Y * 0.5 - 14)
+		navTip.Visible = true
+		navTipScale.Scale = 0.94
+		TweenService:Create(navTipScale, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	end
+	local function attachNavTooltip(button, text)
+		if not button then return end
+		local interact = button:FindFirstChild("Interact") or button
+		interact.MouseEnter:Connect(function()
+			showNavTooltip(button, text)
+		end)
+		interact.MouseLeave:Connect(hideNavTooltip)
+		interact.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				showNavTooltip(button, text)
+			end
+		end)
+		interact.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				hideNavTooltip()
+			end
+		end)
+	end
+	Window.AttachNavTooltip = attachNavTooltip
 	Main.Logo.Image = "rbxassetid://" .. WindowSettings.LogoID
 	Main.Visible = true
 	Main.BackgroundTransparency = 1
@@ -3481,6 +3595,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		HomeTabButton.Interact.MouseButton1Click:Connect(function()
 			HomeTab:Activate()
 		end)
+		attachNavTooltip(HomeTabButton, "Dashboard")
 		HomeTabPage.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
 		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
 		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
@@ -4044,6 +4159,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		TabButton.Interact.MouseButton1Click:Connect(function()
 			Tab:Activate()
 		end)
+		attachNavTooltip(TabButton, TabSettings.Name)
 		FirstTab = false
 										Tab._SubTabs = {}
 		Tab._ActiveSubTab = nil
@@ -11720,6 +11836,28 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				pcall(Window._TabListRefreshHook)
 			end
 		end
+		local keyToIndex = {
+			[Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3,
+			[Enum.KeyCode.Four] = 4, [Enum.KeyCode.Five] = 5, [Enum.KeyCode.Six] = 6,
+			[Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
+			[Enum.KeyCode.KeypadOne] = 1, [Enum.KeyCode.KeypadTwo] = 2, [Enum.KeyCode.KeypadThree] = 3,
+			[Enum.KeyCode.KeypadFour] = 4, [Enum.KeyCode.KeypadFive] = 5, [Enum.KeyCode.KeypadSix] = 6,
+			[Enum.KeyCode.KeypadSeven] = 7, [Enum.KeyCode.KeypadEight] = 8, [Enum.KeyCode.KeypadNine] = 9,
+		}
+		UserInputService.InputBegan:Connect(function(input, gpe)
+			if gpe then return end
+			if Window._TourActive then return end
+			if Window._SearchOpen then return end
+			local n = keyToIndex[input.KeyCode]
+			if not n then return end
+			if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+				return
+			end
+			local names = Window.GetTabNames and Window.GetTabNames()
+			if type(names) == "table" and names[n] then
+				pcall(function() Window:ActivateStartupTab(names[n]) end)
+			end
+		end)
 		local function getAnonymousIcon()
 			return GetIcon("venetian-mask", "Lucide")
 		end
@@ -12040,7 +12178,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				tourState.restoreTab = nil
 			end
 			local DIM = 0.36
-			local CARD_W, CARD_H = 320, 208
+			local vp = (Camera and Camera.ViewportSize) or Vector2.new(1280, 720)
+			local phone = IsPhoneClient()
+			local CARD_W = math.floor(math.clamp(phone and (vp.X - 40) or 412, 304, 448))
+			local CARD_H = math.floor(math.clamp(phone and 308 or 276, 248, 330))
+			local btnH = phone and 42 or 36
+			local btnY = CARD_H - btnH - 14
+			local dotsY = btnY - 24
+			local bodyY = 64
+			local bodyH = math.max(72, dotsY - bodyY - 12)
 			local fadeInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			local popInfo = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			local closeInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -12171,10 +12317,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			iconLabel.Parent = iconChip
 			local titleLabel = Instance.new("TextLabel")
 			titleLabel.BackgroundTransparency = 1
-			titleLabel.Position = UDim2.fromOffset(56, 12)
-			titleLabel.Size = UDim2.fromOffset(CARD_W - 72, 20)
+			titleLabel.Position = UDim2.fromOffset(58, 14)
+			titleLabel.Size = UDim2.fromOffset(CARD_W - 76, 22)
 			titleLabel.Font = Enum.Font.GothamBold
-			titleLabel.TextSize = 16
+			titleLabel.TextSize = 18
 			titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 			titleLabel.TextTransparency = 1
 			titleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -12183,10 +12329,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			titleLabel.Parent = card
 			local stepLabel = Instance.new("TextLabel")
 			stepLabel.BackgroundTransparency = 1
-			stepLabel.Position = UDim2.fromOffset(56, 32)
-			stepLabel.Size = UDim2.fromOffset(CARD_W - 72, 14)
+			stepLabel.Position = UDim2.fromOffset(58, 36)
+			stepLabel.Size = UDim2.fromOffset(CARD_W - 76, 16)
 			stepLabel.Font = Enum.Font.GothamMedium
-			stepLabel.TextSize = 11
+			stepLabel.TextSize = 12
 			stepLabel.TextColor3 = Color3.fromRGB(170, 170, 184)
 			stepLabel.TextTransparency = 1
 			stepLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -12194,10 +12340,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			stepLabel.Parent = card
 			local bodyLabel = Instance.new("TextLabel")
 			bodyLabel.BackgroundTransparency = 1
-			bodyLabel.Position = UDim2.fromOffset(16, 56)
-			bodyLabel.Size = UDim2.fromOffset(CARD_W - 32, 78)
+			bodyLabel.Position = UDim2.fromOffset(18, bodyY)
+			bodyLabel.Size = UDim2.fromOffset(CARD_W - 36, bodyH)
 			bodyLabel.Font = Enum.Font.Gotham
-			bodyLabel.TextSize = 13
+			bodyLabel.TextSize = 14
 			bodyLabel.TextColor3 = Color3.fromRGB(214, 214, 224)
 			bodyLabel.TextTransparency = 1
 			bodyLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -12207,8 +12353,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			bodyLabel.Parent = card
 			local dotsHold = Instance.new("Frame")
 			dotsHold.BackgroundTransparency = 1
-			dotsHold.Position = UDim2.fromOffset(16, 138)
-			dotsHold.Size = UDim2.fromOffset(CARD_W - 32, 10)
+			dotsHold.Position = UDim2.fromOffset(18, dotsY)
+			dotsHold.Size = UDim2.fromOffset(CARD_W - 36, 12)
 			dotsHold.ZIndex = 8012
 			dotsHold.Parent = card
 			local dotsLayout = Instance.new("UIListLayout")
@@ -12236,9 +12382,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				btn.AutoButtonColor = false
 				btn.Text = text
 				btn.Font = Enum.Font.GothamMedium
-				btn.TextSize = 13
-				btn.Position = UDim2.fromOffset(x, 162)
-				btn.Size = UDim2.fromOffset(w, 32)
+				btn.TextSize = phone and 15 or 14
+				btn.Position = UDim2.fromOffset(x, btnY)
+				btn.Size = UDim2.fromOffset(w, btnH)
 				btn.ZIndex = 8013
 				btn.TextTransparency = 1
 				btn.Parent = card
@@ -12272,9 +12418,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 				return btn
 			end
-			local skipBtn = makeBtn("Skip", 12, 58, false)
-			local backBtn = makeBtn("Back", CARD_W - 164, 68, false)
-			local nextBtn = makeBtn("Next", CARD_W - 90, 74, true)
+			local skipW = phone and 72 or 64
+			local backW = phone and 78 or 72
+			local nextW = phone and 88 or 82
+			local skipBtn = makeBtn("Skip", 14, skipW, false)
+			local backBtn = makeBtn("Back", CARD_W - backW - nextW - 24, backW, false)
+			local nextBtn = makeBtn("Next", CARD_W - nextW - 14, nextW, true)
 			local motion = {
 				hx = 0, hy = 0, hw = 80, hh = 40,
 				cx = 0, cy = 0,
@@ -12435,17 +12584,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					showIndex(1, 1)
 				end
 			end
-			skipBtn.MouseButton1Click:Connect(function()
+			skipBtn.Activated:Connect(function()
 				Window:StopTour("skipped")
 			end)
-			backBtn.MouseButton1Click:Connect(function()
+			backBtn.Activated:Connect(function()
 				if tourState.index > 1 then
 					task.spawn(function()
 						showIndex(tourState.index - 1, -1)
 					end)
 				end
 			end)
-			nextBtn.MouseButton1Click:Connect(function()
+			nextBtn.Activated:Connect(function()
 				if tourState.index >= #tourState.steps then
 					Window:StopTour("completed")
 				else
