@@ -3199,6 +3199,27 @@ function Luna:CreateWindow(WindowSettings)
 	}
 	Main.Title.Title.Text = WindowSettings.Name
 	Main.Title.subtitle.Text = WindowSettings.Subtitle
+	pcall(function()
+		Main.Title.subtitle.TextTruncate = Enum.TextTruncate.AtEnd
+	end)
+	Window._DefaultSubtitle = WindowSettings.Subtitle or ""
+	function Window:SetContextTitle(tabName, subTabName)
+		local subtitle
+		if tabName == nil or tabName == "" or tabName == "Home" or tabName == "Dashboard" then
+			subtitle = Window._DefaultSubtitle or ""
+		elseif type(subTabName) == "string" and subTabName ~= "" then
+			subtitle = tostring(tabName) .. " · " .. subTabName
+		else
+			subtitle = tostring(tabName)
+		end
+		local label = Main.Title and Main.Title.subtitle
+		if label then
+			label.Text = subtitle
+			pcall(function()
+				label:SetAttribute("LunaOriginalText", subtitle)
+			end)
+		end
+	end
 	Main.Logo.Image = "rbxassetid://" .. WindowSettings.LogoID
 	Main.Visible = true
 	Main.BackgroundTransparency = 1
@@ -3442,10 +3463,19 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 			Window.CurrentTab = "Home"
+			if Window.SetContextTitle then
+				Window:SetContextTitle("Home")
+			end
 		end
 				HomeTabButton:SetAttribute("LunaTabName", "Home")
 		Window._Tabs["Home"] = { Activate = function() HomeTab:Activate() end, Page = HomeTabPage }
 		Window._HomeTabButton = HomeTabButton
+		Window._TabRegistry["Home"] = {
+			Button = HomeTabButton,
+			Page = HomeTabPage,
+			Activate = function() HomeTab:Activate() end,
+			Hidden = false,
+		}
 		HomeTab:Activate()
 		FirstTab = false
 		HomeTabButton.Interact.MouseButton1Click:Connect(function()
@@ -3992,6 +4022,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 			Window.CurrentTab = TabSettings.Name
+			local subName = Tab._ActiveSubTab and Tab._ActiveSubTab.Name or nil
+			if Window.SetContextTitle then
+				Window:SetContextTitle(TabSettings.Name, subName)
+			end
 		end
 				Window._Tabs[TabSettings.Name] = { Activate = function() Tab:Activate() end, Page = TabPage }
 		Window._TabCreationCounter = (Window._TabCreationCounter or 0) + 1
@@ -4001,6 +4035,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Page = TabPage,
 			Activate = function() Tab:Activate() end,
 			Hidden = false,
+			Tab = Tab,
 		}
 		if FirstTab then
 			Tab:Activate()
@@ -4045,14 +4080,34 @@ function Window:CreateHomeTab(HomeTabSettings)
 			wrapper.Parent = Elements
 			SubTab._Wrapper = wrapper
 												local bar
+			local showPageTitle = TabSettings.ShowTitle ~= false
+			local chromeTop = showPageTitle and 64 or 46
 			if #Tab._SubTabs > 0 then
 				bar = Tab._SubTabs[1]._Bar
 			else
+				if showPageTitle then
+					TabPage.Title.Visible = false
+					local heading = Instance.new("TextLabel")
+					heading.Name = RandomName()
+					heading.BackgroundTransparency = 1
+					heading.Position = UDim2.new(0, 16, 0, 4)
+					heading.Size = UDim2.new(1, -32, 0, 22)
+					heading.Font = Enum.Font.GothamBold
+					heading.TextSize = 18
+					heading.TextColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.TextPrimary) or Color3.fromRGB(255, 255, 255)
+					heading.TextXAlignment = Enum.TextXAlignment.Left
+					heading.TextYAlignment = Enum.TextYAlignment.Center
+					heading.Text = TabSettings.Name
+					heading.TextTruncate = Enum.TextTruncate.AtEnd
+					heading.ZIndex = 6
+					heading.Parent = wrapper
+					Tab._ContextHeading = heading
+				end
 				bar = Instance.new("ScrollingFrame")
 				bar.Name = RandomName()
 				bar.BackgroundTransparency = 1
 				bar.BorderSizePixel = 0
-				bar.Position = UDim2.new(0, 12, 0, 8)
+				bar.Position = UDim2.new(0, 12, 0, showPageTitle and 28 or 8)
 				bar.Size = UDim2.new(1, -24, 0, 32)
 				bar.ZIndex = 5
 				bar.ClipsDescendants = true
@@ -4085,8 +4140,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			if TabSettings.ShowTitle == false then
 				subPage.UIPadding.PaddingTop = UDim.new(0, 10)
 			end
-			subPage.Position = UDim2.new(0, 0, 0, 46)
-			subPage.Size = UDim2.new(1, 0, 1, -46)
+			subPage.Position = UDim2.new(0, 0, 0, chromeTop)
+			subPage.Size = UDim2.new(1, 0, 1, -chromeTop)
 			subPage.Parent = wrapper
 			SubTab.Page = subPage
 			SubTab._Bar = bar
@@ -4153,9 +4208,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 			SubTab._PillIcon = pillIcon
 			function SubTab:Activate()
 				Tab._ActiveSubTab = SubTab
+				if Tab._ContextHeading then
+					Tab._ContextHeading.Parent = wrapper
+				end
 				bar.Parent = wrapper
 				Elements.UIPageLayout:JumpTo(wrapper)
 				Window.CurrentTab = TabSettings.Name
+				if Window.SetContextTitle then
+					Window:SetContextTitle(TabSettings.Name, SubTab.Name)
+				end
 				refreshSubTabPills()
 			end
 			pillInteract.MouseButton1Click:Connect(function()
@@ -4196,10 +4257,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 									if Tab._ActiveSubTab == nil or SubTabSettings.Default then
 				Tab._ActiveSubTab = SubTab
+				if Tab._ContextHeading then
+					Tab._ContextHeading.Parent = wrapper
+				end
 				bar.Parent = wrapper
 				refreshSubTabPills()
 				if Window.CurrentTab == TabSettings.Name then
 					Elements.UIPageLayout:JumpTo(wrapper)
+					if Window.SetContextTitle then
+						Window:SetContextTitle(TabSettings.Name, SubTab.Name)
+					end
 				end
 			end
 			return SubTab
@@ -11255,84 +11322,75 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	end
 				if WindowSettings.Resizable and CanShowResizeHandle() then
 		local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+		local idleBar = Color3.fromRGB(210, 210, 220)
 		local HandleBack = Instance.new("TextButton")
 		HandleBack.Name = RandomName()
 		HandleBack:SetAttribute("LunaNoTheme", true)
 		HandleBack:SetAttribute("LunaNoTranslate", true)
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
-		HandleBack.Position = UDim2.new(1, -4, 1, -4)
-		HandleBack.Size = UDim2.fromOffset(36, 36)
-		HandleBack.BackgroundColor3 = accent
-		HandleBack.BackgroundTransparency = 0.12
+		HandleBack.Position = UDim2.new(1, -2, 1, -2)
+		HandleBack.Size = UDim2.fromOffset(22, 22)
+		HandleBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		HandleBack.BackgroundTransparency = 1
 		HandleBack.BorderSizePixel = 0
 		HandleBack.Text = ""
 		HandleBack.AutoButtonColor = false
 		HandleBack.ZIndex = 120
 		HandleBack.Parent = Main
-		local backCorner = Instance.new("UICorner")
-		backCorner.CornerRadius = UDim.new(0, 10)
-		backCorner.Parent = HandleBack
-		local backStroke = Instance.new("UIStroke")
-		backStroke.Color = Color3.fromRGB(255, 255, 255)
-		backStroke.Thickness = 1.8
-		backStroke.Transparency = 0.15
-		backStroke.Parent = HandleBack
 		local gripBars = {}
 		local function makeGripBar(offset)
 			local bar = Instance.new("Frame")
 			bar.Name = RandomName()
 			bar:SetAttribute("LunaNoTheme", true)
 			bar.AnchorPoint = Vector2.new(1, 1)
-			bar.Position = UDim2.new(1, -7 - offset, 1, -7 - offset)
-			bar.Size = UDim2.fromOffset(16, 3)
+			bar.Position = UDim2.new(1, -3 - offset, 1, -3 - offset)
+			bar.Size = UDim2.fromOffset(11, 2)
 			bar.Rotation = -45
-			bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			bar.BackgroundTransparency = 0
+			bar.BackgroundColor3 = idleBar
+			bar.BackgroundTransparency = 0.35
 			bar.BorderSizePixel = 0
 			bar.ZIndex = 121
 			bar.Active = false
 			local barCorner = Instance.new("UICorner")
 			barCorner.CornerRadius = UDim.new(1, 0)
 			barCorner.Parent = bar
-			local barStroke = Instance.new("UIStroke")
-			barStroke.Color = Color3.fromRGB(20, 20, 28)
-			barStroke.Thickness = 1
-			barStroke.Transparency = 0.35
-			barStroke.Parent = bar
 			bar.Parent = HandleBack
 			table.insert(gripBars, bar)
 			return bar
 		end
 		makeGripBar(0)
-		makeGripBar(6)
-		makeGripBar(12)
+		makeGripBar(5)
+		makeGripBar(10)
 		local function refreshHandleAccent()
 			accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
-			HandleBack.BackgroundColor3 = accent
-			HandleBack.BackgroundTransparency = 0.12
-			backStroke.Color = Color3.fromRGB(255, 255, 255)
-			backStroke.Transparency = 0.15
+		end
+		local function paintGrip(hovered, dragging)
+			refreshHandleAccent()
+			local color = (hovered or dragging) and accent or idleBar
+			local trans = dragging and 0 or (hovered and 0.05 or 0.35)
+			local info = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			for _, bar in ipairs(gripBars) do
-				bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				bar.BackgroundTransparency = 0
+				TweenService:Create(bar, info, {
+					BackgroundColor3 = color,
+					BackgroundTransparency = trans,
+				}):Play()
 			end
 		end
 		HandleBack.MouseEnter:Connect(function()
-			refreshHandleAccent()
-			tween(HandleBack, {BackgroundTransparency = 0, Size = UDim2.fromOffset(38, 38)})
-			tween(backStroke, {Transparency = 0})
-			for _, bar in ipairs(gripBars) do
-				tween(bar, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255, 255, 255)})
+			if not Window._Resizing then
+				paintGrip(true, false)
 			end
 		end)
 		HandleBack.MouseLeave:Connect(function()
-			refreshHandleAccent()
-			tween(HandleBack, {BackgroundTransparency = 0.12, Size = UDim2.fromOffset(36, 36)})
-			tween(backStroke, {Transparency = 0.15})
+			if not Window._Resizing then
+				paintGrip(false, false)
+			end
 		end)
 		pcall(function()
 			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
-				task.defer(refreshHandleAccent)
+				task.defer(function()
+					paintGrip(false, Window._Resizing == true)
+				end)
 			end)
 		end)
 		local resizing = false
@@ -11343,6 +11401,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				return
 			end
 			resizing = true
+			Window._Resizing = true
+			paintGrip(true, true)
 			startMouse = UserInputService:GetMouseLocation()
 			startSize = Main.AbsoluteSize
 		end
@@ -11364,7 +11424,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1
 				or input.UserInputType == Enum.UserInputType.Touch then
-				resizing = false
+				if resizing then
+					resizing = false
+					Window._Resizing = false
+					paintGrip(false, false)
+				end
 			end
 		end)
 		Window._ResizeHandle = HandleBack
@@ -11825,13 +11889,696 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 	end
+	do
+		local tourState = {
+			active = false,
+			closing = false,
+			steps = {},
+			index = 0,
+			layer = nil,
+			conns = {},
+			onFinish = nil,
+			restoreTab = nil,
+			target = nil,
+			playClose = nil,
+		}
+		local function disconnectTour()
+			for _, c in ipairs(tourState.conns) do
+				pcall(function() c:Disconnect() end)
+			end
+			tourState.conns = {}
+		end
+		local function isGuiVisible(obj)
+			if not obj or not obj.Parent then
+				return false
+			end
+			local n = obj
+			while n do
+				if n:IsA("GuiObject") and n.Visible == false then
+					return false
+				end
+				if n:IsA("LayerCollector") and n.Enabled == false then
+					return false
+				end
+				n = n.Parent
+			end
+			return obj.AbsoluteSize.X > 2 and obj.AbsoluteSize.Y > 2
+		end
+		local function resolveTourTarget(step)
+			if type(step) ~= "table" then
+				return nil
+			end
+			if typeof(step.Target) == "Instance" then
+				return step.Target
+			end
+			local kind = step.Target
+			if kind == nil or kind == "" or kind == "window" or kind == "center" then
+				return nil
+			end
+			if kind == "search" then
+				return Window._SearchControl
+			end
+			if kind == "resize" then
+				return Window._ResizeHandle
+			end
+			if kind == "header" then
+				return Main.Title
+			end
+			local tabName = step.Tab
+			if tabName == "Dashboard" then
+				tabName = "Home"
+			end
+			if kind == "subtab" then
+				local reg = tabName and Window._TabRegistry and Window._TabRegistry[tabName]
+				local tabObj = reg and reg.Tab
+				if tabObj and tabObj._SubTabs then
+					for _, st in ipairs(tabObj._SubTabs) do
+						if st.Name == step.SubTab then
+							return st._Pill or st._Bar
+						end
+					end
+				end
+				return nil
+			end
+			if kind == "tab" then
+				if tabName == "Home" then
+					return Window._HomeTabButton
+				end
+				local reg = Window._TabRegistry and Window._TabRegistry[tabName]
+				return reg and reg.Button
+			end
+			return nil
+		end
+		local function accentNow()
+			return (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+		end
+		function Window:StopTour(reason)
+				if tourState.closing then
+					if reason == "destroyed" or reason == "restarted" then
+						disconnectTour()
+						if tourState.layer then
+							pcall(function() tourState.layer:Destroy() end)
+							tourState.layer = nil
+						end
+						tourState.closing = false
+						tourState.playClose = nil
+					end
+					return
+				end
+			if not tourState.active then
+				return
+			end
+			reason = reason or "stopped"
+			tourState.active = false
+			Window._TourActive = false
+			local instant = reason == "restarted" or reason == "destroyed"
+			local cb = tourState.onFinish
+			local restore = tourState.restoreTab
+			tourState.onFinish = nil
+			tourState.restoreTab = nil
+			tourState.steps = {}
+			tourState.target = nil
+			local function finishClose()
+				disconnectTour()
+				if tourState.layer then
+					pcall(function() tourState.layer:Destroy() end)
+					tourState.layer = nil
+				end
+				tourState.closing = false
+				tourState.playClose = nil
+				if reason ~= "restarted" and reason ~= "destroyed" and restore and self.ActivateStartupTab and Main.Visible then
+					pcall(function() self:ActivateStartupTab(restore) end)
+				end
+				if reason ~= "restarted" and reason ~= "destroyed" and type(cb) == "function" then
+					pcall(cb, reason)
+				end
+			end
+			if instant or not tourState.playClose then
+				finishClose()
+			else
+				tourState.closing = true
+				tourState.playClose(finishClose)
+			end
+		end
+		function Window:StartTour(steps, opts)
+			opts = opts or {}
+			if type(steps) ~= "table" or #steps == 0 then
+				return false
+			end
+			if tourState.active or tourState.closing then
+				self:StopTour("restarted")
+			end
+			if not Main or not Main.Parent then
+				return false
+			end
+			tourState.steps = steps
+			tourState.index = 0
+			tourState.onFinish = opts.OnFinish
+			tourState.restoreTab = Window.CurrentTab
+			tourState.closing = false
+			if opts.RestoreTab == false then
+				tourState.restoreTab = nil
+			end
+			local DIM = 0.36
+			local CARD_W, CARD_H = 320, 208
+			local fadeInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local popInfo = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local closeInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			local hoverInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local layer = Instance.new("Frame")
+			layer.Name = RandomName()
+			layer:SetAttribute("LunaNoTheme", true)
+			layer:SetAttribute("LunaNoTranslate", true)
+			layer.BackgroundTransparency = 1
+			layer.BorderSizePixel = 0
+			layer.Size = UDim2.fromScale(1, 1)
+			layer.Position = UDim2.fromScale(0, 0)
+			layer.ZIndex = 8000
+			layer.Visible = true
+			layer.Parent = LunaUI
+			tourState.layer = layer
+			local function makeDim()
+				local dim = Instance.new("TextButton")
+				dim.Name = RandomName()
+				dim.AutoButtonColor = false
+				dim.Text = ""
+				dim.BackgroundColor3 = Color3.fromRGB(4, 4, 10)
+				dim.BackgroundTransparency = 1
+				dim.BorderSizePixel = 0
+				dim.ZIndex = 8001
+				dim.Parent = layer
+				return dim
+			end
+			local dimTop, dimBottom, dimLeft, dimRight = makeDim(), makeDim(), makeDim(), makeDim()
+			local dims = { dimTop, dimBottom, dimLeft, dimRight }
+			local hole = Instance.new("TextButton")
+			hole.Name = RandomName()
+			hole.AutoButtonColor = false
+			hole.Text = ""
+			hole.BackgroundTransparency = 1
+			hole.BorderSizePixel = 0
+			hole.ZIndex = 8002
+			hole.Visible = false
+			hole.Parent = layer
+			local holeStroke = Instance.new("UIStroke")
+			holeStroke.Thickness = 2
+			holeStroke.Color = accentNow()
+			holeStroke.Transparency = 1
+			holeStroke.Parent = hole
+			local holeCorner = Instance.new("UICorner")
+			holeCorner.CornerRadius = UDim.new(0, 11)
+			holeCorner.Parent = hole
+			local holeFill = Instance.new("Frame")
+			holeFill.BackgroundColor3 = accentNow()
+			holeFill.BackgroundTransparency = 1
+			holeFill.BorderSizePixel = 0
+			holeFill.Size = UDim2.fromScale(1, 1)
+			holeFill.ZIndex = 8002
+			holeFill.Parent = hole
+			local holeFillCorner = Instance.new("UICorner")
+			holeFillCorner.CornerRadius = UDim.new(0, 11)
+			holeFillCorner.Parent = holeFill
+			local shadow = Instance.new("Frame")
+			shadow.AnchorPoint = Vector2.new(0, 0)
+			shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+			shadow.BackgroundTransparency = 1
+			shadow.BorderSizePixel = 0
+			shadow.Size = UDim2.fromOffset(CARD_W + 18, CARD_H + 22)
+			shadow.ZIndex = 8009
+			shadow.Parent = layer
+			local shadowCorner = Instance.new("UICorner")
+			shadowCorner.CornerRadius = UDim.new(0, 18)
+			shadowCorner.Parent = shadow
+			local card = Instance.new("Frame")
+			card.Name = RandomName()
+			card.AnchorPoint = Vector2.new(0, 0)
+			card.Size = UDim2.fromOffset(CARD_W, CARD_H)
+			card.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Surface) or Color3.fromRGB(22, 22, 28)
+			card.BackgroundTransparency = 1
+			card.BorderSizePixel = 0
+			card.ZIndex = 8010
+			card.Parent = layer
+			local cardScale = Instance.new("UIScale")
+			cardScale.Scale = 0.86
+			cardScale.Parent = card
+			local cardCorner = Instance.new("UICorner")
+			cardCorner.CornerRadius = UDim.new(0, 16)
+			cardCorner.Parent = card
+			local cardStroke = Instance.new("UIStroke")
+			cardStroke.Color = Color3.fromRGB(255, 255, 255)
+			cardStroke.Transparency = 1
+			cardStroke.Thickness = 1
+			cardStroke.Parent = card
+			local cardGrad = Instance.new("UIGradient")
+			cardGrad.Rotation = 128
+			cardGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(48, 46, 62)),
+				ColorSequenceKeypoint.new(0.45, Color3.fromRGB(24, 23, 32)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 16, 22)),
+			})
+			cardGrad.Parent = card
+			local accentStrip = Instance.new("Frame")
+			accentStrip.BackgroundColor3 = accentNow()
+			accentStrip.BackgroundTransparency = 1
+			accentStrip.BorderSizePixel = 0
+			accentStrip.Size = UDim2.new(0, 3, 1, -20)
+			accentStrip.Position = UDim2.new(0, 0, 0.5, 0)
+			accentStrip.AnchorPoint = Vector2.new(0, 0.5)
+			accentStrip.ZIndex = 8011
+			accentStrip.Parent = card
+			local stripCorner = Instance.new("UICorner")
+			stripCorner.CornerRadius = UDim.new(1, 0)
+			stripCorner.Parent = accentStrip
+			local iconChip = Instance.new("Frame")
+			iconChip.BackgroundColor3 = accentNow()
+			iconChip.BackgroundTransparency = 1
+			iconChip.BorderSizePixel = 0
+			iconChip.Position = UDim2.fromOffset(16, 14)
+			iconChip.Size = UDim2.fromOffset(32, 32)
+			iconChip.ZIndex = 8012
+			iconChip.Parent = card
+			local chipCorner = Instance.new("UICorner")
+			chipCorner.CornerRadius = UDim.new(0, 9)
+			chipCorner.Parent = iconChip
+			local iconLabel = Instance.new("ImageLabel")
+			iconLabel.BackgroundTransparency = 1
+			iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+			iconLabel.Position = UDim2.fromScale(0.5, 0.5)
+			iconLabel.Size = UDim2.fromOffset(18, 18)
+			iconLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
+			iconLabel.ImageTransparency = 1
+			iconLabel.ZIndex = 8013
+			iconLabel.Parent = iconChip
+			local titleLabel = Instance.new("TextLabel")
+			titleLabel.BackgroundTransparency = 1
+			titleLabel.Position = UDim2.fromOffset(56, 12)
+			titleLabel.Size = UDim2.fromOffset(CARD_W - 72, 20)
+			titleLabel.Font = Enum.Font.GothamBold
+			titleLabel.TextSize = 16
+			titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+			titleLabel.TextTransparency = 1
+			titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+			titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+			titleLabel.ZIndex = 8012
+			titleLabel.Parent = card
+			local stepLabel = Instance.new("TextLabel")
+			stepLabel.BackgroundTransparency = 1
+			stepLabel.Position = UDim2.fromOffset(56, 32)
+			stepLabel.Size = UDim2.fromOffset(CARD_W - 72, 14)
+			stepLabel.Font = Enum.Font.GothamMedium
+			stepLabel.TextSize = 11
+			stepLabel.TextColor3 = Color3.fromRGB(170, 170, 184)
+			stepLabel.TextTransparency = 1
+			stepLabel.TextXAlignment = Enum.TextXAlignment.Left
+			stepLabel.ZIndex = 8012
+			stepLabel.Parent = card
+			local bodyLabel = Instance.new("TextLabel")
+			bodyLabel.BackgroundTransparency = 1
+			bodyLabel.Position = UDim2.fromOffset(16, 56)
+			bodyLabel.Size = UDim2.fromOffset(CARD_W - 32, 78)
+			bodyLabel.Font = Enum.Font.Gotham
+			bodyLabel.TextSize = 13
+			bodyLabel.TextColor3 = Color3.fromRGB(214, 214, 224)
+			bodyLabel.TextTransparency = 1
+			bodyLabel.TextXAlignment = Enum.TextXAlignment.Left
+			bodyLabel.TextYAlignment = Enum.TextYAlignment.Top
+			bodyLabel.TextWrapped = true
+			bodyLabel.ZIndex = 8012
+			bodyLabel.Parent = card
+			local dotsHold = Instance.new("Frame")
+			dotsHold.BackgroundTransparency = 1
+			dotsHold.Position = UDim2.fromOffset(16, 138)
+			dotsHold.Size = UDim2.fromOffset(CARD_W - 32, 10)
+			dotsHold.ZIndex = 8012
+			dotsHold.Parent = card
+			local dotsLayout = Instance.new("UIListLayout")
+			dotsLayout.FillDirection = Enum.FillDirection.Horizontal
+			dotsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+			dotsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+			dotsLayout.Padding = UDim.new(0, 5)
+			dotsLayout.Parent = dotsHold
+			local dots = {}
+			for i = 1, #steps do
+				local d = Instance.new("Frame")
+				d.Size = UDim2.fromOffset(6, 6)
+				d.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				d.BackgroundTransparency = 1
+				d.BorderSizePixel = 0
+				d.ZIndex = 8013
+				d.Parent = dotsHold
+				local dc = Instance.new("UICorner")
+				dc.CornerRadius = UDim.new(1, 0)
+				dc.Parent = d
+				dots[i] = d
+			end
+			local function makeBtn(text, x, w, filled)
+				local btn = Instance.new("TextButton")
+				btn.AutoButtonColor = false
+				btn.Text = text
+				btn.Font = Enum.Font.GothamMedium
+				btn.TextSize = 13
+				btn.Position = UDim2.fromOffset(x, 162)
+				btn.Size = UDim2.fromOffset(w, 32)
+				btn.ZIndex = 8013
+				btn.TextTransparency = 1
+				btn.Parent = card
+				local bc = Instance.new("UICorner")
+				bc.CornerRadius = UDim.new(0, 9)
+				bc.Parent = btn
+				btn.BorderSizePixel = 0
+				if filled then
+					btn.BackgroundColor3 = accentNow()
+					btn.BackgroundTransparency = 1
+					btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+				else
+					btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					btn.BackgroundTransparency = 1
+					btn.TextColor3 = Color3.fromRGB(188, 188, 200)
+				end
+				btn.MouseEnter:Connect(function()
+					if not tourState.active then return end
+					if filled then
+						TweenService:Create(btn, hoverInfo, { BackgroundTransparency = 0 }):Play()
+					else
+						TweenService:Create(btn, hoverInfo, { BackgroundTransparency = 0.88, TextColor3 = Color3.fromRGB(255, 255, 255) }):Play()
+					end
+				end)
+				btn.MouseLeave:Connect(function()
+					if filled then
+						TweenService:Create(btn, hoverInfo, { BackgroundTransparency = 0.08 }):Play()
+					else
+						TweenService:Create(btn, hoverInfo, { BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(188, 188, 200) }):Play()
+					end
+				end)
+				return btn
+			end
+			local skipBtn = makeBtn("Skip", 12, 58, false)
+			local backBtn = makeBtn("Back", CARD_W - 164, 68, false)
+			local nextBtn = makeBtn("Next", CARD_W - 90, 74, true)
+			local motion = {
+				hx = 0, hy = 0, hw = 80, hh = 40,
+				cx = 0, cy = 0,
+				gx = 0, gy = 0, gw = 80, gh = 40,
+				gcx = 0, gcy = 0,
+				hasHole = false,
+				wasHole = false,
+				inited = false,
+			}
+			local function computeGoals(target)
+				local origin = layer.AbsolutePosition
+				local layerSize = layer.AbsoluteSize
+				if layerSize.X < 4 or layerSize.Y < 4 then
+					return
+				end
+				if not target or not isGuiVisible(target) then
+					motion.hasHole = false
+					motion.gcx = (layerSize.X - CARD_W) * 0.5
+					motion.gcy = (layerSize.Y - CARD_H) * 0.5
+					return
+				end
+				local pad = 9
+				local hx = target.AbsolutePosition.X - origin.X - pad
+				local hy = target.AbsolutePosition.Y - origin.Y - pad
+				local hw = math.max(16, target.AbsoluteSize.X + pad * 2)
+				local hh = math.max(16, target.AbsoluteSize.Y + pad * 2)
+				motion.hasHole = true
+				motion.gx, motion.gy, motion.gw, motion.gh = hx, hy, hw, hh
+				local cx = hx + hw + 16
+				local cy = hy + hh * 0.5 - CARD_H * 0.35
+				if cx + CARD_W > layerSize.X - 14 then
+					cx = hx - CARD_W - 16
+				end
+				if cx < 12 then
+					cx = math.clamp(hx, 12, math.max(12, layerSize.X - CARD_W - 12))
+					cy = hy + hh + 16
+				end
+				motion.gcx = math.clamp(cx, 12, math.max(12, layerSize.X - CARD_W - 12))
+				motion.gcy = math.clamp(cy, 12, math.max(12, layerSize.Y - CARD_H - 12))
+			end
+			local function applyHoleRect(hx, hy, hw, hh, showHole)
+				local layerSize = layer.AbsoluteSize
+				if not showHole then
+					dimTop.Position = UDim2.fromOffset(0, 0)
+					dimTop.Size = UDim2.fromScale(1, 1)
+					dimBottom.Size = UDim2.fromOffset(0, 0)
+					dimLeft.Size = UDim2.fromOffset(0, 0)
+					dimRight.Size = UDim2.fromOffset(0, 0)
+					hole.Visible = false
+					return
+				end
+				hx, hy, hw, hh = math.floor(hx), math.floor(hy), math.floor(hw), math.floor(hh)
+				dimTop.Position = UDim2.fromOffset(0, 0)
+				dimTop.Size = UDim2.new(1, 0, 0, math.max(0, hy))
+				dimBottom.Position = UDim2.fromOffset(0, hy + hh)
+				dimBottom.Size = UDim2.new(1, 0, 0, math.max(0, layerSize.Y - hy - hh))
+				dimLeft.Position = UDim2.fromOffset(0, hy)
+				dimLeft.Size = UDim2.fromOffset(math.max(0, hx), hh)
+				dimRight.Position = UDim2.fromOffset(hx + hw, hy)
+				dimRight.Size = UDim2.fromOffset(math.max(0, layerSize.X - hx - hw), hh)
+				hole.Visible = true
+				hole.Position = UDim2.fromOffset(hx, hy)
+				hole.Size = UDim2.fromOffset(math.max(12, hw), math.max(12, hh))
+			end
+			local function paintDots(index)
+				for i, d in ipairs(dots) do
+					local on = i == index
+					TweenService:Create(d, hoverInfo, {
+						BackgroundColor3 = on and accentNow() or Color3.fromRGB(255, 255, 255),
+						BackgroundTransparency = on and 0 or 0.72,
+						Size = on and UDim2.fromOffset(16, 6) or UDim2.fromOffset(6, 6),
+					}):Play()
+				end
+			end
+			local function fadeCopy(trans)
+				TweenService:Create(titleLabel, fadeInfo, { TextTransparency = trans }):Play()
+				TweenService:Create(bodyLabel, fadeInfo, { TextTransparency = trans }):Play()
+				TweenService:Create(stepLabel, fadeInfo, { TextTransparency = trans == 0 and 0.15 or trans }):Play()
+				TweenService:Create(iconLabel, fadeInfo, { ImageTransparency = trans }):Play()
+			end
+			local function applyStep(step, target)
+				local first = not motion.inited
+				if not first then
+					fadeCopy(1)
+				end
+				local function write()
+					titleLabel.Text = tostring(step.Title or "Tip")
+					bodyLabel.Text = tostring(step.Body or step.Content or "")
+					stepLabel.Text = string.format("Step %d of %d", tourState.index, #tourState.steps)
+					pcall(function()
+						ApplyIcon(iconLabel, GetIcon(step.Icon or "star", step.ImageSource or "Material"))
+					end)
+					backBtn.Visible = tourState.index > 1
+					nextBtn.Text = tourState.index >= #tourState.steps and "Done" or "Next"
+					paintDots(tourState.index)
+					tourState.target = target
+					computeGoals(target)
+					if first then
+						motion.hx, motion.hy, motion.hw, motion.hh = motion.gx, motion.gy, motion.gw, motion.gh
+						motion.cx, motion.cy = motion.gcx, motion.gcy
+						motion.inited = true
+						applyHoleRect(motion.hx, motion.hy, motion.hw, motion.hh, motion.hasHole)
+						card.Position = UDim2.fromOffset(motion.cx, motion.cy)
+						shadow.Position = UDim2.fromOffset(motion.cx - 9, motion.cy + 8)
+					end
+					if not first then
+						fadeCopy(0)
+					end
+				end
+				if first then
+					write()
+				else
+					task.delay(0.09, function()
+						if tourState.active then
+							write()
+						end
+					end)
+				end
+			end
+			local function showIndex(i, dir)
+				dir = dir or 1
+				while i >= 1 and i <= #tourState.steps do
+					if not tourState.active then
+						return
+					end
+					local step = tourState.steps[i]
+					if step.Activate and step.Tab then
+						pcall(function()
+							Window:ActivateStartupTab(step.Tab)
+							if type(step.SubTab) == "string" and step.SubTab ~= "" then
+								local name = step.Tab == "Dashboard" and "Home" or step.Tab
+								local reg = Window._TabRegistry and Window._TabRegistry[name]
+								if reg and reg.Tab and reg.Tab.ActivateSubTab then
+									reg.Tab:ActivateSubTab(step.SubTab)
+								end
+							end
+						end)
+						task.wait(0.16)
+					end
+					local target = resolveTourTarget(step)
+					local kind = step.Target
+					local needsTarget = type(kind) == "string" and kind ~= "" and kind ~= "window" and kind ~= "center"
+					if typeof(kind) == "Instance" then
+						needsTarget = true
+						target = kind
+					end
+					if needsTarget and not isGuiVisible(target) then
+						i = i + dir
+					else
+						tourState.index = i
+						applyStep(step, target)
+						return
+					end
+				end
+				if dir > 0 then
+					Window:StopTour("completed")
+				elseif #tourState.steps > 0 then
+					showIndex(1, 1)
+				end
+			end
+			skipBtn.MouseButton1Click:Connect(function()
+				Window:StopTour("skipped")
+			end)
+			backBtn.MouseButton1Click:Connect(function()
+				if tourState.index > 1 then
+					task.spawn(function()
+						showIndex(tourState.index - 1, -1)
+					end)
+				end
+			end)
+			nextBtn.MouseButton1Click:Connect(function()
+				if tourState.index >= #tourState.steps then
+					Window:StopTour("completed")
+				else
+					task.spawn(function()
+						showIndex(tourState.index + 1, 1)
+					end)
+				end
+			end)
+			table.insert(tourState.conns, UserInputService.InputBegan:Connect(function(input, gpe)
+				if not tourState.active then
+					return
+				end
+				if input.KeyCode == Enum.KeyCode.Escape then
+					Window:StopTour("skipped")
+				elseif not gpe and (input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter) then
+					if tourState.index >= #tourState.steps then
+						Window:StopTour("completed")
+					else
+						task.spawn(function()
+							showIndex(tourState.index + 1, 1)
+						end)
+					end
+				end
+			end))
+			table.insert(tourState.conns, Main:GetPropertyChangedSignal("Visible"):Connect(function()
+				if tourState.active and not Main.Visible then
+					Window:StopTour("skipped")
+				end
+			end))
+			table.insert(tourState.conns, RunService.RenderStepped:Connect(function(dt)
+				if not tourState.layer or tourState.closing then
+					return
+				end
+				computeGoals(tourState.target)
+				if not motion.inited then
+					return
+				end
+				if motion.hasHole and not motion.wasHole then
+					motion.hx, motion.hy, motion.hw, motion.hh = motion.gx, motion.gy, motion.gw, motion.gh
+				end
+				motion.wasHole = motion.hasHole
+				local jump = math.max(math.abs(motion.gcx - motion.cx), math.abs(motion.gcy - motion.cy), math.abs(motion.gx - motion.hx), math.abs(motion.gy - motion.hy))
+				local k = 1 - math.exp(-(jump > 70 and 9 or 18) * math.max(dt, 0.001))
+				motion.hx += (motion.gx - motion.hx) * k
+				motion.hy += (motion.gy - motion.hy) * k
+				motion.hw += (motion.gw - motion.hw) * k
+				motion.hh += (motion.gh - motion.hh) * k
+				motion.cx += (motion.gcx - motion.cx) * k
+				motion.cy += (motion.gcy - motion.cy) * k
+				applyHoleRect(motion.hx, motion.hy, motion.hw, motion.hh, motion.hasHole)
+				card.Position = UDim2.fromOffset(motion.cx, motion.cy)
+				shadow.Position = UDim2.fromOffset(motion.cx - 9, motion.cy + 8)
+				local pulse = (math.sin(os.clock() * 3.15) + 1) * 0.5
+				holeStroke.Color = accentNow()
+				holeStroke.Thickness = 1.7 + pulse * 1.15
+				if hole.Visible then
+					holeStroke.Transparency = 0.05 + pulse * 0.22
+					holeFill.BackgroundColor3 = accentNow()
+					holeFill.BackgroundTransparency = 0.86 + pulse * 0.08
+				end
+				accentStrip.BackgroundColor3 = accentNow()
+				iconChip.BackgroundColor3 = accentNow()
+				nextBtn.BackgroundColor3 = accentNow()
+			end))
+			local function playOpen()
+				for _, dim in ipairs(dims) do
+					TweenService:Create(dim, fadeInfo, { BackgroundTransparency = DIM }):Play()
+				end
+				TweenService:Create(card, fadeInfo, { BackgroundTransparency = 0.02 }):Play()
+				TweenService:Create(cardStroke, fadeInfo, { Transparency = 0.78 }):Play()
+				TweenService:Create(shadow, fadeInfo, { BackgroundTransparency = 0.62 }):Play()
+				TweenService:Create(cardScale, popInfo, { Scale = 1 }):Play()
+				TweenService:Create(accentStrip, fadeInfo, { BackgroundTransparency = 0 }):Play()
+				TweenService:Create(iconChip, fadeInfo, { BackgroundTransparency = 0.72 }):Play()
+				TweenService:Create(iconLabel, fadeInfo, { ImageTransparency = 0 }):Play()
+				TweenService:Create(titleLabel, fadeInfo, { TextTransparency = 0 }):Play()
+				TweenService:Create(bodyLabel, fadeInfo, { TextTransparency = 0 }):Play()
+				TweenService:Create(stepLabel, fadeInfo, { TextTransparency = 0.15 }):Play()
+				TweenService:Create(skipBtn, fadeInfo, { TextTransparency = 0 }):Play()
+				TweenService:Create(backBtn, fadeInfo, { TextTransparency = 0 }):Play()
+				TweenService:Create(nextBtn, fadeInfo, { TextTransparency = 0, BackgroundTransparency = 0.08 }):Play()
+				for _, d in ipairs(dots) do
+					TweenService:Create(d, fadeInfo, { BackgroundTransparency = 0.72 }):Play()
+				end
+			end
+			tourState.playClose = function(done)
+				for _, dim in ipairs(dims) do
+					TweenService:Create(dim, closeInfo, { BackgroundTransparency = 1 }):Play()
+				end
+				TweenService:Create(card, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(cardStroke, closeInfo, { Transparency = 1 }):Play()
+				TweenService:Create(shadow, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(cardScale, closeInfo, { Scale = 0.9 }):Play()
+				TweenService:Create(accentStrip, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(iconChip, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(iconLabel, closeInfo, { ImageTransparency = 1 }):Play()
+				TweenService:Create(titleLabel, closeInfo, { TextTransparency = 1 }):Play()
+				TweenService:Create(bodyLabel, closeInfo, { TextTransparency = 1 }):Play()
+				TweenService:Create(stepLabel, closeInfo, { TextTransparency = 1 }):Play()
+				TweenService:Create(skipBtn, closeInfo, { TextTransparency = 1 }):Play()
+				TweenService:Create(backBtn, closeInfo, { TextTransparency = 1 }):Play()
+				TweenService:Create(nextBtn, closeInfo, { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+				TweenService:Create(holeStroke, closeInfo, { Transparency = 1 }):Play()
+				TweenService:Create(holeFill, closeInfo, { BackgroundTransparency = 1 }):Play()
+				for _, d in ipairs(dots) do
+					TweenService:Create(d, closeInfo, { BackgroundTransparency = 1 }):Play()
+				end
+				task.delay(0.2, function()
+					if type(done) == "function" then
+						done()
+					end
+				end)
+			end
+			tourState.active = true
+			Window._TourActive = true
+			playOpen()
+			task.spawn(function()
+				showIndex(1, 1)
+			end)
+			return true
+		end
+	end
 	Window._Main = Main
 	Window.GetMain = function()
 		return Main
 	end
+	Luna._Window = Window
 	return Window
 end
 function Luna:Destroy()
+	if Luna._Window and Luna._Window.StopTour then
+		pcall(function() Luna._Window:StopTour("destroyed") end)
+	end
 	if SetGlassBlur then SetGlassBlur(false) end
 	Main.Visible = false
 	for _, Notification in ipairs(Notifications:GetChildren()) do
