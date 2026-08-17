@@ -10224,152 +10224,517 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local statusLabel
 		local runSearch
 		local updateFilterVisibility
+		local emptyState
 		local function setStatus(msg)
 			if statusLabel then statusLabel:Set(tostring(msg)) end
 		end
-						local function collectNew(parent, fn)
-			local before = {}
-			for _, c in ipairs(parent:GetChildren()) do before[c] = true end
-			fn()
-			local added = {}
-			for _, c in ipairs(parent:GetChildren()) do
-				if not before[c] then table.insert(added, c) end
-			end
-			return added
+		local function ssTheme()
+			local t = Luna.ActiveTheme or {}
+			return {
+				accent = t.Accent or Color3.fromRGB(132, 112, 220),
+				surface = t.Surface or Color3.fromRGB(24, 20, 36),
+				elevated = t.Elevated or Color3.fromRGB(36, 30, 52),
+				stroke = t.Stroke or Color3.fromRGB(58, 50, 82),
+				text = t.TextPrimary or Color3.fromRGB(242, 238, 255),
+				dim = t.TextSecondary or Color3.fromRGB(168, 158, 196),
+				muted = t.TextMuted or Color3.fromRGB(118, 110, 148),
+			}
 		end
-						searchSub:CreateSection("Search")
-		local queryInput = searchSub:CreateInput({
-			Name = "Query",
-			PlaceholderText = "e.g. infinite yield, arsenal, universal",
-			Enter = true,
-			Flag = "SS_Query",
-			Callback = function()
+		local function ssCorner(parent, r)
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, r or 10)
+			c.Parent = parent
+			return c
+		end
+		local function ssStroke(parent, color, trans)
+			local s = Instance.new("UIStroke")
+			s.Color = color
+			s.Transparency = trans or 0.45
+			s.Thickness = 1
+			s.Parent = parent
+			return s
+		end
+		local function unwrapOpt(v)
+			while type(v) == "table" do
+				v = v.CurrentOption or v.CurrentValue or v[1]
+			end
+			return v
+		end
+		local queryBox
+		local paintSource, paintSort
+		local queryInput = { CurrentValue = "", Class = "Input", IgnoreConfig = true, Settings = { Name = "Query" } }
+		function queryInput:Set(v)
+			if type(v) == "table" then
+				v = v.CurrentValue or v[1]
+			end
+			v = tostring(v or "")
+			self.CurrentValue = v
+			if queryBox then
+				queryBox.Text = v
+			end
+		end
+		local sourceDropdown = { CurrentOption = "ScriptBlox", Class = "Dropdown", IgnoreConfig = true, Settings = { Name = "API Source" } }
+		function sourceDropdown:Set(v)
+			local opt = unwrapOpt(v)
+			if opt ~= "ScriptBlox" and opt ~= "RScripts" then
+				return
+			end
+			source = opt
+			self.CurrentOption = opt
+			if paintSource then paintSource() end
+			if updateFilterVisibility then updateFilterVisibility() end
+			setStatus("Source: " .. source)
+		end
+		local sortControl = { CurrentOption = "Newest", Class = "Dropdown", IgnoreConfig = true, Settings = { Name = "Sort By" } }
+		function sortControl:Set(v)
+			local opt = unwrapOpt(v)
+			local mode = "date"
+			local label = "Newest"
+			if opt == "Most Viewed" or opt == "Views" or opt == "views" then
+				mode, label = "views", "Views"
+			elseif opt == "Most Liked" or opt == "Likes" or opt == "likes" then
+				mode, label = "likes", "Likes"
+			elseif opt == "Newest" or opt == "date" then
+				mode, label = "date", "Newest"
+			else
+				return
+			end
+			sortMode = mode
+			self.CurrentOption = label
+			if paintSort then paintSort() end
+			if lastQuery then runSearch(1) end
+		end
+		Luna.Options = Luna.Options or {}
+		Luna.Options["SS_Query"] = queryInput
+		Luna.Options["SS_Source"] = sourceDropdown
+		Luna.Options["SS_Sort"] = sortControl
+		local phoneUI = IsPhoneClient()
+		local th0 = ssTheme()
+		local composer = Instance.new("Frame")
+		composer.Name = RandomName()
+		composer.BackgroundColor3 = th0.surface
+		composer.BackgroundTransparency = 0.08
+		composer.BorderSizePixel = 0
+		composer.Size = UDim2.new(1, 0, 0, phoneUI and 206 or 164)
+		composer.LayoutOrder = 1
+		composer.Parent = searchPage
+		ssCorner(composer, 12)
+		ssStroke(composer, th0.stroke, 0.42)
+		local composerPad = Instance.new("UIPadding")
+		composerPad.PaddingTop = UDim.new(0, 12)
+		composerPad.PaddingBottom = UDim.new(0, 10)
+		composerPad.PaddingLeft = UDim.new(0, 12)
+		composerPad.PaddingRight = UDim.new(0, 12)
+		composerPad.Parent = composer
+		local composerList = Instance.new("UIListLayout")
+		composerList.FillDirection = Enum.FillDirection.Vertical
+		composerList.SortOrder = Enum.SortOrder.LayoutOrder
+		composerList.Padding = UDim.new(0, 8)
+		composerList.Parent = composer
+		local hero = Instance.new("Frame")
+		hero.Name = RandomName()
+		hero.BackgroundColor3 = th0.elevated
+		hero.BackgroundTransparency = 0.12
+		hero.BorderSizePixel = 0
+		hero.Size = UDim2.new(1, 0, 0, phoneUI and 86 or 44)
+		hero.LayoutOrder = 1
+		hero.Parent = composer
+		ssCorner(hero, 10)
+		local heroStroke = ssStroke(hero, th0.stroke, 0.38)
+		local searchIco = Instance.new("ImageLabel")
+		searchIco.Name = RandomName()
+		searchIco.BackgroundTransparency = 1
+		searchIco.Size = UDim2.fromOffset(16, 16)
+		searchIco.ImageColor3 = th0.dim
+		searchIco.Parent = hero
+		ApplyIcon(searchIco, GetIcon("search", "Lucide") or GetIcon("search", "Material"))
+		queryBox = Instance.new("TextBox")
+		queryBox.Name = RandomName()
+		queryBox.BackgroundTransparency = 1
+		queryBox.ClearTextOnFocus = false
+		queryBox.Text = ""
+		queryBox.PlaceholderText = "Search games, scripts, exploits..."
+		queryBox.PlaceholderColor3 = th0.muted
+		queryBox.TextColor3 = th0.text
+		queryBox.Font = Enum.Font.GothamMedium
+		queryBox.TextSize = 13
+		queryBox.TextXAlignment = Enum.TextXAlignment.Left
+		queryBox.TextTruncate = Enum.TextTruncate.AtEnd
+		queryBox:SetAttribute("LunaNoTranslate", true)
+		queryBox.Parent = hero
+		ApplyInterfaceFont(queryBox, Enum.Font.GothamMedium)
+		local function ssActionBtn(parent, text, primary)
+			local b = Instance.new("TextButton")
+			b.Name = RandomName()
+			b.AutoButtonColor = false
+			b.Font = Enum.Font.GothamSemibold
+			b.TextSize = 12
+			b.Text = text
+			b.TextColor3 = Color3.new(1, 1, 1)
+			b.Parent = parent
+			ApplyInterfaceFont(b, Enum.Font.GothamSemibold)
+			ssCorner(b, 8)
+			if primary then
+				b.BackgroundColor3 = th0.accent
+				b.BackgroundTransparency = 0.05
+				ssStroke(b, th0.accent, 0.35)
+			else
+				b.BackgroundColor3 = th0.surface
+				b.BackgroundTransparency = 0.2
+				ssStroke(b, th0.stroke, 0.4)
+			end
+			b.MouseEnter:Connect(function()
+				tween(b, { BackgroundTransparency = primary and 0 or 0.05 })
+			end)
+			b.MouseLeave:Connect(function()
+				tween(b, { BackgroundTransparency = primary and 0.05 or 0.2 })
+			end)
+			return b
+		end
+		local gameBtn = ssActionBtn(hero, "This game", false)
+		local searchBtn = ssActionBtn(hero, "Search", true)
+		if phoneUI then
+			searchIco.Position = UDim2.new(0, 12, 0, 14)
+			queryBox.Position = UDim2.new(0, 34, 0, 6)
+			queryBox.Size = UDim2.new(1, -46, 0, 32)
+			gameBtn.Position = UDim2.new(0, 8, 0, 46)
+			gameBtn.Size = UDim2.new(0.5, -12, 0, 30)
+			searchBtn.Position = UDim2.new(0.5, 4, 0, 46)
+			searchBtn.Size = UDim2.new(0.5, -12, 0, 30)
+		else
+			searchIco.Position = UDim2.new(0, 12, 0.5, -8)
+			queryBox.Position = UDim2.new(0, 34, 0, 0)
+			queryBox.Size = UDim2.new(1, -214, 1, 0)
+			gameBtn.AnchorPoint = Vector2.new(1, 0.5)
+			gameBtn.Position = UDim2.new(1, -88, 0.5, 0)
+			gameBtn.Size = UDim2.new(0, 86, 0, 28)
+			searchBtn.AnchorPoint = Vector2.new(1, 0.5)
+			searchBtn.Position = UDim2.new(1, -6, 0.5, 0)
+			searchBtn.Size = UDim2.new(0, 76, 0, 28)
+		end
+		queryBox:GetPropertyChangedSignal("Text"):Connect(function()
+			queryInput.CurrentValue = queryBox.Text
+		end)
+		queryBox.Focused:Connect(function()
+			local t = ssTheme()
+			tween(heroStroke, { Transparency = 0.12, Color = t.accent })
+			tween(searchIco, { ImageColor3 = t.accent })
+		end)
+		queryBox.FocusLost:Connect(function(enter)
+			local t = ssTheme()
+			tween(heroStroke, { Transparency = 0.38, Color = t.stroke })
+			tween(searchIco, { ImageColor3 = t.dim })
+			queryInput.CurrentValue = queryBox.Text
+			if enter then
 				runSearch(1)
-			end,
-		})
-		local sourceDropdown = searchSub:CreateDropdown({
-			Name = "API Source",
-			Options = {"ScriptBlox", "RScripts"},
-			CurrentOption = "ScriptBlox",
-			Flag = "SS_Source",
-			Callback = function(opt)
-				local v = opt
-				if type(v) == "table" then v = v[1] end
-				if type(v) == "string" and v ~= "" then source = v end
-				if updateFilterVisibility then updateFilterVisibility() end
-				setStatus("Source: " .. source)
-			end,
-		})
-		searchSub:CreateDropdown({
-			Name = "Sort By",
-			Options = {"Newest", "Most Viewed", "Most Liked"},
-			CurrentOption = "Newest",
-			Flag = "SS_Sort",
-			Callback = function(opt)
-				local v = opt
-				if type(v) == "table" then v = v[1] end
-				sortMode = (v == "Most Viewed" and "views") or (v == "Most Liked" and "likes") or "date"
-				if lastQuery then runSearch(1) end
-			end,
-		})
-		searchSub:CreateButton({
-			Name = "Search",
-			Description = "ScriptBlox / RScripts APIs",
-			Callback = function()
-				runSearch(1)
-			end,
-		})
-		searchSub:CreateButton({
-			Name = "Search This Game",
-			Description = "Fills the query with the current game's name",
-			Callback = function()
-				local gname = currentGameName()
-				if not gname then
-					setStatus("Could not resolve the current game's name.")
-					return
+			end
+		end)
+		searchBtn.MouseButton1Click:Connect(function()
+			runSearch(1)
+		end)
+		gameBtn.MouseButton1Click:Connect(function()
+			local gname = currentGameName()
+			if not gname then
+				setStatus("Could not resolve the current game's name.")
+				return
+			end
+			queryInput:Set(gname)
+			runSearch(1)
+		end)
+		local toolsRow = Instance.new("Frame")
+		toolsRow.Name = RandomName()
+		toolsRow.BackgroundTransparency = 1
+		toolsRow.Size = UDim2.new(1, 0, 0, 32)
+		toolsRow.LayoutOrder = 2
+		toolsRow.Parent = composer
+		local function makeSeg(parent, pos, size, items, getId, onPick)
+			local t = ssTheme()
+			local wrap = Instance.new("Frame")
+			wrap.Name = RandomName()
+			wrap.BackgroundColor3 = t.elevated
+			wrap.BackgroundTransparency = 0.18
+			wrap.Position = pos
+			wrap.Size = size
+			wrap.Parent = parent
+			ssCorner(wrap, 8)
+			ssStroke(wrap, t.stroke, 0.5)
+			local pad = Instance.new("UIPadding")
+			pad.PaddingLeft = UDim.new(0, 3)
+			pad.PaddingRight = UDim.new(0, 3)
+			pad.PaddingTop = UDim.new(0, 3)
+			pad.PaddingBottom = UDim.new(0, 3)
+			pad.Parent = wrap
+			local lay = Instance.new("UIListLayout")
+			lay.FillDirection = Enum.FillDirection.Horizontal
+			lay.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			lay.VerticalAlignment = Enum.VerticalAlignment.Center
+			lay.SortOrder = Enum.SortOrder.LayoutOrder
+			lay.Padding = UDim.new(0, 3)
+			lay.Parent = wrap
+			local buttons = {}
+			local function paint()
+				local cur = getId()
+				local theme = ssTheme()
+				for id, b in pairs(buttons) do
+					local on = id == cur
+					b.BackgroundColor3 = theme.accent
+					tween(b, {
+						BackgroundTransparency = on and 0.08 or 1,
+						TextColor3 = on and Color3.new(1, 1, 1) or theme.dim,
+					})
 				end
-				pcall(function() queryInput:Set(gname) end)
-				runSearch(1)
+			end
+			for i, item in ipairs(items) do
+				local b = Instance.new("TextButton")
+				b.Name = RandomName()
+				b.BackgroundColor3 = t.accent
+				b.BackgroundTransparency = 1
+				b.Size = UDim2.new(1 / #items, -3, 1, 0)
+				b.Font = Enum.Font.GothamSemibold
+				b.TextSize = 11
+				b.Text = item.label
+				b.TextColor3 = t.dim
+				b.AutoButtonColor = false
+				b.LayoutOrder = i
+				b.Parent = wrap
+				ApplyInterfaceFont(b, Enum.Font.GothamSemibold)
+				ssCorner(b, 6)
+				b.MouseButton1Click:Connect(function()
+					onPick(item.id)
+					paint()
+				end)
+				buttons[item.id] = b
+			end
+			paint()
+			return paint
+		end
+		paintSource = makeSeg(toolsRow, UDim2.new(0, 0, 0, 0), UDim2.new(0.5, -5, 1, 0), {
+			{ id = "ScriptBlox", label = "ScriptBlox" },
+			{ id = "RScripts", label = "RScripts" },
+		}, function()
+			return source
+		end, function(id)
+			source = id
+			sourceDropdown.CurrentOption = id
+			if updateFilterVisibility then updateFilterVisibility() end
+			setStatus("Source: " .. source)
+		end)
+		paintSort = makeSeg(toolsRow, UDim2.new(0.5, 5, 0, 0), UDim2.new(0.5, -5, 1, 0), {
+			{ id = "date", label = "Newest" },
+			{ id = "views", label = "Views" },
+			{ id = "likes", label = "Likes" },
+		}, function()
+			return sortMode
+		end, function(id)
+			sortMode = id
+			sortControl.CurrentOption = (id == "views" and "Views") or (id == "likes" and "Likes") or "Newest"
+			if lastQuery then runSearch(1) end
+		end)
+		local function makeFilterChip(parent, label, colorKey, get, set)
+			local t = ssTheme()
+			local b = Instance.new("TextButton")
+			b.Name = RandomName()
+			b.AutomaticSize = Enum.AutomaticSize.X
+			b.Size = UDim2.new(0, 0, 0, 24)
+			b.Font = Enum.Font.GothamSemibold
+			b.TextSize = 11
+			b.Text = "  " .. label .. "  "
+			b.AutoButtonColor = false
+			b.Parent = parent
+			ApplyInterfaceFont(b, Enum.Font.GothamSemibold)
+			ssCorner(b, 8)
+			local st = ssStroke(b, t.stroke, 0.45)
+			local function paint()
+				local on = get()
+				local theme = ssTheme()
+				local col = (colorKey and TAG_COLORS[colorKey]) or theme.accent
+				if on then
+					b.BackgroundColor3 = col
+					b.BackgroundTransparency = 0.18
+					b.TextColor3 = Color3.new(1, 1, 1)
+					st.Color = col
+					st.Transparency = 0.2
+				else
+					b.BackgroundColor3 = theme.elevated
+					b.BackgroundTransparency = 0.28
+					b.TextColor3 = theme.dim
+					st.Color = theme.stroke
+					st.Transparency = 0.5
+				end
+			end
+			b.MouseButton1Click:Connect(function()
+				set(not get())
+				paint()
+			end)
+			paint()
+			return b
+		end
+		local function makeChipRow(order)
+			local row = Instance.new("Frame")
+			row.Name = RandomName()
+			row.BackgroundTransparency = 1
+			row.Size = UDim2.new(1, 0, 0, 26)
+			row.LayoutOrder = order
+			row.Parent = composer
+			local lay = Instance.new("UIListLayout")
+			lay.FillDirection = Enum.FillDirection.Horizontal
+			lay.HorizontalAlignment = Enum.HorizontalAlignment.Left
+			lay.VerticalAlignment = Enum.VerticalAlignment.Center
+			lay.SortOrder = Enum.SortOrder.LayoutOrder
+			lay.Padding = UDim.new(0, 6)
+			lay.Parent = row
+			return row
+		end
+		local sbFilterRow = makeChipRow(3)
+		makeFilterChip(sbFilterRow, "Key", "KEY", function() return filters.key end, function(v) filters.key = v end)
+		makeFilterChip(sbFilterRow, "Universal", "UNIVERSAL", function() return filters.universal end, function(v) filters.universal = v end)
+		makeFilterChip(sbFilterRow, "Verified", "VERIFIED", function() return filters.verified end, function(v) filters.verified = v end)
+		makeFilterChip(sbFilterRow, "Patched", "PATCHED", function() return filters.patched end, function(v) filters.patched = v end)
+		local rsFilterRow = makeChipRow(3)
+		makeFilterChip(rsFilterRow, "Verified", "VERIFIED", function() return filters.verifiedOnly end, function(v) filters.verifiedOnly = v end)
+		makeFilterChip(rsFilterRow, "Free", "KEYLESS", function() return filters.notPaid end, function(v) filters.notPaid = v end)
+		makeFilterChip(rsFilterRow, "Unpatched", "MOBILE", function() return filters.unpatched end, function(v) filters.unpatched = v end)
+		makeFilterChip(rsFilterRow, "No key", "KEYLESS", function() return filters.noKeySystem end, function(v) filters.noKeySystem = v end)
+		updateFilterVisibility = function()
+			sbFilterRow.Visible = source == "ScriptBlox"
+			rsFilterRow.Visible = source == "RScripts"
+		end
+		updateFilterVisibility()
+		local statusText = Instance.new("TextLabel")
+		statusText.Name = RandomName()
+		statusText.BackgroundTransparency = 1
+		statusText.Size = UDim2.new(1, 0, 0, 16)
+		statusText.LayoutOrder = 4
+		statusText.Font = Enum.Font.Gotham
+		statusText.TextSize = 11
+		statusText.TextColor3 = th0.dim
+		statusText.TextXAlignment = Enum.TextXAlignment.Left
+		statusText.TextTruncate = Enum.TextTruncate.AtEnd
+		statusText.Text = "Enter a query and press Search."
+		statusText.Parent = composer
+		ApplyInterfaceFont(statusText, Enum.Font.Gotham)
+		statusLabel = {
+			Set = function(_, msg)
+				statusText.Text = tostring(msg)
 			end,
-		})
-		statusLabel = searchSub:CreateLabel({
-			Text = "Enter a query and press Search (needs HttpService / request).",
-			Style = 2,
-		})
+		}
 		local resultsHost = Instance.new("Frame")
 		resultsHost.Name = "ScriptSearcherResults"
-		resultsHost.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
-		resultsHost.BackgroundTransparency = 0.15
+		resultsHost.BackgroundColor3 = th0.surface
+		resultsHost.BackgroundTransparency = 0.08
 		resultsHost.BorderSizePixel = 0
-		resultsHost.Size = UDim2.new(1, 0, 0, 340)
-		resultsHost.LayoutOrder = 8
+		resultsHost.Size = UDim2.new(1, 0, 0, phoneUI and 280 or 360)
+		resultsHost.LayoutOrder = 2
 		resultsHost.Parent = searchPage
-		local hostCorner = Instance.new("UICorner")
-		hostCorner.CornerRadius = UDim.new(0, 8)
-		hostCorner.Parent = resultsHost
-		local hostStroke = Instance.new("UIStroke")
-		hostStroke.Color = Color3.fromRGB(70, 68, 85)
-		hostStroke.Transparency = 0.6
-		hostStroke.Parent = resultsHost
+		ssCorner(resultsHost, 12)
+		ssStroke(resultsHost, th0.stroke, 0.42)
 		local Scroll = Instance.new("ScrollingFrame")
 		Scroll.Name = "ResultsScroll"
 		Scroll.BackgroundTransparency = 1
 		Scroll.BorderSizePixel = 0
 		Scroll.Size = UDim2.new(1, -8, 1, -8)
 		Scroll.Position = UDim2.new(0, 4, 0, 4)
-		Scroll.ScrollBarThickness = 5
-		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+		Scroll.ScrollBarThickness = 4
+		Scroll.ScrollBarImageColor3 = th0.accent
 		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Scroll.ScrollingDirection = Enum.ScrollingDirection.Y
 		Scroll.Parent = resultsHost
 		local listLayout = Instance.new("UIListLayout")
-		listLayout.Padding = UDim.new(0, 6)
+		listLayout.Padding = UDim.new(0, 8)
 		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 		listLayout.Parent = Scroll
 		local scrollPad = Instance.new("UIPadding")
-		scrollPad.PaddingTop = UDim.new(0, 4)
+		scrollPad.PaddingTop = UDim.new(0, 6)
 		scrollPad.PaddingBottom = UDim.new(0, 8)
-		scrollPad.PaddingLeft = UDim.new(0, 4)
-		scrollPad.PaddingRight = UDim.new(0, 4)
+		scrollPad.PaddingLeft = UDim.new(0, 6)
+		scrollPad.PaddingRight = UDim.new(0, 6)
 		scrollPad.Parent = Scroll
-						local pageBar = Instance.new("Frame")
+		emptyState = Instance.new("Frame")
+		emptyState.Name = RandomName()
+		emptyState.BackgroundTransparency = 1
+		emptyState.Size = UDim2.fromScale(1, 1)
+		emptyState.ZIndex = 3
+		emptyState.Active = false
+		emptyState.Parent = resultsHost
+		do
+			local ico = Instance.new("ImageLabel")
+			ico.BackgroundTransparency = 1
+			ico.AnchorPoint = Vector2.new(0.5, 0.5)
+			ico.Position = UDim2.new(0.5, 0, 0.5, -28)
+			ico.Size = UDim2.fromOffset(28, 28)
+			ico.ImageColor3 = th0.muted
+			ico.ZIndex = 4
+			ico.Parent = emptyState
+			ApplyIcon(ico, GetIcon("search", "Lucide") or GetIcon("search", "Material"))
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.AnchorPoint = Vector2.new(0.5, 0)
+			title.Position = UDim2.new(0.5, 0, 0.5, -4)
+			title.Size = UDim2.new(1, -32, 0, 20)
+			title.Font = Enum.Font.GothamSemibold
+			title.TextSize = 14
+			title.TextColor3 = th0.text
+			title.Text = "Find scripts"
+			title.ZIndex = 4
+			title.Parent = emptyState
+			ApplyInterfaceFont(title, Enum.Font.GothamSemibold)
+			local sub = Instance.new("TextLabel")
+			sub.BackgroundTransparency = 1
+			sub.AnchorPoint = Vector2.new(0.5, 0)
+			sub.Position = UDim2.new(0.5, 0, 0.5, 18)
+			sub.Size = UDim2.new(1, -40, 0, 32)
+			sub.Font = Enum.Font.Gotham
+			sub.TextSize = 12
+			sub.TextColor3 = th0.dim
+			sub.TextWrapped = true
+			sub.Text = "Type a game or script name, or press This game."
+			sub.ZIndex = 4
+			sub.Parent = emptyState
+			ApplyInterfaceFont(sub, Enum.Font.Gotham)
+		end
+		local pageBar = Instance.new("Frame")
 		pageBar.Name = "ScriptSearcherPager"
 		pageBar.BackgroundTransparency = 1
-		pageBar.Size = UDim2.new(1, 0, 0, 34)
-		pageBar.LayoutOrder = 9
+		pageBar.Size = UDim2.new(1, 0, 0, 36)
+		pageBar.LayoutOrder = 3
 		pageBar.Parent = searchPage
 		local function pagerBtn(text, anchor, pos)
+			local t = ssTheme()
 			local b = Instance.new("TextButton")
 			b.AnchorPoint = anchor
 			b.Position = pos
-			b.Size = UDim2.new(0, 92, 0, 28)
-			b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+			b.Size = UDim2.new(0, 88, 0, 28)
+			b.BackgroundColor3 = t.elevated
+			b.BackgroundTransparency = 0.12
 			b.Font = Enum.Font.GothamSemibold
 			b.TextSize = 12
-			b.TextColor3 = Color3.new(1, 1, 1)
+			b.TextColor3 = t.text
 			b.Text = text
 			b.AutoButtonColor = false
 			b.Parent = pageBar
-			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = b
+			ApplyInterfaceFont(b, Enum.Font.GothamSemibold)
+			ssCorner(b, 8)
+			ssStroke(b, t.stroke, 0.45)
 			return b
 		end
-		local prevBtn = pagerBtn("< Prev", Vector2.new(0, 0), UDim2.new(0, 6, 0, 3))
-		local nextBtn = pagerBtn("Next >", Vector2.new(1, 0), UDim2.new(1, -6, 0, 3))
+		local prevBtn = pagerBtn("< Prev", Vector2.new(0, 0), UDim2.new(0, 0, 0, 4))
+		local nextBtn = pagerBtn("Next >", Vector2.new(1, 0), UDim2.new(1, 0, 0, 4))
 		local pageLabel = Instance.new("TextLabel")
 		pageLabel.BackgroundTransparency = 1
 		pageLabel.AnchorPoint = Vector2.new(0.5, 0)
-		pageLabel.Position = UDim2.new(0.5, 0, 0, 3)
+		pageLabel.Position = UDim2.new(0.5, 0, 0, 4)
 		pageLabel.Size = UDim2.new(0, 170, 0, 28)
 		pageLabel.Font = Enum.Font.GothamMedium
 		pageLabel.TextSize = 12
-		pageLabel.TextColor3 = Color3.fromRGB(200, 198, 210)
+		pageLabel.TextColor3 = th0.dim
 		pageLabel.Text = "Page 1"
 		pageLabel.Parent = pageBar
+		ApplyInterfaceFont(pageLabel, Enum.Font.GothamMedium)
 		local function updatePageBar()
 			pageLabel.Text = "Page " .. pageNum .. " / " .. math.max(maxPages, 1)
-			prevBtn.BackgroundTransparency = (pageNum > 1) and 0 or 0.55
-			nextBtn.BackgroundTransparency = (pageNum < maxPages) and 0 or 0.55
+			prevBtn.BackgroundTransparency = (pageNum > 1) and 0.08 or 0.55
+			nextBtn.BackgroundTransparency = (pageNum < maxPages) and 0.08 or 0.55
 		end
 		prevBtn.MouseButton1Click:Connect(function()
 			if pageNum > 1 and not loading then runSearch(pageNum - 1) end
@@ -10390,54 +10755,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				searchPage.CanvasPosition = Vector2.new(0, math.max(0, target))
 			end)
 		end
-		local sbFilterInsts = collectNew(searchPage, function()
-			searchSub:CreateSection("ScriptBlox filters")
-			local function sbToggle(name, key)
-				searchSub:CreateToggle({
-					Name = name,
-					CurrentValue = false,
-					Callback = function(v) filters[key] = v end,
-				})
-			end
-			sbToggle("Key system", "key")
-			sbToggle("Universal", "universal")
-			sbToggle("Verified", "verified")
-			sbToggle("Patched", "patched")
-		end)
-		local rsFilterInsts = collectNew(searchPage, function()
-			searchSub:CreateSection("RScripts filters")
-			local function rsToggle(name, key)
-				searchSub:CreateToggle({
-					Name = name,
-					CurrentValue = false,
-					Callback = function(v) filters[key] = v end,
-				})
-			end
-			rsToggle("Verified only", "verifiedOnly")
-			rsToggle("Free only", "notPaid")
-			rsToggle("Unpatched", "unpatched")
-			rsToggle("No key system", "noKeySystem")
-		end)
-				updateFilterVisibility = function()
-			for _, inst in ipairs(sbFilterInsts) do inst.Visible = (source == "ScriptBlox") end
-			for _, inst in ipairs(rsFilterInsts) do inst.Visible = (source == "RScripts") end
-		end
-		updateFilterVisibility()
-		local function setSectionLayoutOrder(sectionTitle, order)
-			for _, ch in ipairs(searchPage:GetChildren()) do
-				if ch:IsA("TextLabel") and ch.Text == sectionTitle then
-					ch.LayoutOrder = order
-					break
-				end
-			end
-		end
-		setSectionLayoutOrder("Search", 1)
-		setSectionLayoutOrder("ScriptBlox filters", 20)
-		setSectionLayoutOrder("RScripts filters", 21)
 		local function clearResults()
 			for _, ch in ipairs(Scroll:GetChildren()) do
 				if ch:IsA("Frame") then ch:Destroy() end
 			end
+			if emptyState then emptyState.Visible = true end
 		end
 		local function notifyCopy(text)
 			Luna:Notification({Title = "Script Searcher", Content = text, Icon = "content_copy"})
@@ -10571,27 +10893,24 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 				local function makeCard(data, order, parentScroll)
 			parentScroll = parentScroll or Scroll
+			local theme = ssTheme()
 			local card = Instance.new("Frame")
-			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
-			card.BackgroundTransparency = 0.05
+			card.BackgroundColor3 = theme.elevated
+			card.BackgroundTransparency = 0.08
 			card.Size = UDim2.fromOffset(cardWidth(), 116)
 			card.LayoutOrder = order
 			card.ZIndex = 2
 			card.Parent = parentScroll
-			local cCorner = Instance.new("UICorner")
-			cCorner.CornerRadius = UDim.new(0, 10)
-			cCorner.Parent = card
-			local cStroke = Instance.new("UIStroke")
-			cStroke.Color = Color3.fromRGB(70, 68, 85)
-			cStroke.Transparency = 0.75
-			cStroke.Parent = card
+			ssCorner(card, 12)
+			local cStroke = ssStroke(card, theme.stroke, 0.55)
 			local title = Instance.new("TextLabel")
 			title.BackgroundTransparency = 1
 			title.Position = UDim2.new(0, 10, 0, 6)
 			title.Size = UDim2.new(1, -20, 0, 18)
 			title.Font = Enum.Font.GothamSemibold
 			title.TextSize = 13
-			title.TextColor3 = Color3.fromRGB(245, 245, 250)
+			title.TextColor3 = theme.text
+			ApplyInterfaceFont(title, Enum.Font.GothamSemibold)
 			title.TextTruncate = Enum.TextTruncate.AtEnd
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Text = data.title or "Untitled"
@@ -10625,7 +10944,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			meta.Size = UDim2.new(1, -20, 0, 14)
 			meta.Font = Enum.Font.Gotham
 			meta.TextSize = 11
-			meta.TextColor3 = Color3.fromRGB(160, 160, 170)
+			meta.TextColor3 = theme.dim
+			ApplyInterfaceFont(meta, Enum.Font.Gotham)
 			meta.TextTruncate = Enum.TextTruncate.AtEnd
 			meta.TextXAlignment = Enum.TextXAlignment.Left
 			meta.Text = table.concat(metaParts, "  •  ")
@@ -10645,9 +10965,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			local row1 = btnRow(60)
 			local row2 = btnRow(88)
-			local function miniBtn(row, text, orderB, cb)
+			local function miniBtn(row, text, orderB, cb, kind)
+				kind = kind or (text == "Execute" and "primary") or "ghost"
+				local t = ssTheme()
 				local b = Instance.new("TextButton")
-				b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
 				b.Size = UDim2.new(1/3, -4, 1, 0)
 				b.Font = Enum.Font.GothamSemibold
 				b.TextSize = 11
@@ -10656,9 +10977,23 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				b.LayoutOrder = orderB
 				b.AutoButtonColor = false
 				b.Parent = row
-				local bc = Instance.new("UICorner")
-				bc.CornerRadius = UDim.new(0, 6)
-				bc.Parent = b
+				ApplyInterfaceFont(b, Enum.Font.GothamSemibold)
+				ssCorner(b, 7)
+				if kind == "primary" then
+					b.BackgroundColor3 = t.accent
+					b.BackgroundTransparency = 0.05
+				else
+					b.BackgroundColor3 = t.surface
+					b.BackgroundTransparency = 0.12
+					ssStroke(b, t.stroke, 0.45)
+				end
+				local idleT = b.BackgroundTransparency
+				b.MouseEnter:Connect(function()
+					tween(b, { BackgroundTransparency = math.max(0, idleT - 0.1) })
+				end)
+				b.MouseLeave:Connect(function()
+					tween(b, { BackgroundTransparency = idleT })
+				end)
 				b.Activated:Connect(cb)
 				return b
 			end
@@ -10938,6 +11273,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 		local function renderCards(cards)
 			clearResults()
+			if emptyState then emptyState.Visible = (#cards == 0) end
 			for i, c in ipairs(cards) do
 				makeCard(c, i)
 			end
@@ -10949,22 +11285,23 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 				local function buildListHost(parentPage)
+			local t = ssTheme()
 			local host = Instance.new("Frame")
-			host.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
-			host.BackgroundTransparency = 0.15
+			host.BackgroundColor3 = t.surface
+			host.BackgroundTransparency = 0.08
 			host.BorderSizePixel = 0
 			host.Size = UDim2.new(1, 0, 0, 400)
 			host.LayoutOrder = 2
 			host.Parent = parentPage
-			local hc = Instance.new("UICorner"); hc.CornerRadius = UDim.new(0, 8); hc.Parent = host
-			local hs = Instance.new("UIStroke"); hs.Color = Color3.fromRGB(70, 68, 85); hs.Transparency = 0.6; hs.Parent = host
+			ssCorner(host, 12)
+			ssStroke(host, t.stroke, 0.42)
 			local sc = Instance.new("ScrollingFrame")
 			sc.BackgroundTransparency = 1
 			sc.BorderSizePixel = 0
 			sc.Size = UDim2.new(1, -8, 1, -8)
 			sc.Position = UDim2.new(0, 4, 0, 4)
-			sc.ScrollBarThickness = 5
-			sc.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+			sc.ScrollBarThickness = 4
+			sc.ScrollBarImageColor3 = t.accent
 			sc.CanvasSize = UDim2.new(0, 0, 0, 0)
 			sc.AutomaticCanvasSize = Enum.AutomaticSize.Y
 			sc.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -10981,7 +11318,28 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sp.Parent = sc
 			return host, sc
 		end
-				local favCountLbl = favSub:CreateLabel({ Text = "", Style = 2 })
+		local function makeCountLine(parent)
+			local t = ssTheme()
+			local lbl = Instance.new("TextLabel")
+			lbl.Name = RandomName()
+			lbl.BackgroundTransparency = 1
+			lbl.Size = UDim2.new(1, 0, 0, 18)
+			lbl.LayoutOrder = 1
+			lbl.Font = Enum.Font.Gotham
+			lbl.TextSize = 12
+			lbl.TextColor3 = t.dim
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.TextTruncate = Enum.TextTruncate.AtEnd
+			lbl.Text = ""
+			lbl.Parent = parent
+			ApplyInterfaceFont(lbl, Enum.Font.Gotham)
+			return {
+				Set = function(_, text)
+					lbl.Text = tostring(text)
+				end,
+			}
+		end
+		local favCountLbl = makeCountLine(favSub.Page)
 		local _, favScroll = buildListHost(favSub.Page)
 		renderFavorites = function()
 			favCountLbl:Set(#favorites .. " favorite script(s) — use + Fav on a search result to add more.")
@@ -11001,28 +11359,31 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-				local histCountLbl = histSub:CreateLabel({ Text = "", Style = 2 })
+		local histCountLbl = makeCountLine(histSub.Page)
 		local _, histScroll = buildListHost(histSub.Page)
 		local function makeHistoryRow(e, order)
+			local t = ssTheme()
 			local row = Instance.new("Frame")
-			row.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
-			row.BackgroundTransparency = 0.05
-			row.Size = UDim2.new(1, -8, 0, 32)
+			row.BackgroundColor3 = t.elevated
+			row.BackgroundTransparency = 0.08
+			row.Size = UDim2.new(1, -8, 0, 34)
 			row.LayoutOrder = order
 			row.Parent = histScroll
-			local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 8); rc.Parent = row
+			ssCorner(row, 10)
+			ssStroke(row, t.stroke, 0.55)
 			local qBtn = Instance.new("TextButton")
 			qBtn.BackgroundTransparency = 1
 			qBtn.Position = UDim2.new(0, 10, 0, 0)
 			qBtn.Size = UDim2.new(1, -48, 1, 0)
 			qBtn.Font = Enum.Font.GothamMedium
 			qBtn.TextSize = 12
-			qBtn.TextColor3 = Color3.fromRGB(230, 230, 240)
+			qBtn.TextColor3 = t.text
 			qBtn.TextXAlignment = Enum.TextXAlignment.Left
 			qBtn.TextTruncate = Enum.TextTruncate.AtEnd
 			qBtn.Text = tostring(e.Query) .. "   (" .. tostring(e.Source or "?") .. ")"
 			qBtn.AutoButtonColor = false
 			qBtn.Parent = row
+			ApplyInterfaceFont(qBtn, Enum.Font.GothamMedium)
 			local xBtn = Instance.new("TextButton")
 			xBtn.AnchorPoint = Vector2.new(1, 0.5)
 			xBtn.Position = UDim2.new(1, -8, 0.5, 0)
@@ -11034,7 +11395,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			xBtn.Text = "X"
 			xBtn.AutoButtonColor = false
 			xBtn.Parent = row
-			local xc = Instance.new("UICorner"); xc.CornerRadius = UDim.new(0, 6); xc.Parent = xBtn
+			ApplyInterfaceFont(xBtn, Enum.Font.GothamSemibold)
+			ssCorner(xBtn, 6)
 			qBtn.MouseButton1Click:Connect(function()
 				pcall(function() queryInput:Set(e.Query) end)
 				source = (e.Source == "RScripts") and "RScripts" or "ScriptBlox"
@@ -11135,7 +11497,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		renderFavorites()
 		renderHistory()
 		updatePageBar()
-		setStatus("Ready — use Search or press Enter in Query.")
+		setStatus("Ready — type a query and press Search.")
 		Window._ScriptSearcherTab = hostTab
 		return hostTab
 	end
