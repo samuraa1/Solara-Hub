@@ -1988,6 +1988,262 @@ local function ApplyIcon(imageLabel, iconData)
         imageLabel.ImageRectOffset = Vector2.new(0, 0)
     end
 end
+local function enumFont(name, fallback)
+	local ok, font = pcall(function()
+		return Enum.Font[name]
+	end)
+	if ok and typeof(font) == "EnumItem" then
+		return font
+	end
+	return fallback
+end
+Luna.ActiveFontName = "Builder Sans"
+local FontPacks = {
+	["Builder Sans"] = {
+		Regular = enumFont("BuilderSans", Enum.Font.Gotham),
+		Medium = enumFont("BuilderSansMedium", Enum.Font.GothamMedium),
+		Semi = enumFont("BuilderSansMedium", Enum.Font.GothamSemibold),
+		Bold = enumFont("BuilderSansBold", Enum.Font.GothamBold),
+		Black = enumFont("BuilderSansExtraBold", Enum.Font.GothamBlack),
+	},
+	Gotham = {
+		Regular = Enum.Font.Gotham,
+		Medium = Enum.Font.GothamMedium,
+		Semi = Enum.Font.GothamSemibold,
+		Bold = Enum.Font.GothamBold,
+		Black = Enum.Font.GothamBlack,
+	},
+	["Source Sans"] = {
+		Regular = Enum.Font.SourceSans,
+		Medium = Enum.Font.SourceSansSemibold,
+		Semi = Enum.Font.SourceSansSemibold,
+		Bold = Enum.Font.SourceSansBold,
+		Black = Enum.Font.SourceSansBold,
+	},
+	Nunito = {
+		Regular = enumFont("Nunito", Enum.Font.Gotham),
+		Medium = enumFont("Nunito", Enum.Font.GothamMedium),
+		Semi = enumFont("Nunito", Enum.Font.GothamSemibold),
+		Bold = enumFont("Nunito", Enum.Font.GothamBold),
+		Black = enumFont("Nunito", Enum.Font.GothamBlack),
+	},
+	Ubuntu = {
+		Regular = enumFont("Ubuntu", Enum.Font.Gotham),
+		Medium = enumFont("UbuntuMedium", Enum.Font.GothamMedium),
+		Semi = enumFont("UbuntuMedium", Enum.Font.GothamSemibold),
+		Bold = enumFont("UbuntuBold", Enum.Font.GothamBold),
+		Black = enumFont("UbuntuBold", Enum.Font.GothamBlack),
+	},
+	Fredoka = {
+		Regular = enumFont("FredokaOne", Enum.Font.GothamBold),
+		Medium = enumFont("FredokaOne", Enum.Font.GothamBold),
+		Semi = enumFont("FredokaOne", Enum.Font.GothamBold),
+		Bold = enumFont("FredokaOne", Enum.Font.GothamBold),
+		Black = enumFont("FredokaOne", Enum.Font.GothamBold),
+	},
+}
+local FontRole = {}
+do
+	local function mapRole(font, role)
+		if font then
+			FontRole[font] = role
+		end
+	end
+	for _, pack in pairs(FontPacks) do
+		mapRole(pack.Regular, "Regular")
+		mapRole(pack.Medium, "Medium")
+		mapRole(pack.Semi, "Semi")
+		mapRole(pack.Bold, "Bold")
+		mapRole(pack.Black, "Black")
+	end
+	mapRole(Enum.Font.Gotham, "Regular")
+	mapRole(Enum.Font.GothamMedium, "Medium")
+	mapRole(Enum.Font.GothamSemibold, "Semi")
+	mapRole(Enum.Font.GothamBold, "Bold")
+	mapRole(Enum.Font.GothamBlack, "Black")
+	mapRole(Enum.Font.SourceSans, "Regular")
+	mapRole(Enum.Font.SourceSansLight, "Regular")
+	mapRole(Enum.Font.SourceSansSemibold, "Semi")
+	mapRole(Enum.Font.SourceSansBold, "Bold")
+end
+local FONT_SKIP = {
+	[Enum.Font.Code] = true,
+}
+pcall(function()
+	FONT_SKIP[Enum.Font.RobotoMono] = true
+end)
+local function ApplyInterfaceFont(obj, sourceFont)
+	if not obj or obj:GetAttribute("LunaNoFont") then
+		return
+	end
+	if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then
+		return
+	end
+	sourceFont = sourceFont or obj.Font
+	if FONT_SKIP[sourceFont] or FONT_SKIP[obj.Font] then
+		return
+	end
+	local pack = FontPacks[Luna.ActiveFontName or "Builder Sans"] or FontPacks["Builder Sans"]
+	if not pack then
+		return
+	end
+	local role = FontRole[sourceFont] or "Regular"
+	local target = pack[role] or pack.Regular
+	if target then
+		obj.Font = target
+	end
+end
+local TAG_COLORS = {
+	KEY = Color3.fromRGB(255, 209, 102),
+	KEYLESS = Color3.fromRGB(110, 220, 140),
+	PAID = Color3.fromRGB(255, 159, 67),
+	MOBILE = Color3.fromRGB(110, 193, 255),
+	UNIVERSAL = Color3.fromRGB(199, 146, 234),
+	VERIFIED = Color3.fromRGB(110, 220, 140),
+	PATCHED = Color3.fromRGB(255, 107, 107),
+	GAME = Color3.fromRGB(110, 220, 140),
+	["THIS GAME"] = Color3.fromRGB(110, 220, 140),
+}
+local function LunaInferTags(name, desc)
+	local blob = (tostring(name or "") .. " " .. tostring(desc or "")):lower()
+	local tags = {}
+	local function has(s)
+		return blob:find(s, 1, true) ~= nil
+	end
+	if has("keyless") or has("without key") or has("no key") then
+		table.insert(tags, "KEYLESS")
+	elseif has("key system") or has("with key") or has("get key") then
+		table.insert(tags, "KEY")
+	end
+	if has("mobile") then
+		table.insert(tags, "MOBILE")
+	end
+	if has("paid") or has("premium") then
+		table.insert(tags, "PAID")
+	end
+	return tags
+end
+local function LunaResolveTags(settings)
+	settings = settings or {}
+	if settings.Tags == false then
+		return {}
+	end
+	if type(settings.Tags) == "table" then
+		local out, seen = {}, {}
+		for _, t in ipairs(settings.Tags) do
+			if type(t) == "string" and t ~= "" then
+				local u = t:upper()
+				if not seen[u] then
+					seen[u] = true
+					table.insert(out, u)
+				end
+			end
+		end
+		return out
+	end
+	return LunaInferTags(settings.Name, settings.Description)
+end
+local function LunaMakeTagRow(parent, tags, opts)
+	opts = opts or {}
+	local maxN = opts.Max or 4
+	local holder = Instance.new("Frame")
+	holder.Name = opts.Name or "LunaTags"
+	holder.BackgroundTransparency = 1
+	holder.BorderSizePixel = 0
+	holder.AutomaticSize = Enum.AutomaticSize.X
+	holder.Size = UDim2.fromOffset(0, opts.Height or 18)
+	holder:SetAttribute("LunaNoTheme", true)
+	holder.ZIndex = opts.ZIndex or ((parent and parent.ZIndex) or 1) + 2
+	holder.Parent = parent
+	local list = Instance.new("UIListLayout")
+	list.FillDirection = Enum.FillDirection.Horizontal
+	list.HorizontalAlignment = opts.Align or Enum.HorizontalAlignment.Right
+	list.VerticalAlignment = Enum.VerticalAlignment.Center
+	list.Padding = UDim.new(0, 4)
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Parent = holder
+	local n = 0
+	for _, raw in ipairs(tags or {}) do
+		if n >= maxN then
+			break
+		end
+		local label = tostring(raw)
+		if label ~= "" then
+			n = n + 1
+			local key = label:upper()
+			local color = TAG_COLORS[key] or TAG_COLORS[label] or Color3.fromRGB(170, 168, 190)
+			local chip = Instance.new("Frame")
+			chip.BackgroundColor3 = color
+			chip.BackgroundTransparency = 0.78
+			chip.BorderSizePixel = 0
+			chip.AutomaticSize = Enum.AutomaticSize.X
+			chip.Size = UDim2.fromOffset(0, opts.Height or 18)
+			chip.LayoutOrder = n
+			chip:SetAttribute("LunaNoTheme", true)
+			chip.ZIndex = holder.ZIndex + 1
+			chip.Parent = holder
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = chip
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = color
+			stroke.Thickness = 1
+			stroke.Transparency = 0.28
+			stroke.Parent = chip
+			local pad = Instance.new("UIPadding")
+			pad.PaddingLeft = UDim.new(0, 6)
+			pad.PaddingRight = UDim.new(0, 6)
+			pad.Parent = chip
+			local text = Instance.new("TextLabel")
+			text.BackgroundTransparency = 1
+			text.AutomaticSize = Enum.AutomaticSize.X
+			text.Size = UDim2.fromScale(0, 1)
+			text.Font = Enum.Font.GothamBold
+			text.TextSize = opts.TextSize or 10
+			text.TextColor3 = color
+			text.Text = label
+			text:SetAttribute("LunaNoTheme", true)
+			text.ZIndex = chip.ZIndex + 1
+			text.Parent = chip
+			ApplyInterfaceFont(text, Enum.Font.GothamBold)
+		end
+	end
+	if n == 0 then
+		holder:Destroy()
+		return nil
+	end
+	return holder
+end
+local function LunaAttachButtonTags(button, tags)
+	local old = button and button:FindFirstChild("LunaTags")
+	if old then
+		old:Destroy()
+	end
+	if not button or type(tags) ~= "table" or #tags == 0 then
+		return
+	end
+	local row = LunaMakeTagRow(button, tags, { Name = "LunaTags", Max = 3, Height = 18, TextSize = 10 })
+	if not row then
+		return
+	end
+	row.AnchorPoint = Vector2.new(1, 0.5)
+	row.Position = UDim2.new(1, -10, 0.5, 0)
+	local title = button:FindFirstChild("Title") or button:FindFirstChild("TextLabel")
+	if title then
+		pcall(function()
+			title.TextTruncate = Enum.TextTruncate.AtEnd
+		end)
+		local function fit()
+			if not title.Parent or not row.Parent then
+				return
+			end
+			local extra = math.max(0, math.ceil(row.AbsoluteSize.X) + 16)
+			title.Size = UDim2.new(1, -(extra + (title.Position.X.Offset or 0)), title.Size.Y.Scale, title.Size.Y.Offset)
+		end
+		row:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+		task.defer(fit)
+	end
+end
 local _LunaRandom = Random.new()
 local function RandomName()
     local hex = "0123456789abcdef"
@@ -2716,8 +2972,8 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 			obj.TextColor3 = MapTextColor(orig.Text, T)
 			orig.MappedText = obj.TextColor3
 		end
-		if orig.Font and BuilderFontMap[orig.Font] then
-			obj.Font = BuilderFontMap[orig.Font]
+		if orig.Font then
+			ApplyInterfaceFont(obj, orig.Font)
 		end
 		if orig.Placeholder and obj:IsA("TextBox") then
 			obj.PlaceholderTextColor = T.TextMuted
@@ -4482,6 +4738,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 				Button.Visible = true
 				Button.Parent = TabPage
+				LunaAttachButtonTags(Button, LunaResolveTags(ButtonSettings))
 				Button.UIStroke.Transparency = 1
 				Button.Title.TextTransparency = 1
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" then
@@ -4528,7 +4785,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					ButtonSettings2 = Kwargify({
 						Name = ButtonSettings.Name,
 						Description = ButtonSettings.Description,
-						Callback = ButtonSettings.Callback
+						Callback = ButtonSettings.Callback,
+						Tags = ButtonSettings.Tags
 					}, ButtonSettings2 or {})
 					ButtonSettings = ButtonSettings2
 					ButtonV.Settings = ButtonSettings2
@@ -4537,6 +4795,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
 						Button.Desc.Text = ButtonSettings.Description
 					end
+					LunaAttachButtonTags(Button, LunaResolveTags(ButtonSettings))
 				end
 				function ButtonV:Destroy()
 					Button.Visible = false
@@ -5853,6 +6112,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 			Button.Visible = true
 			Button.Parent = TabPage
+			LunaAttachButtonTags(Button, LunaResolveTags(ButtonSettings))
 			local btnStroke = LunaFindStroke(Button)
 			local btnTitle = LunaFindTitle(Button)
 			if btnStroke then btnStroke.Transparency = 1 end
@@ -5913,7 +6173,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				ButtonSettings2 = Kwargify({
 					Name = ButtonSettings.Name,
 					Description = ButtonSettings.Description,
-					Callback = ButtonSettings.Callback
+					Callback = ButtonSettings.Callback,
+					Tags = ButtonSettings.Tags
 				}, ButtonSettings2 or {})
 				ButtonSettings = ButtonSettings2
 				ButtonV.Settings = ButtonSettings2
@@ -5922,6 +6183,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				if ButtonSettings.Description ~= nil and ButtonSettings.Description ~= "" and Button.Desc ~= nil then
 					LunaSetText(Button.Desc, ButtonSettings.Description)
 				end
+				LunaAttachButtonTags(Button, LunaResolveTags(ButtonSettings))
 			end
 			function ButtonV:Destroy()
 				Button.Visible = false
@@ -10335,25 +10597,21 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			title.Text = data.title or "Untitled"
 			title.Parent = card
 			local badges = {}
-			if data.gameMatch then table.insert(badges, '<font color="#7CE38B">[THIS GAME]</font>') end
-			if data.verified then table.insert(badges, '<font color="#7CE38B">[VERIFIED]</font>') end
-			if data.patched then table.insert(badges, '<font color="#FF6B6B">[PATCHED]</font>') end
-			if data.keySystem then table.insert(badges, '<font color="#FFD166">[KEY]</font>') end
-			if data.paid then table.insert(badges, '<font color="#FF9F43">[PAID]</font>') end
-			if data.mobile then table.insert(badges, '<font color="#6EC1FF">[MOBILE]</font>') end
-			if data.universal then table.insert(badges, '<font color="#C792EA">[UNIVERSAL]</font>') end
-			if data.ranCount and data.ranCount > 0 then table.insert(badges, '<font color="#9AA0A6">[RAN x' .. data.ranCount .. ']</font>') end
-			local badgeLbl = Instance.new("TextLabel")
-			badgeLbl.BackgroundTransparency = 1
-			badgeLbl.Position = UDim2.new(0, 10, 0, 25)
-			badgeLbl.Size = UDim2.new(1, -20, 0, 14)
-			badgeLbl.Font = Enum.Font.GothamMedium
-			badgeLbl.TextSize = 10
-			badgeLbl.RichText = true
-			badgeLbl.TextXAlignment = Enum.TextXAlignment.Left
-			badgeLbl.TextTruncate = Enum.TextTruncate.AtEnd
-			badgeLbl.Text = table.concat(badges, " ")
-			badgeLbl.Parent = card
+			if data.gameMatch then table.insert(badges, "GAME") end
+			if data.verified then table.insert(badges, "VERIFIED") end
+			if data.patched then table.insert(badges, "PATCHED") end
+			if data.keySystem then table.insert(badges, "KEY") end
+			if data.paid then table.insert(badges, "PAID") end
+			if data.mobile then table.insert(badges, "MOBILE") end
+			if data.universal then table.insert(badges, "UNIVERSAL") end
+			if data.ranCount and data.ranCount > 0 then table.insert(badges, "RAN x" .. data.ranCount) end
+			if #badges > 0 then
+				local badgeRow = LunaMakeTagRow(card, badges, { Name = "LunaTags", Max = 6, Height = 16, TextSize = 9, Align = Enum.HorizontalAlignment.Left })
+				if badgeRow then
+					badgeRow.AnchorPoint = Vector2.new(0, 0)
+					badgeRow.Position = UDim2.new(0, 10, 0, 26)
+				end
+			end
 			local metaParts = {}
 			if data.game then table.insert(metaParts, tostring(data.game)) end
 			if data.author then table.insert(metaParts, tostring(data.author)) end
@@ -10401,36 +10659,42 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local bc = Instance.new("UICorner")
 				bc.CornerRadius = UDim.new(0, 6)
 				bc.Parent = b
-				b.MouseButton1Click:Connect(cb)
 				b.Activated:Connect(cb)
 				return b
 			end
 			local execBtn
 			execBtn = miniBtn(row1, "Execute", 1, function()
-				if data.raw and data.raw ~= "" then
-					local ok, err = pcall(function() loadstring(data.raw)() end)
-					if ok then
-						ssRecordRun(data.title, dataKey(data))
-					else
-						Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
-					end
-				elseif data.fetchUrl then
-					if execBtn.Text ~= "Execute" then return end
-					execBtn.Text = "..."
-					task.spawn(function()
-						local body = LunaHttpGet(data.fetchUrl)
-						execBtn.Text = "Execute"
-						if body then
-							local ok2, err = pcall(function() loadstring(body)() end)
-							if ok2 then
-								ssRecordRun(data.title, dataKey(data))
-							else
-								Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
-							end
+				local function runSearcherScript()
+					if data.raw and data.raw ~= "" then
+						local ok, err = pcall(function() loadstring(data.raw)() end)
+						if ok then
+							ssRecordRun(data.title, dataKey(data))
 						else
-							Luna:Notification({Title = "Script Searcher", Content = "Could not fetch script.", Icon = "error"})
+							Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
 						end
-					end)
+					elseif data.fetchUrl then
+						if execBtn.Text ~= "Execute" then return end
+						execBtn.Text = "..."
+						task.spawn(function()
+							local body = LunaHttpGet(data.fetchUrl)
+							execBtn.Text = "Execute"
+							if body then
+								local ok2, err = pcall(function() loadstring(body)() end)
+								if ok2 then
+									ssRecordRun(data.title, dataKey(data))
+								else
+									Luna:Notification({Title = "Execute Error", Content = tostring(err), Icon = "error"})
+								end
+							else
+								Luna:Notification({Title = "Script Searcher", Content = "Could not fetch script.", Icon = "error"})
+							end
+						end)
+					end
+				end
+				if type(Window.OnRemoteScriptExecute) == "function" then
+					Window.OnRemoteScriptExecute(data.title or "Script", runSearcherScript)
+				else
+					runSearcherScript()
 				end
 			end)
 			local viewBtn
@@ -11400,6 +11664,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			if gpe then return end
 			if not Window._SearchEnabled then return end
+			if Window._ConfirmOpen then return end
 			if input.KeyCode == Window._SearchKeybind then
 				if Window._SearchKeybindRequiresCtrl then
 					if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
@@ -11438,14 +11703,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	end
 				if WindowSettings.Resizable and CanShowResizeHandle() then
 		local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
-		local idleBar = Color3.fromRGB(210, 210, 220)
+		local idleIcon = (Luna.ActiveTheme and Luna.ActiveTheme.TextSecondary) or Color3.fromRGB(210, 210, 220)
 		local HandleBack = Instance.new("TextButton")
 		HandleBack.Name = RandomName()
 		HandleBack:SetAttribute("LunaNoTheme", true)
 		HandleBack:SetAttribute("LunaNoTranslate", true)
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
 		HandleBack.Position = UDim2.new(1, -2, 1, -2)
-		HandleBack.Size = UDim2.fromOffset(22, 22)
+		HandleBack.Size = UDim2.fromOffset(18, 18)
 		HandleBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		HandleBack.BackgroundTransparency = 1
 		HandleBack.BorderSizePixel = 0
@@ -11453,44 +11718,35 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		HandleBack.AutoButtonColor = false
 		HandleBack.ZIndex = 120
 		HandleBack.Parent = Main
-		local gripBars = {}
-		local function makeGripBar(offset)
-			local bar = Instance.new("Frame")
-			bar.Name = RandomName()
-			bar:SetAttribute("LunaNoTheme", true)
-			bar.AnchorPoint = Vector2.new(1, 1)
-			bar.Position = UDim2.new(1, -3 - offset, 1, -3 - offset)
-			bar.Size = UDim2.fromOffset(11, 2)
-			bar.Rotation = -45
-			bar.BackgroundColor3 = idleBar
-			bar.BackgroundTransparency = 0.35
-			bar.BorderSizePixel = 0
-			bar.ZIndex = 121
-			bar.Active = false
-			local barCorner = Instance.new("UICorner")
-			barCorner.CornerRadius = UDim.new(1, 0)
-			barCorner.Parent = bar
-			bar.Parent = HandleBack
-			table.insert(gripBars, bar)
-			return bar
+		local ResizeIcon = Instance.new("ImageLabel")
+		ResizeIcon.Name = RandomName()
+		ResizeIcon:SetAttribute("LunaNoTheme", true)
+		ResizeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+		ResizeIcon.Position = UDim2.fromScale(0.5, 0.5)
+		ResizeIcon.Size = UDim2.fromOffset(14, 14)
+		ResizeIcon.BackgroundTransparency = 1
+		ResizeIcon.BorderSizePixel = 0
+		ResizeIcon.ImageColor3 = idleIcon
+		ResizeIcon.ImageTransparency = 0.5
+		ResizeIcon.ZIndex = 121
+		ResizeIcon.Active = false
+		ResizeIcon.Parent = HandleBack
+		do
+			local iconData = GetIcon("move-diagonal-2", "Lucide") or GetIcon("open_in_full", "Material")
+			ApplyIcon(ResizeIcon, iconData)
 		end
-		makeGripBar(0)
-		makeGripBar(5)
-		makeGripBar(10)
 		local function refreshHandleAccent()
 			accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+			idleIcon = (Luna.ActiveTheme and Luna.ActiveTheme.TextSecondary) or Color3.fromRGB(210, 210, 220)
 		end
 		local function paintGrip(hovered, dragging)
 			refreshHandleAccent()
-			local color = (hovered or dragging) and accent or idleBar
-			local trans = dragging and 0 or (hovered and 0.05 or 0.35)
-			local info = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			for _, bar in ipairs(gripBars) do
-				TweenService:Create(bar, info, {
-					BackgroundColor3 = color,
-					BackgroundTransparency = trans,
-				}):Play()
-			end
+			local color = (hovered or dragging) and accent or idleIcon
+			local trans = (hovered or dragging) and 0 or 0.5
+			TweenService:Create(ResizeIcon, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				ImageColor3 = color,
+				ImageTransparency = trans,
+			}):Play()
 		end
 		HandleBack.MouseEnter:Connect(function()
 			if not Window._Resizing then
@@ -11544,6 +11800,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					resizing = false
 					Window._Resizing = false
 					paintGrip(false, false)
+					if type(Window.OnWindowResized) == "function" then
+						pcall(Window.OnWindowResized, Main.AbsoluteSize.X, Main.AbsoluteSize.Y)
+					end
 				end
 			end
 		end)
@@ -11758,6 +12017,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if ok then
 				Window._ThemeName = Luna.CurrentTheme
 			end
+			if Window.GetCustomCursor and Window.GetCustomCursor() and Window.SetCustomCursor then
+				pcall(Window.SetCustomCursor, true)
+			end
 			return ok
 		end
 		Window.RefreshTheme = function()
@@ -11774,6 +12036,27 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			table.sort(names)
 			return names
+		end
+		Window.GetInterfaceFonts = function()
+			return { "Builder Sans", "Gotham", "Source Sans", "Nunito", "Ubuntu", "Fredoka" }
+		end
+		Window.SetInterfaceFont = function(name)
+			if type(name) ~= "string" or not FontPacks[name] then
+				return false
+			end
+			Luna.ActiveFontName = name
+			if LunaUI then
+				for _, d in ipairs(LunaUI:GetDescendants()) do
+					if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+						local orig = OriginalSkin[d]
+						ApplyInterfaceFont(d, orig and orig.Font or d.Font)
+					end
+				end
+			end
+			return true
+		end
+		Window.GetInterfaceFont = function()
+			return Luna.ActiveFontName or "Builder Sans"
 		end
 		Window.GetActiveTheme = function()
 			return Luna.CurrentTheme
@@ -11848,6 +12131,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if gpe then return end
 			if Window._TourActive then return end
 			if Window._SearchOpen then return end
+			if Window._ConfirmOpen then return end
 			local n = keyToIndex[input.KeyCode]
 			if not n then return end
 			if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
@@ -12180,13 +12464,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local DIM = 0.36
 			local vp = (Camera and Camera.ViewportSize) or Vector2.new(1280, 720)
 			local phone = IsPhoneClient()
-			local CARD_W = math.floor(math.clamp(phone and (vp.X - 40) or 412, 304, 448))
-			local CARD_H = math.floor(math.clamp(phone and 308 or 276, 248, 330))
-			local btnH = phone and 42 or 36
-			local btnY = CARD_H - btnH - 14
-			local dotsY = btnY - 24
-			local bodyY = 64
-			local bodyH = math.max(72, dotsY - bodyY - 12)
+			local CARD_W = math.floor(math.clamp(phone and (vp.X - 56) or 348, 272, 372))
+			local CARD_H = math.floor(math.clamp(phone and 248 or 214, 196, 268))
+			local btnH = phone and 34 or 28
+			local btnY = CARD_H - btnH - 12
+			local dotsY = btnY - 20
+			local bodyY = 52
+			local bodyH = math.max(56, dotsY - bodyY - 10)
 			local fadeInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			local popInfo = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			local closeInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -12299,8 +12583,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			iconChip.BackgroundColor3 = accentNow()
 			iconChip.BackgroundTransparency = 1
 			iconChip.BorderSizePixel = 0
-			iconChip.Position = UDim2.fromOffset(16, 14)
-			iconChip.Size = UDim2.fromOffset(32, 32)
+			iconChip.Position = UDim2.fromOffset(14, 12)
+			iconChip.Size = UDim2.fromOffset(26, 26)
 			iconChip.ZIndex = 8012
 			iconChip.Parent = card
 			local chipCorner = Instance.new("UICorner")
@@ -12310,17 +12594,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			iconLabel.BackgroundTransparency = 1
 			iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 			iconLabel.Position = UDim2.fromScale(0.5, 0.5)
-			iconLabel.Size = UDim2.fromOffset(18, 18)
+			iconLabel.Size = UDim2.fromOffset(15, 15)
 			iconLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
 			iconLabel.ImageTransparency = 1
 			iconLabel.ZIndex = 8013
 			iconLabel.Parent = iconChip
 			local titleLabel = Instance.new("TextLabel")
 			titleLabel.BackgroundTransparency = 1
-			titleLabel.Position = UDim2.fromOffset(58, 14)
-			titleLabel.Size = UDim2.fromOffset(CARD_W - 76, 22)
+			titleLabel.Position = UDim2.fromOffset(48, 10)
+			titleLabel.Size = UDim2.fromOffset(CARD_W - 64, 20)
 			titleLabel.Font = Enum.Font.GothamBold
-			titleLabel.TextSize = 18
+			titleLabel.TextSize = 16
 			titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 			titleLabel.TextTransparency = 1
 			titleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -12329,8 +12613,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			titleLabel.Parent = card
 			local stepLabel = Instance.new("TextLabel")
 			stepLabel.BackgroundTransparency = 1
-			stepLabel.Position = UDim2.fromOffset(58, 36)
-			stepLabel.Size = UDim2.fromOffset(CARD_W - 76, 16)
+			stepLabel.Position = UDim2.fromOffset(48, 30)
+			stepLabel.Size = UDim2.fromOffset(CARD_W - 64, 14)
 			stepLabel.Font = Enum.Font.GothamMedium
 			stepLabel.TextSize = 12
 			stepLabel.TextColor3 = Color3.fromRGB(170, 170, 184)
@@ -12343,7 +12627,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			bodyLabel.Position = UDim2.fromOffset(18, bodyY)
 			bodyLabel.Size = UDim2.fromOffset(CARD_W - 36, bodyH)
 			bodyLabel.Font = Enum.Font.Gotham
-			bodyLabel.TextSize = 14
+			bodyLabel.TextSize = 13
 			bodyLabel.TextColor3 = Color3.fromRGB(214, 214, 224)
 			bodyLabel.TextTransparency = 1
 			bodyLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -12418,9 +12702,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 				return btn
 			end
-			local skipW = phone and 72 or 64
-			local backW = phone and 78 or 72
-			local nextW = phone and 88 or 82
+			local skipW = phone and 64 or 56
+			local backW = phone and 70 or 64
+			local nextW = phone and 78 or 72
 			local skipBtn = makeBtn("Skip", 14, skipW, false)
 			local backBtn = makeBtn("Back", CARD_W - backW - nextW - 24, backW, false)
 			local nextBtn = makeBtn("Next", CARD_W - nextW - 14, nextW, true)
@@ -12717,9 +13001,434 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			return true
 		end
 	end
+	do
+		local confirmState = {
+			open = false,
+			layer = nil,
+			conns = {},
+			dontAsk = false,
+			onConfirm = nil,
+			onCancel = nil,
+			onDontAsk = nil,
+			closing = false,
+		}
+		local function disconnectConfirm()
+			for _, c in ipairs(confirmState.conns) do
+				pcall(function() c:Disconnect() end)
+			end
+			confirmState.conns = {}
+		end
+		local function destroyConfirmLayer()
+			disconnectConfirm()
+			if confirmState.layer then
+				pcall(function() confirmState.layer:Destroy() end)
+				confirmState.layer = nil
+			end
+			confirmState.open = false
+			confirmState.closing = false
+			Window._ConfirmOpen = false
+			confirmState.onConfirm = nil
+			confirmState.onCancel = nil
+			confirmState.onDontAsk = nil
+			confirmState.dontAsk = false
+		end
+		function Window:CloseConfirm(reason)
+			if confirmState.closing then
+				if reason == "destroyed" then
+					destroyConfirmLayer()
+				end
+				return
+			end
+			if not confirmState.open and not confirmState.layer then
+				return
+			end
+			reason = reason or "closed"
+			local cancel = confirmState.onCancel
+			if reason ~= "confirmed" and reason ~= "destroyed" and type(cancel) == "function" then
+				pcall(cancel)
+			end
+			destroyConfirmLayer()
+		end
+		function Window:Confirm(settings)
+			settings = Kwargify({
+				Title = "Are you sure?",
+				Body = "",
+				ConfirmText = "Confirm",
+				CancelText = "Cancel",
+				Icon = "warning",
+				ImageSource = "Material",
+				DontAskAgain = false,
+				OnConfirm = nil,
+				OnCancel = nil,
+				OnDontAskAgain = nil,
+			}, settings or {})
+			if confirmState.open then
+				self:CloseConfirm("replaced")
+			end
+			if not Main or not Main.Parent then
+				if type(settings.OnConfirm) == "function" then
+					pcall(settings.OnConfirm)
+				end
+				return false
+			end
+			confirmState.onConfirm = settings.OnConfirm
+			confirmState.onCancel = settings.OnCancel
+			confirmState.onDontAsk = settings.OnDontAskAgain
+			confirmState.dontAsk = false
+			confirmState.closing = false
+			local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+			local surface = (Luna.ActiveTheme and Luna.ActiveTheme.Surface) or Color3.fromRGB(22, 22, 28)
+			local vp = (Camera and Camera.ViewportSize) or Vector2.new(1280, 720)
+			local phone = IsPhoneClient()
+			local CARD_W = math.floor(math.clamp(phone and (vp.X - 48) or 420, 280, 460))
+			local showCancel = type(settings.CancelText) == "string" and settings.CancelText ~= ""
+			local showDont = settings.DontAskAgain == true
+			local CARD_H = phone and 268 or 240
+			if showDont then
+				CARD_H = CARD_H + 22
+			end
+			local fadeInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+			local popInfo = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local closeInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			local layer = Instance.new("Frame")
+			layer.Name = RandomName()
+			layer:SetAttribute("LunaNoTheme", true)
+			layer:SetAttribute("LunaNoTranslate", true)
+			layer.BackgroundTransparency = 1
+			layer.BorderSizePixel = 0
+			layer.Size = UDim2.fromScale(1, 1)
+			layer.Position = UDim2.fromScale(0, 0)
+			layer.ZIndex = 7000
+			layer.Visible = true
+			layer.Parent = LunaUI
+			confirmState.layer = layer
+			local backdrop = Instance.new("TextButton")
+			backdrop.Name = RandomName()
+			backdrop.AutoButtonColor = false
+			backdrop.Text = ""
+			backdrop.Size = UDim2.fromScale(1, 1)
+			backdrop.BackgroundColor3 = Color3.fromRGB(4, 4, 10)
+			backdrop.BackgroundTransparency = 1
+			backdrop.BorderSizePixel = 0
+			backdrop.ZIndex = 7000
+			backdrop.Parent = layer
+			local card = Instance.new("Frame")
+			card.Name = RandomName()
+			card.AnchorPoint = Vector2.new(0.5, 0.5)
+			card.Position = UDim2.fromScale(0.5, 0.5)
+			card.Size = UDim2.fromOffset(CARD_W, CARD_H)
+			card.BackgroundColor3 = surface
+			card.BackgroundTransparency = 1
+			card.BorderSizePixel = 0
+			card.ZIndex = 7010
+			card.Parent = layer
+			local cardScale = Instance.new("UIScale")
+			cardScale.Scale = 0.9
+			cardScale.Parent = card
+			local cardCorner = Instance.new("UICorner")
+			cardCorner.CornerRadius = UDim.new(0, 16)
+			cardCorner.Parent = card
+			local cardStroke = Instance.new("UIStroke")
+			cardStroke.Color = accent
+			cardStroke.Thickness = 1.2
+			cardStroke.Transparency = 1
+			cardStroke.Parent = card
+			local grad = Instance.new("UIGradient")
+			grad.Rotation = 135
+			grad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(48, 44, 68)),
+				ColorSequenceKeypoint.new(0.55, surface),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 14, 24)),
+			})
+			grad.Parent = card
+			local iconChip = Instance.new("Frame")
+			iconChip.BackgroundColor3 = accent
+			iconChip.BackgroundTransparency = 0.72
+			iconChip.BorderSizePixel = 0
+			iconChip.Position = UDim2.fromOffset(18, 16)
+			iconChip.Size = UDim2.fromOffset(36, 36)
+			iconChip.ZIndex = 7011
+			iconChip.Parent = card
+			local iconCorner = Instance.new("UICorner")
+			iconCorner.CornerRadius = UDim.new(0, 10)
+			iconCorner.Parent = iconChip
+			local iconLabel = Instance.new("ImageLabel")
+			iconLabel.BackgroundTransparency = 1
+			iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+			iconLabel.Position = UDim2.fromScale(0.5, 0.5)
+			iconLabel.Size = UDim2.fromOffset(20, 20)
+			iconLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
+			iconLabel.ZIndex = 7012
+			iconLabel.Parent = iconChip
+			ApplyIcon(iconLabel, GetIcon(settings.Icon, settings.ImageSource) or GetIcon("warning", "Material"))
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.fromOffset(64, 16)
+			title.Size = UDim2.new(1, -80, 0, 36)
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = phone and 18 or 17
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.TextYAlignment = Enum.TextYAlignment.Center
+			title.TextColor3 = Color3.fromRGB(245, 245, 252)
+			title.TextWrapped = true
+			title.Text = tostring(settings.Title)
+			title.ZIndex = 7011
+			title.Parent = card
+			local body = Instance.new("TextLabel")
+			body.BackgroundTransparency = 1
+			body.Position = UDim2.fromOffset(18, 62)
+			body.Size = UDim2.new(1, -36, 0, showDont and 92 or 108)
+			body.Font = Enum.Font.Gotham
+			body.TextSize = phone and 14 or 13
+			body.TextXAlignment = Enum.TextXAlignment.Left
+			body.TextYAlignment = Enum.TextYAlignment.Top
+			body.TextColor3 = Color3.fromRGB(210, 208, 222)
+			body.TextWrapped = true
+			body.Text = tostring(settings.Body or "")
+			body.ZIndex = 7011
+			body.Parent = card
+			local dontBtn
+			if showDont then
+				dontBtn = Instance.new("TextButton")
+				dontBtn.AutoButtonColor = false
+				dontBtn.BackgroundTransparency = 1
+				dontBtn.Position = UDim2.new(0, 18, 1, -78)
+				dontBtn.Size = UDim2.new(1, -36, 0, 22)
+				dontBtn.Font = Enum.Font.Gotham
+				dontBtn.TextSize = 13
+				dontBtn.TextXAlignment = Enum.TextXAlignment.Left
+				dontBtn.TextColor3 = Color3.fromRGB(180, 178, 196)
+				dontBtn.Text = "☐  Don't ask again"
+				dontBtn.ZIndex = 7011
+				dontBtn.Parent = card
+				dontBtn.Activated:Connect(function()
+					confirmState.dontAsk = not confirmState.dontAsk
+					dontBtn.Text = confirmState.dontAsk and "☑  Don't ask again" or "☐  Don't ask again"
+				end)
+			end
+			local function makeBtn(text, xScale, isPrimary)
+				local b = Instance.new("TextButton")
+				b.AutoButtonColor = false
+				b.AnchorPoint = Vector2.new(0, 1)
+				local gap = 10
+				local btnW = showCancel and ((CARD_W - 36 - gap) / 2) or (CARD_W - 36)
+				b.Position = UDim2.new(0, 18 + (isPrimary and (showCancel and (btnW + gap) or 0) or 0), 1, -16)
+				b.Size = UDim2.fromOffset(btnW, phone and 40 or 36)
+				b.BackgroundColor3 = isPrimary and accent or Color3.fromRGB(42, 40, 54)
+				b.BackgroundTransparency = isPrimary and 0.05 or 0.15
+				b.BorderSizePixel = 0
+				b.Font = Enum.Font.GothamSemibold
+				b.TextSize = 14
+				b.TextColor3 = Color3.fromRGB(255, 255, 255)
+				b.Text = text
+				b.ZIndex = 7012
+				b.Parent = card
+				local c = Instance.new("UICorner")
+				c.CornerRadius = UDim.new(0, 10)
+				c.Parent = b
+				return b
+			end
+			local cancelBtn
+			if showCancel then
+				cancelBtn = makeBtn(tostring(settings.CancelText), 0, false)
+			end
+			local confirmBtn = makeBtn(tostring(settings.ConfirmText), 1, true)
+			local function finish(reason)
+				if confirmState.closing or not confirmState.open then
+					return
+				end
+				confirmState.closing = true
+				confirmState.open = false
+				Window._ConfirmOpen = false
+				local onOk = confirmState.onConfirm
+				local onNo = confirmState.onCancel
+				local onDont = confirmState.onDontAsk
+				local dont = confirmState.dontAsk
+				TweenService:Create(backdrop, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(card, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(cardScale, closeInfo, { Scale = 0.92 }):Play()
+				TweenService:Create(cardStroke, closeInfo, { Transparency = 1 }):Play()
+				task.delay(0.18, function()
+					destroyConfirmLayer()
+					if reason == "confirmed" then
+						if dont and type(onDont) == "function" then
+							pcall(onDont, true)
+						end
+						if type(onOk) == "function" then
+							pcall(onOk)
+						end
+					elseif reason ~= "destroyed" and type(onNo) == "function" then
+						pcall(onNo)
+					end
+				end)
+			end
+			if cancelBtn then
+				cancelBtn.Activated:Connect(function()
+					finish("cancelled")
+				end)
+			end
+			confirmBtn.Activated:Connect(function()
+				finish("confirmed")
+			end)
+			backdrop.Activated:Connect(function()
+				if showCancel then
+					finish("cancelled")
+				end
+			end)
+			table.insert(confirmState.conns, UserInputService.InputBegan:Connect(function(input, gpe)
+				if not confirmState.open or confirmState.closing then
+					return
+				end
+				if input.KeyCode == Enum.KeyCode.Escape then
+					if showCancel then
+						finish("cancelled")
+					end
+					return
+				end
+				if gpe then
+					return
+				end
+				if input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter then
+					finish("confirmed")
+				end
+			end))
+			confirmState.open = true
+			Window._ConfirmOpen = true
+			TweenService:Create(backdrop, fadeInfo, { BackgroundTransparency = 0.42 }):Play()
+			TweenService:Create(card, fadeInfo, { BackgroundTransparency = 0 }):Play()
+			TweenService:Create(cardScale, popInfo, { Scale = 1 }):Play()
+			TweenService:Create(cardStroke, fadeInfo, { Transparency = 0.45 }):Play()
+			return true
+		end
+	end
 	Window._Main = Main
 	Window.GetMain = function()
 		return Main
+	end
+	Window.GetWindowSize = function()
+		return Main.AbsoluteSize.X, Main.AbsoluteSize.Y
+	end
+	Window.SetWindowSize = function(w, h)
+		if Window.Size == true then
+			return false
+		end
+		w = tonumber(w)
+		h = tonumber(h)
+		if not w or not h then
+			return false
+		end
+		local minX, maxX = ResizeMin.X, ResizeMax.X
+		local minY, maxY = ResizeMin.Y, ResizeMax.Y
+		if minX > maxX then
+			minX, maxX = maxX, minX
+		end
+		if minY > maxY then
+			minY, maxY = maxY, minY
+		end
+		w = math.floor(math.clamp(w, minX, maxX))
+		h = math.floor(math.clamp(h, minY, maxY))
+		Main.Size = UDim2.fromOffset(w, h)
+		MainSize = Main.Size
+		return true
+	end
+	do
+		local cursorScreen, cursorRoot, cursorImg, cursorConn
+		local cursorOn = false
+		local function cursorColor()
+			return (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(90, 165, 255)
+		end
+		local function destroyCursor()
+			if cursorConn then
+				pcall(function() cursorConn:Disconnect() end)
+				cursorConn = nil
+			end
+			if cursorScreen then
+				pcall(function() cursorScreen:Destroy() end)
+			end
+			cursorScreen, cursorRoot, cursorImg = nil, nil, nil
+			cursorOn = false
+			pcall(function()
+				UserInputService.MouseIconEnabled = true
+			end)
+		end
+		local function ensureCursor()
+			if cursorScreen and cursorScreen.Parent then
+				return true
+			end
+			local parent = LunaUI and LunaUI.Parent
+			if not parent then
+				return false
+			end
+			cursorScreen = Instance.new("ScreenGui")
+			cursorScreen.Name = RandomName()
+			cursorScreen.IgnoreGuiInset = true
+			cursorScreen.DisplayOrder = 2147483647
+			cursorScreen.ZIndexBehavior = Enum.ZIndexBehavior.Global
+			cursorScreen.ResetOnSpawn = false
+			cursorScreen.Enabled = false
+			cursorScreen.Parent = parent
+			cursorRoot = Instance.new("Frame")
+			cursorRoot.BackgroundTransparency = 1
+			cursorRoot.BorderSizePixel = 0
+			cursorRoot.Size = UDim2.fromOffset(20, 20)
+			cursorRoot.ZIndex = 2147483647
+			cursorRoot.Visible = false
+			cursorRoot.Parent = cursorScreen
+			cursorImg = Instance.new("ImageLabel")
+			cursorImg.BackgroundTransparency = 1
+			cursorImg.Size = UDim2.fromScale(1, 1)
+			cursorImg.BorderSizePixel = 0
+			cursorImg.Image = "rbxassetid://132511743665753"
+			cursorImg.ImageColor3 = cursorColor()
+			cursorImg.ScaleType = Enum.ScaleType.Fit
+			cursorImg.Rotation = -90
+			cursorImg.Parent = cursorRoot
+			cursorConn = RunService.RenderStepped:Connect(function()
+				if not cursorRoot or not cursorRoot.Visible then
+					return
+				end
+				local loc = UserInputService:GetMouseLocation()
+				cursorRoot.Position = UDim2.fromOffset(loc.X - 2, loc.Y - 2)
+			end)
+			return true
+		end
+		Window.SetCustomCursor = function(enabled)
+			if IsPhoneClient() then
+				destroyCursor()
+				return false
+			end
+			local on = enabled == true
+			if not on then
+				if cursorRoot then
+					cursorRoot.Visible = false
+				end
+				if cursorScreen then
+					cursorScreen.Enabled = false
+				end
+				pcall(function()
+					UserInputService.MouseIconEnabled = true
+				end)
+				cursorOn = false
+				return true
+			end
+			if not ensureCursor() then
+				return false
+			end
+			if cursorImg then
+				cursorImg.ImageColor3 = cursorColor()
+			end
+			cursorRoot.Visible = true
+			cursorScreen.Enabled = true
+			pcall(function()
+				UserInputService.MouseIconEnabled = false
+			end)
+			cursorOn = true
+			return true
+		end
+		Window.GetCustomCursor = function()
+			return cursorOn == true
+		end
+		Window._DestroyCustomCursor = destroyCursor
 	end
 	Luna._Window = Window
 	return Window
@@ -12727,6 +13436,12 @@ end
 function Luna:Destroy()
 	if Luna._Window and Luna._Window.StopTour then
 		pcall(function() Luna._Window:StopTour("destroyed") end)
+	end
+	if Luna._Window and Luna._Window.CloseConfirm then
+		pcall(function() Luna._Window:CloseConfirm("destroyed") end)
+	end
+	if Luna._Window and Luna._Window._DestroyCustomCursor then
+		pcall(Luna._Window._DestroyCustomCursor)
 	end
 	if SetGlassBlur then SetGlassBlur(false) end
 	Main.Visible = false
