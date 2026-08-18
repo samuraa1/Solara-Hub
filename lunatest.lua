@@ -3923,6 +3923,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
 		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
 		local dashRoot = HomeTabPage.detailsholder.dashboard
+		dashRoot:SetAttribute("LunaNoTheme", true)
 		Window._ProfileRefs = {
 			NavIcon = Navigation.Player.icon.ImageLabel,
 			NavDisplay = Navigation.Player.Namez,
@@ -4041,138 +4042,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end)
 			end
 		end)()
-						local function RestyleDashboard()
-			if Luna._Destroyed then return end
-			if not HomeTabPage or not HomeTabPage.Parent then return end
-			local theme = Luna.ActiveTheme or Luna.Themes[Luna.CurrentTheme] or {}
-			local surface = theme.Surface or Color3.fromRGB(22, 22, 28)
-			local elevated = theme.Elevated or Color3.fromRGB(31, 31, 40)
-			local strokeCol = theme.Stroke or Color3.fromRGB(46, 46, 58)
-			local accent = theme.Accent or Color3.fromRGB(122, 162, 247)
-			local textPri = theme.TextPrimary or Color3.fromRGB(240, 240, 245)
-			local textSec = theme.TextSecondary or Color3.fromRGB(160, 160, 172)
-			local textMut = theme.TextMuted or Color3.fromRGB(110, 110, 124)
-
-			local function killGradients(root)
-				for _, g in ipairs(root:GetDescendants()) do
-					if g:IsA("UIGradient") then g:Destroy() end
-				end
-			end
-			local function ensureCorner(inst, radius)
-				if not inst then return nil end
-				local c = inst:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
-				c.CornerRadius = UDim.new(0, radius)
-				c.Parent = inst
-				return c
-			end
-
-			local iconFrame = HomeTabPage:FindFirstChild("icon")
-			if iconFrame then iconFrame:SetAttribute("LunaNoTheme", true) end
-			local avatar = iconFrame and iconFrame:FindFirstChild("ImageLabel")
-			if avatar then
-				local corner = ensureCorner(avatar, 0)
-				if corner then
-					corner.CornerRadius = UDim.new(1, 0)
-				end
-				local ring = avatar:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
-				ring.Thickness = 2
-				ring.Transparency = 0.1
-				ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-				ring.Color = accent
-				ring.Parent = avatar
-				if theme.Gradient and not ring:FindFirstChildOfClass("UIGradient") then
-					local g = Instance.new("UIGradient")
-					g.Rotation = 45
-					g.Color = theme.Gradient
-					g.Parent = ring
-				end
-			end
-
-			local playerFrame = HomeTabPage:FindFirstChild("player")
-			if playerFrame then playerFrame:SetAttribute("LunaNoTheme", true) end
-			local greet = playerFrame and playerFrame:FindFirstChild("Text")
-			if greet then
-				greet.TextColor3 = textPri
-				greet.Font = Enum.Font.GothamBold
-				if greet.TextSize < 20 then greet.TextSize = 20 end
-			end
-			local userLine = playerFrame and playerFrame:FindFirstChild("user")
-			if userLine then userLine.TextColor3 = textMut end
-
-			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
-			local dash = detailsholder and detailsholder:FindFirstChild("dashboard")
-			if not dash then return end
-
-			for _, cardName in ipairs({"Client", "Discord", "Friends", "Server"}) do
-				local card = dash:FindFirstChild(cardName)
-				if card and card:IsA("GuiObject") then
-					card:SetAttribute("LunaNoTheme", true)
-					local isDiscord = cardName == "Discord"
-					killGradients(card)
-					card.BackgroundColor3 = isDiscord and Color3.fromRGB(78, 90, 230) or surface
-					card.BackgroundTransparency = 0
-					ensureCorner(card, 12)
-
-					local stroke = card:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
-					stroke.Color = isDiscord and Color3.fromRGB(140, 150, 250) or strokeCol
-					stroke.Transparency = isDiscord and 0.55 or 0.4
-					stroke.Thickness = 1
-					stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-					stroke.Parent = card
-
-					if isDiscord then
-						local g = Instance.new("UIGradient")
-						g.Rotation = 135
-						g.Color = ColorSequence.new{
-							ColorSequenceKeypoint.new(0, Color3.fromRGB(104, 117, 250)),
-							ColorSequenceKeypoint.new(1, Color3.fromRGB(62, 72, 196)),
-						}
-						g.Parent = card
-					end
-
-					for _, row in ipairs(card:GetDescendants()) do
-						if row ~= card and row:IsA("GuiObject") and not row:IsA("TextLabel") and not row:IsA("TextButton") and not row:IsA("ImageLabel") then
-							if row.BackgroundTransparency < 1 then
-								for _, g in ipairs(row:GetChildren()) do
-									if g:IsA("UIGradient") then g:Destroy() end
-								end
-								row.BackgroundColor3 = isDiscord and Color3.fromRGB(255, 255, 255) or elevated
-								row.BackgroundTransparency = isDiscord and 0.85 or 0
-								ensureCorner(row, 8)
-							end
-						elseif row:IsA("ImageLabel") and row.BackgroundTransparency < 1 then
-							row.BackgroundTransparency = 1
-						end
-					end
-
-					for _, d in ipairs(card:GetDescendants()) do
-						if d:IsA("TextLabel") or d:IsA("TextButton") then
-							if isDiscord then
-								d.TextColor3 = Color3.fromRGB(255, 255, 255)
-								if d.Name == "Title" then d.Font = Enum.Font.GothamBold end
-							elseif d.Name == "Title" then
-								d.TextColor3 = accent
-								d.Font = Enum.Font.GothamBold
-							elseif d.Name == "Value" then
-								d.TextColor3 = textPri
-								d.Font = Enum.Font.GothamBold
-							elseif d.Name == "Subtitle" then
-								d.TextColor3 = textMut
-							elseif d.Name ~= "Interact" then
-								d.TextColor3 = textSec
-							end
-						end
-					end
-				end
-			end
-		end
-		task.defer(RestyleDashboard)
-		task.delay(0.5, RestyleDashboard)
-		pcall(function()
-			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
-				task.defer(RestyleDashboard)
-			end)
-		end)
 										local ExtraCards
 		local function ensureExtraCards()
 			if ExtraCards and ExtraCards.Parent then return ExtraCards end
@@ -12517,65 +12386,65 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	end
 				if WindowSettings.Resizable and CanShowResizeHandle() then
 		local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
-		local idleIcon = (Luna.ActiveTheme and Luna.ActiveTheme.TextSecondary) or Color3.fromRGB(210, 210, 220)
+		local idleBar = Color3.fromRGB(245, 245, 252)
 		local HandleBack = Instance.new("TextButton")
 		HandleBack.Name = RandomName()
 		HandleBack:SetAttribute("LunaNoTheme", true)
 		HandleBack:SetAttribute("LunaNoTranslate", true)
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
-		HandleBack.Position = UDim2.new(1, -3, 1, -3)
-		HandleBack.Size = UDim2.fromOffset(28, 28)
-		HandleBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		HandleBack.BackgroundTransparency = 0.82
+		HandleBack.Position = UDim2.new(1, -4, 1, -4)
+		HandleBack.Size = UDim2.fromOffset(36, 36)
+		HandleBack.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
+		HandleBack.BackgroundTransparency = 0
 		HandleBack.BorderSizePixel = 0
 		HandleBack.Text = ""
 		HandleBack.AutoButtonColor = false
 		HandleBack.ZIndex = 120
 		HandleBack.Parent = Main
 		local gripCorner = Instance.new("UICorner")
-		gripCorner.CornerRadius = UDim.new(0, 6)
+		gripCorner.CornerRadius = UDim.new(0, 8)
 		gripCorner.Parent = HandleBack
 		local gripStroke = Instance.new("UIStroke")
-		gripStroke.Color = idleIcon
-		gripStroke.Transparency = 0.35
-		gripStroke.Thickness = 1.4
+		gripStroke.Color = Color3.fromRGB(235, 235, 245)
+		gripStroke.Transparency = 0.05
+		gripStroke.Thickness = 2
 		gripStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		gripStroke.Parent = HandleBack
-		local ResizeIcon = Instance.new("ImageLabel")
-		ResizeIcon.Name = RandomName()
-		ResizeIcon:SetAttribute("LunaNoTheme", true)
-		ResizeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-		ResizeIcon.Position = UDim2.fromScale(0.5, 0.5)
-		ResizeIcon.Size = UDim2.fromOffset(20, 20)
-		ResizeIcon.BackgroundTransparency = 1
-		ResizeIcon.BorderSizePixel = 0
-		ResizeIcon.ImageColor3 = idleIcon
-		ResizeIcon.ImageTransparency = 0.08
-		ResizeIcon.ZIndex = 121
-		ResizeIcon.Active = false
-		ResizeIcon.Parent = HandleBack
-		do
-			local iconData = GetIcon("move-diagonal-2", "Lucide") or GetIcon("open_in_full", "Material")
-			ApplyIcon(ResizeIcon, iconData)
+		local gripBars = {}
+		for i = 1, 3 do
+			local bar = Instance.new("Frame")
+			bar:SetAttribute("LunaNoTheme", true)
+			bar:SetAttribute("LunaNoTranslate", true)
+			bar.AnchorPoint = Vector2.new(0.5, 0.5)
+			bar.Position = UDim2.new(0.5, (i - 2) * 6, 0.5, (i - 2) * 6)
+			bar.Size = UDim2.fromOffset(18, 4)
+			bar.Rotation = -45
+			bar.BackgroundColor3 = idleBar
+			bar.BackgroundTransparency = 0
+			bar.BorderSizePixel = 0
+			bar.ZIndex = 122
+			bar.Parent = HandleBack
+			local barCorner = Instance.new("UICorner")
+			barCorner.CornerRadius = UDim.new(1, 0)
+			barCorner.Parent = bar
+			gripBars[i] = bar
 		end
 		local function refreshHandleAccent()
 			accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
-			idleIcon = (Luna.ActiveTheme and Luna.ActiveTheme.TextSecondary) or Color3.fromRGB(210, 210, 220)
 		end
 		local function paintGrip(hovered, dragging)
 			refreshHandleAccent()
-			local color = (hovered or dragging) and accent or idleIcon
-			local trans = (hovered or dragging) and 0 or 0.08
-			TweenService:Create(ResizeIcon, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				ImageColor3 = color,
-				ImageTransparency = trans,
-			}):Play()
-			TweenService:Create(HandleBack, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				BackgroundTransparency = (hovered or dragging) and 0.62 or 0.82,
+			local color = (hovered or dragging) and accent or idleBar
+			local info = TweenInfo.new(0.12, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+			for _, bar in ipairs(gripBars) do
+				TweenService:Create(bar, info, {BackgroundColor3 = color}):Play()
+			end
+			TweenService:Create(HandleBack, info, {
+				BackgroundColor3 = (hovered or dragging) and Color3.fromRGB(28, 28, 40) or Color3.fromRGB(18, 18, 26),
 			}):Play()
 			if gripStroke then
 				gripStroke.Color = color
-				gripStroke.Transparency = (hovered or dragging) and 0.12 or 0.35
+				gripStroke.Transparency = (hovered or dragging) and 0 or 0.05
 			end
 		end
 		HandleBack.MouseEnter:Connect(function()
