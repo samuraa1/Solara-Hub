@@ -4183,8 +4183,20 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ExtraCards.Size = UDim2.new(1, -20, 0, 0)
 			ExtraCards.Position = UDim2.new(0, 10, 0, 240)
 			ExtraCards.AutomaticSize = Enum.AutomaticSize.Y
-			ExtraCards.ZIndex = 1
-			ExtraCards.Parent = HomeTabPage
+			ExtraCards.ZIndex = 8
+			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
+			local dashboard = detailsholder and detailsholder:FindFirstChild("dashboard")
+			ExtraCards.Parent = dashboard or HomeTabPage
+			if dashboard then
+				pcall(function()
+					dashboard.ClipsDescendants = false
+				end)
+				if detailsholder then
+					pcall(function()
+						detailsholder.ClipsDescendants = false
+					end)
+				end
+			end
 						local grid = Instance.new("UIGridLayout")
 			grid.SortOrder = Enum.SortOrder.LayoutOrder
 			grid.CellPadding = UDim2.fromOffset(10, 10)
@@ -4194,37 +4206,51 @@ function Window:CreateHomeTab(HomeTabSettings)
 			grid.StartCorner = Enum.StartCorner.TopLeft
 			grid.Parent = ExtraCards
 			local padding = Instance.new("UIPadding")
-			padding.PaddingTop = UDim.new(0, 14)
-			padding.PaddingBottom = UDim.new(0, 14)
+			padding.PaddingTop = UDim.new(0, 8)
+			padding.PaddingBottom = UDim.new(0, 8)
 			padding.Parent = ExtraCards
-																					local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
-			local dashboard = detailsholder and detailsholder:FindFirstChild("dashboard")
 			if dashboard then
-				local function reposition()
-					if not dashboard or not dashboard.Parent then return end
-					local canvasY = HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0
-					local pageY = HomeTabPage.AbsolutePosition.Y
-					local bottom = 0
-					for _, name in ipairs({"Client", "Discord", "Friends", "Server"}) do
-						local card = dashboard:FindFirstChild(name)
-						if card and card:IsA("GuiObject") and card.Visible and card.AbsoluteSize.Y > 4 then
-							local y = card.AbsolutePosition.Y - pageY + canvasY + card.AbsoluteSize.Y
-							if y > bottom then bottom = y end
+				local function cardContentBottom(card)
+					if not (card and card:IsA("GuiObject") and card.Visible) then
+						return 0
+					end
+					local dashY = dashboard.AbsolutePosition.Y
+					local dashH = math.max(1, dashboard.AbsoluteSize.Y)
+					local relY = card.AbsolutePosition.Y - dashY
+					local stretched = card.Size.Y.Scale >= 0.5 or card.AbsoluteSize.Y > dashH * 0.72
+					if not stretched then
+						return relY + card.AbsoluteSize.Y
+					end
+					local inner = 0
+					for _, d in ipairs(card:GetDescendants()) do
+						if d:IsA("GuiObject") and d.Visible then
+							local h = d.AbsoluteSize.Y
+							if h >= 8 and h <= 130 then
+								local b = d.AbsolutePosition.Y - dashY + h
+								if b > inner then inner = b end
+							end
 						end
 					end
-					if bottom < 80 then
-						bottom = (dashboard.AbsolutePosition.Y - pageY + canvasY) + 210
+					if inner > 40 then
+						return inner
 					end
-					ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(bottom) + 14)
+					return relY + math.max(card.Size.Y.Offset, 72)
+				end
+				local function reposition()
+					if not ExtraCards or not ExtraCards.Parent then return end
+					if not dashboard or not dashboard.Parent then return end
+					local discord = dashboard:FindFirstChild("Discord")
+					local friends = dashboard:FindFirstChild("Friends")
+					local bottom = math.max(cardContentBottom(discord), cardContentBottom(friends))
+					if bottom < 80 then
+						bottom = 230
+					end
+					ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(bottom) + 10)
 				end
 				reposition()
 				dashboard:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
 				dashboard:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
-				HomeTabPage:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-				if HomeTabPage:IsA("ScrollingFrame") then
-					HomeTabPage:GetPropertyChangedSignal("CanvasPosition"):Connect(reposition)
-				end
-				for _, name in ipairs({"Client", "Discord", "Friends", "Server"}) do
+				for _, name in ipairs({"Discord", "Friends"}) do
 					local card = dashboard:FindFirstChild(name)
 					if card then
 						card:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
@@ -4233,9 +4259,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 				task.defer(function() task.wait(0.05); reposition() end)
 				task.delay(0.4, reposition)
-				task.delay(1.2, reposition)
 			elseif detailsholder then
-								local function reposition()
+				local function reposition()
 					if not detailsholder or not detailsholder.Parent then return end
 					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
 					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + 200
