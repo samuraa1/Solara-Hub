@@ -1988,6 +1988,38 @@ local function ApplyIcon(imageLabel, iconData)
         imageLabel.ImageRectOffset = Vector2.new(0, 0)
     end
 end
+local function ApplyPlayerHeadshot(imageLabel, pixelSize)
+	if not imageLabel then return end
+	local lp = Players.LocalPlayer
+	if not lp then return end
+	pixelSize = tonumber(pixelSize) or 48
+	if pixelSize >= 300 then
+		pixelSize = 420
+	elseif pixelSize >= 120 then
+		pixelSize = 150
+	else
+		pixelSize = 48
+	end
+	imageLabel.ImageRectSize = Vector2.new(0, 0)
+	imageLabel.ImageRectOffset = Vector2.new(0, 0)
+	imageLabel.ScaleType = Enum.ScaleType.Crop
+	imageLabel.ImageTransparency = 0
+	imageLabel.Image = string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=%d&h=%d", lp.UserId, pixelSize, pixelSize)
+	task.spawn(function()
+		local sizeEnum = (pixelSize >= 300 and Enum.ThumbnailSize.Size420x420)
+			or (pixelSize >= 120 and Enum.ThumbnailSize.Size150x150)
+			or Enum.ThumbnailSize.Size48x48
+		local ok, url = pcall(function()
+			return Players:GetUserThumbnailAsync(lp.UserId, Enum.ThumbnailType.HeadShot, sizeEnum)
+		end)
+		if ok and type(url) == "string" and url ~= "" then
+			imageLabel.ImageRectSize = Vector2.new(0, 0)
+			imageLabel.ImageRectOffset = Vector2.new(0, 0)
+			imageLabel.Image = url
+			imageLabel.ImageTransparency = 0
+		end
+	end)
+end
 local function enumFont(name, fallback)
 	local ok, font = pcall(function()
 		return Enum.Font[name]
@@ -2768,6 +2800,7 @@ local LunaUI = isStudio and script.Parent:WaitForChild("Luna UI") or game:GetObj
 local SizeBleh = nil
 local SetGlassBlur
 local function Hide(Window, bind, notif)
+	if Luna._Destroyed or not Window or not Window.Parent then return end
 	SizeBleh = Window.Size
 	if SetGlassBlur then SetGlassBlur(false) end
 	bind = string.split(tostring(bind), "Enum.KeyCode.")
@@ -2775,35 +2808,53 @@ local function Hide(Window, bind, notif)
 	if notif then
 		Luna:Notification({Title = "Interface Hidden", Content = "The interface has been hidden, you may reopen the interface by Pressing the UI Bind In Settings ("..tostring(bind)..")", Icon = "visibility_off"})
 	end
-	tween(Window, {BackgroundTransparency = 1})
-	tween(Window.Elements, {BackgroundTransparency = 1})
-	tween(Window.Line, {BackgroundTransparency = 1})
-	tween(Window.Title.Title, {TextTransparency = 1})
-	tween(Window.Title.subtitle, {TextTransparency = 1})
-	tween(Window.Logo, {ImageTransparency = 1})
-	tween(Window.Navigation.Line, {BackgroundTransparency = 1})
+	pcall(function()
+		tween(Window, {BackgroundTransparency = 1})
+		tween(Window.Elements, {BackgroundTransparency = 1})
+		tween(Window.Line, {BackgroundTransparency = 1})
+		tween(Window.Title.Title, {TextTransparency = 1})
+		tween(Window.Title.subtitle, {TextTransparency = 1})
+		tween(Window.Logo, {ImageTransparency = 1})
+		tween(Window.Navigation.Line, {BackgroundTransparency = 1})
+	end)
 	for _, TopbarButton in ipairs(Window.Controls:GetChildren()) do
 		if TopbarButton.ClassName == "Frame" then
-			tween(TopbarButton, {BackgroundTransparency = 1})
-			tween(TopbarButton.UIStroke, {Transparency = 1})
-			tween(TopbarButton.ImageLabel, {ImageTransparency = 1})
-			TopbarButton.Visible = false
+			pcall(function()
+				tween(TopbarButton, {BackgroundTransparency = 1})
+				local st = TopbarButton:FindFirstChildOfClass("UIStroke")
+				if st then tween(st, {Transparency = 1}) end
+				local img = TopbarButton:FindFirstChild("ImageLabel")
+				if img then tween(img, {ImageTransparency = 1}) end
+				TopbarButton.Visible = false
+			end)
 		end
 	end
 	for _, tabbtn in ipairs(Window.Navigation.Tabs:GetChildren()) do
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "InActive Template" then
-			TweenService:Create(tabbtn, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
-			TweenService:Create(tabbtn.ImageLabel, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play()
-			TweenService:Create(tabbtn.DropShadowHolder.DropShadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play()
-			TweenService:Create(tabbtn.UIStroke, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 1}):Play()
+			pcall(function()
+				TweenService:Create(tabbtn, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 1}):Play()
+				local img = tabbtn:FindFirstChild("ImageLabel")
+				if img then TweenService:Create(img, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play() end
+				local shadow = tabbtn:FindFirstChild("DropShadowHolder")
+				local drop = shadow and shadow:FindFirstChild("DropShadow")
+				if drop then TweenService:Create(drop, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 1}):Play() end
+				local st = tabbtn:FindFirstChildOfClass("UIStroke")
+				if st then TweenService:Create(st, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {Transparency = 1}):Play() end
+			end)
 		end
 	end
 	task.wait(0.28)
-	Window.Size = UDim2.new(0,0,0,0)
-	Window.Parent.ShadowHolder.Visible = false
+	if Luna._Destroyed or not Window.Parent then return end
+	pcall(function()
+		Window.Size = UDim2.new(0,0,0,0)
+		if Window.Parent then Window.Parent.ShadowHolder.Visible = false end
+	end)
 	task.wait()
-	Window.Elements.Parent.Visible = false
-	Window.Visible = false
+	if Luna._Destroyed or not Window.Parent then return end
+	pcall(function()
+		Window.Elements.Parent.Visible = false
+		Window.Visible = false
+	end)
 end
 local OriginalUIName = LunaUI.Name
 if gethui then
@@ -3238,6 +3289,7 @@ local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
 end
 function Luna:Notification(data)
 	task.spawn(function()
+		if Luna._Destroyed then return end
 		data = Kwargify({
 			Title = "Missing Title",
 			Content = "Missing or Unknown Content",
@@ -3249,6 +3301,13 @@ function Luna:Notification(data)
 		newNotification.Parent = Notifications
 		newNotification.LayoutOrder = #Notifications:GetChildren()
 		newNotification.Visible = false
+		local function notifAlive()
+			return Luna._Destroyed ~= true and newNotification and newNotification.Parent
+		end
+		local function notifStroke()
+			return newNotification:FindFirstChildOfClass("UIStroke")
+		end
+		if not notifAlive() then return end
 				newNotification.Title.Text = data.Title
 		newNotification.Description.Text = data.Content
 		ApplyIcon(newNotification.Icon, GetIcon(data.Icon, data.ImageSource))
@@ -3288,7 +3347,8 @@ function Luna:Notification(data)
 				newNotification.BackgroundTransparency = 1
 		newNotification.Title.TextTransparency = 1
 		newNotification.Description.TextTransparency = 1
-		newNotification.UIStroke.Transparency = 1
+		local stroke = notifStroke()
+		if stroke then stroke.Transparency = 1 end
 		newNotification.Shadow.ImageTransparency = 1
 		newNotification.Icon.ImageTransparency = 1
 		newNotification.Icon.BackgroundTransparency = 1
@@ -3299,6 +3359,7 @@ function Luna:Notification(data)
 		end
 		notifScale.Scale = 0.92
 		task.wait()
+		if not notifAlive() then return end
 				newNotification.Size = UDim2.new(1, 0, 0, -NotificationsPaddingOffset)
 		newNotification.Icon.Size = UDim2.new(0, 28, 0, 28)
 		newNotification.Icon.Position = UDim2.new(0, 10, 0.5, -1)
@@ -3318,7 +3379,8 @@ function Luna:Notification(data)
 		TweenService:Create(newNotification.Icon, inFade, {ImageTransparency = 0}):Play()
 		TweenService:Create(newNotification.Icon, inSize, {Position = UDim2.new(0, 16, 0.5, -1)}):Play()
 		TweenService:Create(newNotification.Description, inFadeLate, {TextTransparency = 0.32}):Play()
-		TweenService:Create(newNotification.UIStroke, inFade, {Transparency = 0.92}):Play()
+		stroke = notifStroke()
+		if stroke then TweenService:Create(stroke, inFade, {Transparency = 0.92}):Play() end
 		TweenService:Create(newNotification.Shadow, inFade, {ImageTransparency = 0.78}):Play()
 		if notifAccent then
 			TweenService:Create(notifAccent, inFade, {BackgroundTransparency = 0.08}):Play()
@@ -3330,11 +3392,13 @@ function Luna:Notification(data)
 			TweenService:Create(notifProgress, TweenInfo.new(lifeDuration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 2)}):Play()
 		end
 		task.wait(lifeDuration)
+		if not notifAlive() then return end
 		local outFade = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		local outSize = TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		TweenService:Create(notifScale, outFade, {Scale = 0.96}):Play()
 		TweenService:Create(newNotification, outFade, {BackgroundTransparency = 1}):Play()
-		TweenService:Create(newNotification.UIStroke, outFade, {Transparency = 1}):Play()
+		stroke = notifStroke()
+		if stroke then TweenService:Create(stroke, outFade, {Transparency = 1}):Play() end
 		TweenService:Create(newNotification.Shadow, outFade, {ImageTransparency = 1}):Play()
 		TweenService:Create(newNotification.Title, outFade, {TextTransparency = 1}):Play()
 		TweenService:Create(newNotification.Description, outFade, {TextTransparency = 1}):Play()
@@ -3346,8 +3410,10 @@ function Luna:Notification(data)
 			TweenService:Create(notifProgress, outFade, {BackgroundTransparency = 1}):Play()
 		end
 		task.wait(0.18)
+		if not notifAlive() then return end
 		TweenService:Create(newNotification, outSize, {Size = UDim2.new(1, -28, 0, 0)}):Play()
 		task.wait(0.36)
+		if not notifAlive() then return end
 		newNotification.Visible = false
 		newNotification:Destroy()
 	end)
@@ -3605,7 +3671,7 @@ function Luna:CreateWindow(WindowSettings)
 	LoadingFrame.Frame.Frame.Title.Text = WindowSettings.LoadingTitle
 	LoadingFrame.Frame.Frame.Subtitle.Text = WindowSettings.LoadingSubtitle
 	LoadingFrame.Version.Text = LoadingFrame.Frame.Frame.Title.Text == "Luna Interface Suite" and Release or "Luna UI"
-	Navigation.Player.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+	ApplyPlayerHeadshot(Navigation.Player.icon.ImageLabel, 48)
 	Navigation.Player.Namez.Text = Players.LocalPlayer.DisplayName
 	Navigation.Player.TextLabel.Text = Players.LocalPlayer.Name
 	for i,v in pairs(Main.Controls:GetChildren()) do
@@ -3764,6 +3830,7 @@ function Luna:CreateWindow(WindowSettings)
 	TweenService:Create(Main.Title.subtitle, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
 	TweenService:Create(Main.Logo, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {ImageTransparency = 0}):Play()
 	TweenService:Create(Navigation.Player.icon.ImageLabel, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {ImageTransparency = 0}):Play()
+	pcall(function() ApplyPlayerHeadshot(Navigation.Player.icon.ImageLabel, 48) end)
 	TweenService:Create(Navigation.Player.icon.UIStroke, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Transparency = 0}):Play()
 	TweenService:Create(Main.Line, TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
 	wait(0.4)
@@ -3852,7 +3919,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			HomeTab:Activate()
 		end)
 		attachNavTooltip(HomeTabButton, "Dashboard")
-		HomeTabPage.icon.ImageLabel.Image = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+		ApplyPlayerHeadshot(HomeTabPage.icon.ImageLabel, 420)
 		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
 		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
 		local dashRoot = HomeTabPage.detailsholder.dashboard
@@ -3900,6 +3967,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		local friendsCooldown = 0
 		local function getPing() return math.clamp(Stats.Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
 		local function checkFriends()
+			if Luna._Destroyed or not HomeTabPage or not HomeTabPage.Parent then return end
 			if friendsCooldown == 0 then
 				friendsCooldown = 25
 				local playersFriends = {}
@@ -3926,10 +3994,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 						friendsInGame = friendsInGame + 1
 					end
 				end
-				HomeTabPage.detailsholder.dashboard.Friends.All.Value.Text = tostring(friendsInTotal).." friends"
-				HomeTabPage.detailsholder.dashboard.Friends.Offline.Value.Text = tostring(friendsInTotal - onlineFriends).." friends"
-				HomeTabPage.detailsholder.dashboard.Friends.Online.Value.Text = tostring(onlineFriends).." friends"
-				HomeTabPage.detailsholder.dashboard.Friends.InGame.Value.Text = tostring(friendsInGame).." friends"
+				if Luna._Destroyed or not HomeTabPage or not HomeTabPage.Parent then return end
+				local holder = HomeTabPage:FindFirstChild("detailsholder")
+				local friends = holder and holder:FindFirstChild("dashboard") and holder.dashboard:FindFirstChild("Friends")
+				if not friends then return end
+				pcall(function()
+					friends.All.Value.Text = tostring(friendsInTotal).." friends"
+					friends.Offline.Value.Text = tostring(friendsInTotal - onlineFriends).." friends"
+					friends.Online.Value.Text = tostring(onlineFriends).." friends"
+					friends.InGame.Value.Text = tostring(friendsInGame).." friends"
+				end)
 			else
 				friendsCooldown -= 1
 			end
@@ -3946,20 +4020,30 @@ function Window:CreateHomeTab(HomeTabSettings)
 		end
 		coroutine.wrap(function()
 			while task.wait() do
-				local dash = HomeTabPage.detailsholder.dashboard
-				dash.Server.Players.Value.Text = #Players:GetPlayers().." playing"
-				dash.Server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
-				dash.Server.Time.Value.Text = convertToHMS(time())
-				dash.Server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
-				if Window._AnonymousMode then
-					dash.Server.Region.Value.Text = "Hidden"
-				else
-					dash.Server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
-					checkFriends()
-				end
+				if Luna._Destroyed then break end
+				if not HomeTabPage or not HomeTabPage.Parent then break end
+				local holder = HomeTabPage:FindFirstChild("detailsholder")
+				local dash = holder and holder:FindFirstChild("dashboard")
+				if not dash then break end
+				local server = dash:FindFirstChild("Server")
+				if not server then break end
+				pcall(function()
+					server.Players.Value.Text = #Players:GetPlayers().." playing"
+					server.MaxPlayers.Value.Text = Players.MaxPlayers.." players can join this server"
+					server.Time.Value.Text = convertToHMS(time())
+					server.Latency.Value.Text = isStudio and tostring(math.round((Players.LocalPlayer:GetNetworkPing() * 2 ) / 0.01)) .."ms" or tostring(math.floor(getPing()) .."ms")
+					if Window._AnonymousMode then
+						server.Region.Value.Text = "Hidden"
+					else
+						server.Region.Value.Text = Localization:GetCountryRegionForPlayerAsync(Players.LocalPlayer)
+						checkFriends()
+					end
+				end)
 			end
 		end)()
 						local function RestyleDashboard()
+			if Luna._Destroyed then return end
+			if not HomeTabPage or not HomeTabPage.Parent then return end
 			local theme = Luna.ActiveTheme or Luna.Themes[Luna.CurrentTheme] or {}
 			local surface = theme.Surface or Color3.fromRGB(22, 22, 28)
 			local elevated = theme.Elevated or Color3.fromRGB(31, 31, 40)
@@ -3975,16 +4059,21 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 			end
 			local function ensureCorner(inst, radius)
+				if not inst then return nil end
 				local c = inst:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
 				c.CornerRadius = UDim.new(0, radius)
 				c.Parent = inst
+				return c
 			end
 
 			local iconFrame = HomeTabPage:FindFirstChild("icon")
 			if iconFrame then iconFrame:SetAttribute("LunaNoTheme", true) end
 			local avatar = iconFrame and iconFrame:FindFirstChild("ImageLabel")
 			if avatar then
-				ensureCorner(avatar, 0).CornerRadius = UDim.new(1, 0)
+				local corner = ensureCorner(avatar, 0)
+				if corner then
+					corner.CornerRadius = UDim.new(1, 0)
+				end
 				local ring = avatar:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
 				ring.Thickness = 2
 				ring.Transparency = 0.1
@@ -4113,18 +4202,38 @@ function Window:CreateHomeTab(HomeTabSettings)
 			if dashboard then
 				local function reposition()
 					if not dashboard or not dashboard.Parent then return end
-										local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
-					local relY = dashboard.AbsolutePosition.Y - pageAbsY + dashboard.AbsoluteSize.Y
-					if relY > 0 then
-						ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(relY) + 12)
+					local canvasY = HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0
+					local pageY = HomeTabPage.AbsolutePosition.Y
+					local bottom = 0
+					for _, name in ipairs({"Client", "Discord", "Friends", "Server"}) do
+						local card = dashboard:FindFirstChild(name)
+						if card and card:IsA("GuiObject") and card.Visible and card.AbsoluteSize.Y > 4 then
+							local y = card.AbsolutePosition.Y - pageY + canvasY + card.AbsoluteSize.Y
+							if y > bottom then bottom = y end
+						end
 					end
+					if bottom < 80 then
+						bottom = (dashboard.AbsolutePosition.Y - pageY + canvasY) + 210
+					end
+					ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(bottom) + 14)
 				end
 				reposition()
 				dashboard:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
 				dashboard:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
 				HomeTabPage:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
-								task.defer(function() task.wait(0.05); reposition() end)
+				if HomeTabPage:IsA("ScrollingFrame") then
+					HomeTabPage:GetPropertyChangedSignal("CanvasPosition"):Connect(reposition)
+				end
+				for _, name in ipairs({"Client", "Discord", "Friends", "Server"}) do
+					local card = dashboard:FindFirstChild(name)
+					if card then
+						card:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
+						card:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
+					end
+				end
+				task.defer(function() task.wait(0.05); reposition() end)
 				task.delay(0.4, reposition)
+				task.delay(1.2, reposition)
 			elseif detailsholder then
 								local function reposition()
 					if not detailsholder or not detailsholder.Parent then return end
@@ -5094,7 +5203,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						tween(Toggle.toggle.UIStroke, {Transparency = 1})
 						Toggle.toggle.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(60, 60, 72)
 						tween(Toggle.toggle, {BackgroundTransparency = 0.55})
-						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
+						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(138, 136, 152), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 					end
 					ToggleV.CurrentValue = bool
 				end
@@ -5140,6 +5249,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
+				else
+					Set(false)
 				end
 				function ToggleV:UpdateState(State)
 					ToggleSettings.CurrentValue = State
@@ -6492,7 +6603,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					tween(Toggle.toggle.UIStroke, {Transparency = 1})
 					Toggle.toggle.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(60, 60, 72)
 					tween(Toggle.toggle, {BackgroundTransparency = 0.55})
-					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
+					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(138, 136, 152), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 				end
 				ToggleV.CurrentValue = bool
 			end
@@ -6538,6 +6649,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
+			else
+				Set(false)
 			end
 			function ToggleV:UpdateState(State)
 				ToggleSettings.CurrentValue = State
@@ -8038,9 +8151,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ImageSource = "Material",
 			SystemPrompt = nil,
 			Knowledge = nil,
-			Model = "openai",
+			Model = "llama-3.3-70b-versatile",
 			ShowTitle = true,
-			Endpoint = "https://gen.pollinations.ai/v1/chat/completions",
+			Endpoint = "https://api.groq.com/openai/v1/chat/completions",
 			Webhook = nil,
 			SaveFile = "LunaAI_chat.json",
 			AutoSave = true,
@@ -8159,7 +8272,32 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local chats = {}
 		local chatOrder = {}
 		local activeId = nil
-								local currentModel = opts.Model or "openai"
+								local GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
+		local function groqKeyTutorial()
+			return table.concat({
+				"**Groq API key is required** — Solara Hub AI will not send without one.",
+				"",
+				"**How to get a free key:**",
+				"1. Open **https://console.groq.com** (from [groq.com](https://groq.com/) → Start building).",
+				"2. Sign in with Google, GitHub, or email.",
+				"3. Open **https://console.groq.com/keys**.",
+				"4. Click **Create API Key**, copy it (starts with `gsk_`).",
+				"5. Paste it here:",
+				"`/key gsk_...your key...`",
+				"",
+				"`/key off` removes it. The key is saved locally (workspace `*_Token.txt`).",
+				"`/image` still uses a separate image endpoint and does not need Groq.",
+			}, "\n")
+		end
+		local function normalizeGroqModel(m)
+			m = tostring(m or "")
+			if m == "" or m == "openai" or m == "gpt-4o" or m == "gpt-4o-mini" or m == "o3-mini"
+				or m == "mistral" or m == "deepseek" or m == "qwen-coder" or m == "llama" then
+				return GROQ_DEFAULT_MODEL
+			end
+			return m
+		end
+		local currentModel = normalizeGroqModel(opts.Model or GROQ_DEFAULT_MODEL)
 										local aiToken = nil
 		local tokenFile = (tostring(opts.SaveFile):gsub("%.%w+$", "")) .. "_Token.txt"
 		local function loadToken()
@@ -8280,7 +8418,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end
 				end
 				if data.activeId and chats[data.activeId] then activeId = data.activeId end
-				if type(data.model) == "string" and data.model ~= "" then currentModel = data.model end
+				if type(data.model) == "string" and data.model ~= "" then currentModel = normalizeGroqModel(data.model) end
 			elseif type(data.conv) == "table" then
 								local id = newChatId()
 				local c = {
@@ -9237,7 +9375,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				kw.BackgroundTransparency = 1
 				kw.Position = UDim2.new(0, 54, 0, 58)
 				kw.Size = UDim2.new(1, -70, 0, 16)
-				kw.Text = "No key: keyless backup mode (~2 msg/min). /key for full speed"
+				kw.Text = "Groq key required — send /key for the tutorial"
 				kw.Font = Enum.Font.GothamMedium
 				kw.TextSize = 11
 				kw.TextColor3 = Color3.fromRGB(255, 200, 90)
@@ -9697,15 +9835,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
-																		local OVH_URL = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions"
-		local OVH_MODEL = "gpt-oss-120b"
-		local usedFallback = false
-		local function requestChat(url, model, useToken, conv)
+																		local function requestChat(url, model, useToken, conv)
 			local fn = getHttpFn()
 			if not fn then
 				return nil, "Executor missing `request`/`syn.request`/`http_request`."
 			end
-			local okEnc, payload = pcall(HttpService.JSONEncode, HttpService, { messages = conv, model = model })
+			local okEnc, payload = pcall(HttpService.JSONEncode, HttpService, {
+				messages = conv,
+				model = model,
+				max_tokens = 4096,
+				temperature = 0.6,
+			})
 			if not okEnc then
 				return nil, "Failed to JSON-encode the conversation: " .. tostring(payload)
 			end
@@ -9739,37 +9879,19 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 						if decoded and decoded.text then return decoded.text, nil end
 			return nil, "Could not extract `choices[1].message.content` from response."
 		end
-		local function callPollinations(conv)
-			if aiToken then
-				local reply = requestChat(opts.Endpoint, currentModel, true, conv)
-				if reply then return reply, nil end
-			end
-			local reply, err, body = requestChat(OVH_URL, OVH_MODEL, false, conv)
-			if reply then
-				if not usedFallback then
-					usedFallback = true
-					Luna:Notification({
-						Title = "Backup AI provider",
-						Content = "Using the keyless OVH endpoint (~2 msg/min). Set a free pollinations key with /key for the main model.",
-						Icon = "swap_horiz", ImageSource = "Material", Duration = 7,
-					})
-				end
-				return reply, nil
-			end
+		local function callGroq(conv)
 			if not aiToken then
-				local reply2 = requestChat(opts.Endpoint, currentModel, false, conv)
-				if reply2 then return reply2, nil end
+				return nil, groqKeyTutorial()
 			end
+			local reply, err, body = requestChat(opts.Endpoint, normalizeGroqModel(currentModel), true, conv)
+			if reply then return reply, nil end
 			if err == 401 or err == 403 then
-				return nil, "AI providers unavailable. Set a free pollinations key with `/key <token>` (enter.pollinations.ai/keys)."
+				return nil, "Groq rejected the key (401/403). Get a new one at **https://console.groq.com/keys**, then `/key gsk_...`."
 			end
 			if err == 429 then
-				return nil, "Rate limited (keyless tier is ~2 msg/min) — wait a few seconds and resend, or set a key with `/key`."
+				return nil, "Groq rate limit — wait a few seconds and resend."
 			end
-			if err == 402 then
-				return nil, "Out of free Pollen — it refills hourly. Wait a bit or check enter.pollinations.ai."
-			end
-			return nil, "AI request failed on all providers: " .. tostring(err) .. (body and (" — " .. tostring(body):sub(1, 200)) or "")
+			return nil, "Groq request failed: " .. tostring(err) .. (body and (" — " .. tostring(body):sub(1, 200)) or "")
 		end
 		local function doSend(prompt, isRegenerate)
 			local chat = getActive()
@@ -9810,7 +9932,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end)
 			task.spawn(function()
-				local ok, replyText, errReason = pcall(callPollinations, chat.conv)
+				local ok, replyText, errReason = pcall(callGroq, chat.conv)
 				if not ok then
 					errReason = "Internal error: " .. tostring(replyText)
 					replyText = nil
@@ -9962,25 +10084,29 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			prompt = tostring(prompt or "")
 			if generation.active then return end
 			if prompt == "" then return end
+			if not aiToken and prompt:sub(1, 1) ~= "/" then
+				appendMessage("assistant", groqKeyTutorial())
+				return
+			end
 						if prompt:sub(1, 1) == "/" then
 				local cmd, rest = prompt:match("^/(%S+)%s*(.*)$")
 				cmd = (cmd or ""):lower()
 				rest = rest or ""
 				if cmd == "help" then
-					appendMessage("assistant", "**Slash commands**\n`/clear` new-clear · `/new` new chat · `/model <name>` · `/explain` · `/fix` · `/lasterror` · `/system <text>` set per-chat instructions · `/export` · `/image <prompt>` · `/rerun` · `/history` · `/stream on|off` · `/key <token>` set pollinations API key (get one free at enter.pollinations.ai/keys)")
+					appendMessage("assistant", "**Slash commands**\n`/clear` · `/new` · `/model <name>` · `/explain` · `/fix` · `/lasterror` · `/system <text>` · `/export` · `/image <prompt>` · `/rerun` · `/history` · `/stream on|off` · `/key <gsk_...>` set Groq API key (console.groq.com/keys)")
 					return
 				elseif cmd == "key" then
 					if rest == "" then
 						appendMessage("assistant", aiToken
-							and ("An API key is set (ends in `…" .. aiToken:sub(-4) .. "`). `/key off` removes it.")
-							or  "No API key set — the chat runs on a slower keyless backup. For the main model + `/image`, grab a **free** key at **enter.pollinations.ai/keys**, then send:\n`/key pk_...` (or `sk_...`)")
+							and ("A Groq key is set (ends in `…" .. aiToken:sub(-4) .. "`). `/key off` removes it.")
+							or groqKeyTutorial())
 					elseif rest:lower() == "off" then
 						aiToken = nil; saveToken()
-						Luna:Notification({ Title = "API key removed", Content = "Requests will be sent anonymously again.", Icon = "key_off", ImageSource = "Material" })
+						Luna:Notification({ Title = "API key removed", Content = "Solara Hub AI will not send until you set a Groq key with /key.", Icon = "key_off", ImageSource = "Material" })
 					else
 						aiToken = rest:gsub("%s+", "")
 						saveToken()
-						Luna:Notification({ Title = "API key saved", Content = "Key stored in " .. tokenFile .. " — AI should work now.", Icon = "key", ImageSource = "Material", Duration = 6 })
+						Luna:Notification({ Title = "Groq key saved", Content = "Key stored — you can chat now.", Icon = "key", ImageSource = "Material", Duration = 6 })
 					end
 					return
 				elseif cmd == "clear" then AiTab:Clear(); return
@@ -10189,7 +10315,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			verified = false,
 			patched = false,
 		}
-				local resultCache = {}
+		local resultCache = {}
 		local CACHE_TTL = 300
 		local favorites = ssReadJson(FAV_FILE) or {}
 		local history   = ssReadJson(HIST_FILE) or {}
@@ -10230,7 +10356,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local statusLabel
 		local runSearch
 		local updateFilterVisibility
-		local emptyState
+		local emptyState, emptyTitle, emptySub
 		local function setStatus(msg)
 			if statusLabel then statusLabel:Set(tostring(msg)) end
 		end
@@ -10699,6 +10825,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			title.ZIndex = 4
 			title.Parent = emptyState
 			ApplyInterfaceFont(title, Enum.Font.GothamSemibold)
+			emptyTitle = title
 			local sub = Instance.new("TextLabel")
 			sub.BackgroundTransparency = 1
 			sub.AnchorPoint = Vector2.new(0.5, 0)
@@ -10712,6 +10839,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sub.ZIndex = 4
 			sub.Parent = emptyState
 			ApplyInterfaceFont(sub, Enum.Font.Gotham)
+			emptySub = sub
+		end
+		local function setEmptyCopy(head, body)
+			if emptyTitle and head then emptyTitle.Text = head end
+			if emptySub and body then emptySub.Text = body end
 		end
 		local pageBar = Instance.new("Frame")
 		pageBar.Name = "ScriptSearcherPager"
@@ -10725,21 +10857,29 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			b.AnchorPoint = anchor
 			b.Position = pos
 			b.Size = UDim2.new(0, 88, 0, 28)
-			b.BackgroundColor3 = t.elevated
-			b.BackgroundTransparency = 0.12
+			b.BackgroundColor3 = t.accent
+			b.BackgroundTransparency = 0.05
 			b.Font = Enum.Font.GothamSemibold
 			b.TextSize = 12
-			b.TextColor3 = t.text
+			b.TextColor3 = Color3.new(1, 1, 1)
 			b.Text = text
 			b.AutoButtonColor = false
 			b.Parent = pageBar
 			ApplyInterfaceFont(b, Enum.Font.GothamSemibold)
 			ssCorner(b, 8)
-			ssStroke(b, t.stroke, 0.45)
+			ssStroke(b, t.accent, 0.35)
+			b.MouseEnter:Connect(function()
+				if b:GetAttribute("SSOff") then return end
+				tween(b, { BackgroundTransparency = 0 })
+			end)
+			b.MouseLeave:Connect(function()
+				if b:GetAttribute("SSOff") then return end
+				tween(b, { BackgroundTransparency = 0.05 })
+			end)
 			return b
 		end
-		local prevBtn = pagerBtn("< Prev", Vector2.new(0, 0), UDim2.new(0, 0, 0, 4))
-		local nextBtn = pagerBtn("Next >", Vector2.new(1, 0), UDim2.new(1, 0, 0, 4))
+		local prevBtn = pagerBtn("Prev", Vector2.new(0, 0), UDim2.new(0, 0, 0, 4))
+		local nextBtn = pagerBtn("Next", Vector2.new(1, 0), UDim2.new(1, 0, 0, 4))
 		local pageLabel = Instance.new("TextLabel")
 		pageLabel.BackgroundTransparency = 1
 		pageLabel.AnchorPoint = Vector2.new(0.5, 0)
@@ -10751,10 +10891,27 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		pageLabel.Text = "Page 1"
 		pageLabel.Parent = pageBar
 		ApplyInterfaceFont(pageLabel, Enum.Font.GothamMedium)
+		local function paintPagerBtn(b, on)
+			local t = ssTheme()
+			local st = b:FindFirstChildOfClass("UIStroke")
+			b:SetAttribute("SSOff", not on)
+			b.Active = on
+			if on then
+				b.BackgroundColor3 = t.accent
+				b.BackgroundTransparency = 0.05
+				b.TextColor3 = Color3.new(1, 1, 1)
+				if st then st.Color = t.accent; st.Transparency = 0.35 end
+			else
+				b.BackgroundColor3 = t.elevated
+				b.BackgroundTransparency = 0.45
+				b.TextColor3 = t.muted
+				if st then st.Color = t.stroke; st.Transparency = 0.55 end
+			end
+		end
 		local function updatePageBar()
 			pageLabel.Text = "Page " .. pageNum .. " / " .. math.max(maxPages, 1)
-			prevBtn.BackgroundTransparency = (pageNum > 1) and 0.08 or 0.55
-			nextBtn.BackgroundTransparency = (pageNum < maxPages) and 0.08 or 0.55
+			paintPagerBtn(prevBtn, pageNum > 1)
+			paintPagerBtn(nextBtn, pageNum < maxPages)
 		end
 		prevBtn.MouseButton1Click:Connect(function()
 			if pageNum > 1 and not loading then runSearch(pageNum - 1) end
@@ -11235,7 +11392,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 		local function buildScriptBloxUrl(q, page)
 			local url = "https://scriptblox.com/api/script/search?q=" .. HttpService:UrlEncode(q)
-				.. "&mode=free&page=" .. tostring(page) .. "&max=20"
+				.. "&page=" .. tostring(page) .. "&max=20"
 			if filters.key then url = url .. "&key=1" end
 			if filters.universal then url = url .. "&universal=1" end
 			if filters.verified then url = url .. "&verified=1" end
@@ -11631,17 +11788,37 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ApplyInterfaceFont(qBtn, Enum.Font.GothamMedium)
 			local xBtn = Instance.new("TextButton")
 			xBtn.AnchorPoint = Vector2.new(1, 0.5)
-			xBtn.Position = UDim2.new(1, -8, 0.5, 0)
-			xBtn.Size = UDim2.new(0, 24, 0, 24)
-			xBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 70)
-			xBtn.Font = Enum.Font.GothamSemibold
-			xBtn.TextSize = 12
-			xBtn.TextColor3 = Color3.new(1, 1, 1)
-			xBtn.Text = "X"
+			xBtn.Position = UDim2.new(1, -6, 0.5, 0)
+			xBtn.Size = UDim2.fromOffset(22, 22)
+			xBtn.BackgroundColor3 = t.elevated
+			xBtn.BackgroundTransparency = 0.35
+			xBtn.Text = ""
 			xBtn.AutoButtonColor = false
+			xBtn.ZIndex = 2
 			xBtn.Parent = row
-			ApplyInterfaceFont(xBtn, Enum.Font.GothamSemibold)
-			ssCorner(xBtn, 6)
+			local xCorner = ssCorner(xBtn, 11)
+			xCorner.CornerRadius = UDim.new(1, 0)
+			local xStroke = ssStroke(xBtn, t.stroke, 0.55)
+			local xIco = Instance.new("ImageLabel")
+			xIco.BackgroundTransparency = 1
+			xIco.AnchorPoint = Vector2.new(0.5, 0.5)
+			xIco.Position = UDim2.fromScale(0.5, 0.5)
+			xIco.Size = UDim2.fromOffset(11, 11)
+			xIco.ImageColor3 = t.dim
+			xIco.Active = false
+			xIco.ZIndex = 3
+			xIco.Parent = xBtn
+			ApplyIcon(xIco, GetIcon("close", "Material") or GetIcon("close", "Lucide"))
+			xBtn.MouseEnter:Connect(function()
+				tween(xBtn, { BackgroundColor3 = Color3.fromRGB(190, 72, 86), BackgroundTransparency = 0.05 })
+				tween(xStroke, { Color = Color3.fromRGB(220, 110, 120), Transparency = 0.25 })
+				tween(xIco, { ImageColor3 = Color3.new(1, 1, 1) })
+			end)
+			xBtn.MouseLeave:Connect(function()
+				tween(xBtn, { BackgroundColor3 = t.elevated, BackgroundTransparency = 0.35 })
+				tween(xStroke, { Color = t.stroke, Transparency = 0.55 })
+				tween(xIco, { ImageColor3 = t.dim })
+			end)
 			qBtn.MouseButton1Click:Connect(function()
 				pcall(function() queryInput:Set(e.Query) end)
 				source = (VALID_SOURCES[e.Source] and e.Source) or "ScriptBlox"
@@ -11712,7 +11889,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			loading = true
 			setStatus("Searching " .. source .. " (page " .. page .. ")...")
-			if page == 1 then clearResults() end
+			if page == 1 then
+				setEmptyCopy("Searching...", "Talking to " .. source .. ".")
+				clearResults()
+			end
 			task.spawn(function()
 				local cards, errMsg, mp = fetchCards(query, page)
 				maxPages = math.max(1, mp or 1)
@@ -11731,9 +11911,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					scrollToResults()
 				elseif errMsg then
 					setStatus(errMsg)
+					setEmptyCopy("Couldn't search", tostring(errMsg))
 					task.defer(clearResults)
 				else
 					setStatus("No scripts found.")
+					setEmptyCopy("No scripts found", "Try another query, source, or filter.")
 					task.defer(clearResults)
 				end
 				loading = false
@@ -12316,25 +12498,34 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		HandleBack:SetAttribute("LunaNoTheme", true)
 		HandleBack:SetAttribute("LunaNoTranslate", true)
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
-		HandleBack.Position = UDim2.new(1, -2, 1, -2)
-		HandleBack.Size = UDim2.fromOffset(18, 18)
+		HandleBack.Position = UDim2.new(1, -3, 1, -3)
+		HandleBack.Size = UDim2.fromOffset(28, 28)
 		HandleBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		HandleBack.BackgroundTransparency = 1
+		HandleBack.BackgroundTransparency = 0.82
 		HandleBack.BorderSizePixel = 0
 		HandleBack.Text = ""
 		HandleBack.AutoButtonColor = false
 		HandleBack.ZIndex = 120
 		HandleBack.Parent = Main
+		local gripCorner = Instance.new("UICorner")
+		gripCorner.CornerRadius = UDim.new(0, 6)
+		gripCorner.Parent = HandleBack
+		local gripStroke = Instance.new("UIStroke")
+		gripStroke.Color = idleIcon
+		gripStroke.Transparency = 0.35
+		gripStroke.Thickness = 1.4
+		gripStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		gripStroke.Parent = HandleBack
 		local ResizeIcon = Instance.new("ImageLabel")
 		ResizeIcon.Name = RandomName()
 		ResizeIcon:SetAttribute("LunaNoTheme", true)
 		ResizeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 		ResizeIcon.Position = UDim2.fromScale(0.5, 0.5)
-		ResizeIcon.Size = UDim2.fromOffset(14, 14)
+		ResizeIcon.Size = UDim2.fromOffset(20, 20)
 		ResizeIcon.BackgroundTransparency = 1
 		ResizeIcon.BorderSizePixel = 0
 		ResizeIcon.ImageColor3 = idleIcon
-		ResizeIcon.ImageTransparency = 0.5
+		ResizeIcon.ImageTransparency = 0.08
 		ResizeIcon.ZIndex = 121
 		ResizeIcon.Active = false
 		ResizeIcon.Parent = HandleBack
@@ -12349,11 +12540,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local function paintGrip(hovered, dragging)
 			refreshHandleAccent()
 			local color = (hovered or dragging) and accent or idleIcon
-			local trans = (hovered or dragging) and 0 or 0.5
+			local trans = (hovered or dragging) and 0 or 0.08
 			TweenService:Create(ResizeIcon, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 				ImageColor3 = color,
 				ImageTransparency = trans,
 			}):Play()
+			TweenService:Create(HandleBack, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				BackgroundTransparency = (hovered or dragging) and 0.62 or 0.82,
+			}):Play()
+			if gripStroke then
+				gripStroke.Color = color
+				gripStroke.Transparency = (hovered or dragging) and 0.12 or 0.35
+			end
 		end
 		HandleBack.MouseEnter:Connect(function()
 			if not Window._Resizing then
@@ -14041,6 +14239,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	return Window
 end
 function Luna:Destroy()
+	Luna._Destroyed = true
 	if Luna._Window and Luna._Window.StopTour then
 		pcall(function() Luna._Window:StopTour("destroyed") end)
 	end
@@ -14050,15 +14249,21 @@ function Luna:Destroy()
 	if Luna._Window and Luna._Window._DestroyCustomCursor then
 		pcall(Luna._Window._DestroyCustomCursor)
 	end
-	if SetGlassBlur then SetGlassBlur(false) end
-	Main.Visible = false
-	for _, Notification in ipairs(Notifications:GetChildren()) do
-		if Notification.ClassName == "Frame" then
-			Notification.Visible = false
-			Notification:Destroy()
+	if SetGlassBlur then pcall(SetGlassBlur, false) end
+	pcall(function()
+		if Main then Main.Visible = false end
+	end)
+	pcall(function()
+		for _, Notification in ipairs(Notifications:GetChildren()) do
+			if Notification.ClassName == "Frame" then
+				Notification.Visible = false
+				Notification:Destroy()
+			end
 		end
-	end
-	LunaUI:Destroy()
+	end)
+	pcall(function()
+		LunaUI:Destroy()
+	end)
 end
 function Luna:SetLanguage(targetCode, customTranslator)
 	targetCode = tostring(targetCode or "en"):lower()
