@@ -2259,7 +2259,21 @@ local function LunaAttachButtonTags(button, tags)
 		return
 	end
 	row.AnchorPoint = Vector2.new(1, 0.5)
-	row.Position = UDim2.new(1, -10, 0.5, 0)
+	local function iconReserve()
+		local reserve = 40
+		pcall(function()
+			for _, d in ipairs(button:GetDescendants()) do
+				if (d:IsA("ImageLabel") or d:IsA("ImageButton")) and d.Visible and d.AbsoluteSize.X >= 14 and d.AbsoluteSize.X <= 44 then
+					local fromRight = (button.AbsolutePosition.X + button.AbsoluteSize.X) - (d.AbsolutePosition.X)
+					if fromRight >= 0 and fromRight <= 52 then
+						reserve = math.max(reserve, math.ceil(fromRight + 8))
+					end
+				end
+			end
+		end)
+		return reserve
+	end
+	row.Position = UDim2.new(1, -iconReserve(), 0.5, 0)
 	local title = button:FindFirstChild("Title") or button:FindFirstChild("TextLabel")
 	if title then
 		pcall(function()
@@ -2269,10 +2283,13 @@ local function LunaAttachButtonTags(button, tags)
 			if not title.Parent or not row.Parent then
 				return
 			end
-			local extra = math.max(0, math.ceil(row.AbsoluteSize.X) + 16)
+			local reserve = iconReserve()
+			row.Position = UDim2.new(1, -reserve, 0.5, 0)
+			local extra = math.max(0, math.ceil(row.AbsoluteSize.X) + reserve + 8)
 			title.Size = UDim2.new(1, -(extra + (title.Position.X.Offset or 0)), title.Size.Y.Scale, title.Size.Y.Offset)
 		end
 		row:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+		button:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 		task.defer(fit)
 	end
 end
@@ -3966,7 +3983,25 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 		end)
 		local friendsCooldown = 0
-		local function getPing() return math.clamp(Stats.Network.ServerStatsItem["Data Ping"]:GetValue(), 10, 700) end
+		local function getPing()
+			local ping = 0
+			pcall(function()
+				local net = Stats:FindFirstChild("Network")
+				local ss = net and net:FindFirstChild("ServerStatsItem")
+				local item = ss and ss:FindFirstChild("Data Ping")
+				if item and item.GetValue then
+					ping = tonumber(item:GetValue()) or 0
+				end
+			end)
+			if ping <= 0 then
+				pcall(function()
+					if Player and Player.GetNetworkPing then
+						ping = (Player:GetNetworkPing() or 0) * 1000
+					end
+				end)
+			end
+			return math.clamp(math.floor(tonumber(ping) or 0), 0, 700)
+		end
 		local function checkFriends()
 			if Luna._Destroyed or not HomeTabPage or not HomeTabPage.Parent then return end
 			if friendsCooldown == 0 then
@@ -4052,20 +4087,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 			ExtraCards.Size = UDim2.new(1, -20, 0, 0)
 			ExtraCards.Position = UDim2.new(0, 10, 0, 240)
 			ExtraCards.AutomaticSize = Enum.AutomaticSize.Y
-			ExtraCards.ZIndex = 8
+			ExtraCards.ZIndex = 3
+			ExtraCards.Parent = HomeTabPage
 			local detailsholder = HomeTabPage:FindFirstChild("detailsholder")
 			local dashboard = detailsholder and detailsholder:FindFirstChild("dashboard")
-			ExtraCards.Parent = dashboard or HomeTabPage
-			if dashboard then
-				pcall(function()
-					dashboard.ClipsDescendants = false
-				end)
-				if detailsholder then
-					pcall(function()
-						detailsholder.ClipsDescendants = false
-					end)
-				end
-			end
 						local grid = Instance.new("UIGridLayout")
 			grid.SortOrder = Enum.SortOrder.LayoutOrder
 			grid.CellPadding = UDim2.fromOffset(10, 10)
@@ -4079,46 +4104,59 @@ function Window:CreateHomeTab(HomeTabSettings)
 			padding.PaddingBottom = UDim.new(0, 8)
 			padding.Parent = ExtraCards
 			if dashboard then
-				local function cardContentBottom(card)
+				local function pageY(absY)
+					local canvasY = HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0
+					return absY - HomeTabPage.AbsolutePosition.Y + canvasY
+				end
+				local function cardPageBottom(card)
 					if not (card and card:IsA("GuiObject") and card.Visible) then
 						return 0
 					end
-					local dashY = dashboard.AbsolutePosition.Y
 					local dashH = math.max(1, dashboard.AbsoluteSize.Y)
-					local relY = card.AbsolutePosition.Y - dashY
 					local stretched = card.Size.Y.Scale >= 0.5 or card.AbsoluteSize.Y > dashH * 0.72
 					if not stretched then
-						return relY + card.AbsoluteSize.Y
+						return pageY(card.AbsolutePosition.Y + card.AbsoluteSize.Y)
 					end
 					local inner = 0
 					for _, d in ipairs(card:GetDescendants()) do
 						if d:IsA("GuiObject") and d.Visible then
 							local h = d.AbsoluteSize.Y
-							if h >= 8 and h <= 130 then
-								local b = d.AbsolutePosition.Y - dashY + h
+							if h >= 8 and h <= 90 then
+								local b = pageY(d.AbsolutePosition.Y + h)
 								if b > inner then inner = b end
 							end
 						end
 					end
-					if inner > 40 then
+					if inner > 80 then
 						return inner
 					end
-					return relY + math.max(card.Size.Y.Offset, 72)
+					return pageY(card.AbsolutePosition.Y) + math.max(card.Size.Y.Offset, 72)
+				end
+				local function syncCanvas()
+					if not HomeTabPage:IsA("ScrollingFrame") then return end
+					local bottom = pageY(ExtraCards.AbsolutePosition.Y) + ExtraCards.AbsoluteSize.Y + 18
+					local minH = HomeTabPage.AbsoluteSize.Y
+					HomeTabPage.CanvasSize = UDim2.new(0, 0, 0, math.max(minH, math.floor(bottom)))
 				end
 				local function reposition()
 					if not ExtraCards or not ExtraCards.Parent then return end
 					if not dashboard or not dashboard.Parent then return end
 					local discord = dashboard:FindFirstChild("Discord")
 					local friends = dashboard:FindFirstChild("Friends")
-					local bottom = math.max(cardContentBottom(discord), cardContentBottom(friends))
+					local bottom = math.max(cardPageBottom(discord), cardPageBottom(friends))
 					if bottom < 80 then
-						bottom = 230
+						bottom = pageY(dashboard.AbsolutePosition.Y) + 230
 					end
-					ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(bottom) + 10)
+					ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(bottom) + 12)
+					task.defer(syncCanvas)
 				end
 				reposition()
 				dashboard:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
 				dashboard:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
+				HomeTabPage:GetPropertyChangedSignal("AbsoluteSize"):Connect(reposition)
+				if HomeTabPage:IsA("ScrollingFrame") then
+					HomeTabPage:GetPropertyChangedSignal("CanvasPosition"):Connect(reposition)
+				end
 				for _, name in ipairs({"Discord", "Friends"}) do
 					local card = dashboard:FindFirstChild(name)
 					if card then
@@ -12386,67 +12424,61 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 	end
 				if WindowSettings.Resizable and CanShowResizeHandle() then
 		local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
-		local idleBar = Color3.fromRGB(245, 245, 252)
+		local idleIcon = Color3.fromRGB(235, 235, 245)
 		local HandleBack = Instance.new("TextButton")
 		HandleBack.Name = RandomName()
 		HandleBack:SetAttribute("LunaNoTheme", true)
 		HandleBack:SetAttribute("LunaNoTranslate", true)
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
-		HandleBack.Position = UDim2.new(1, -4, 1, -4)
-		HandleBack.Size = UDim2.fromOffset(36, 36)
-		HandleBack.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
-		HandleBack.BackgroundTransparency = 0
+		HandleBack.Position = UDim2.fromOffset(0, 0)
+		HandleBack.Size = UDim2.fromOffset(18, 18)
+		HandleBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		HandleBack.BackgroundTransparency = 1
 		HandleBack.BorderSizePixel = 0
 		HandleBack.Text = ""
 		HandleBack.AutoButtonColor = false
-		HandleBack.ZIndex = 120
-		HandleBack.Parent = Main
-		local gripCorner = Instance.new("UICorner")
-		gripCorner.CornerRadius = UDim.new(0, 8)
-		gripCorner.Parent = HandleBack
-		local gripStroke = Instance.new("UIStroke")
-		gripStroke.Color = Color3.fromRGB(235, 235, 245)
-		gripStroke.Transparency = 0.05
-		gripStroke.Thickness = 2
-		gripStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		gripStroke.Parent = HandleBack
-		local gripBars = {}
-		for i = 1, 3 do
-			local bar = Instance.new("Frame")
-			bar:SetAttribute("LunaNoTheme", true)
-			bar:SetAttribute("LunaNoTranslate", true)
-			bar.AnchorPoint = Vector2.new(0.5, 0.5)
-			bar.Position = UDim2.new(0.5, (i - 2) * 6, 0.5, (i - 2) * 6)
-			bar.Size = UDim2.fromOffset(18, 4)
-			bar.Rotation = -45
-			bar.BackgroundColor3 = idleBar
-			bar.BackgroundTransparency = 0
-			bar.BorderSizePixel = 0
-			bar.ZIndex = 122
-			bar.Parent = HandleBack
-			local barCorner = Instance.new("UICorner")
-			barCorner.CornerRadius = UDim.new(1, 0)
-			barCorner.Parent = bar
-			gripBars[i] = bar
+		HandleBack.ZIndex = 250
+		HandleBack.Parent = LunaUI
+		local ResizeIcon = Instance.new("ImageLabel")
+		ResizeIcon.Name = RandomName()
+		ResizeIcon:SetAttribute("LunaNoTheme", true)
+		ResizeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+		ResizeIcon.Position = UDim2.fromScale(0.5, 0.5)
+		ResizeIcon.Size = UDim2.fromOffset(14, 14)
+		ResizeIcon.BackgroundTransparency = 1
+		ResizeIcon.BorderSizePixel = 0
+		ResizeIcon.ImageColor3 = idleIcon
+		ResizeIcon.ImageTransparency = 0.5
+		ResizeIcon.ZIndex = 251
+		ResizeIcon.Active = false
+		ResizeIcon.Parent = HandleBack
+		do
+			local iconData = GetIcon("move-diagonal-2", "Lucide") or GetIcon("open_in_full", "Material")
+			ApplyIcon(ResizeIcon, iconData)
 		end
 		local function refreshHandleAccent()
 			accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+			idleIcon = (Luna.ActiveTheme and Luna.ActiveTheme.TextPrimary) or Color3.fromRGB(235, 235, 245)
 		end
 		local function paintGrip(hovered, dragging)
 			refreshHandleAccent()
-			local color = (hovered or dragging) and accent or idleBar
-			local info = TweenInfo.new(0.12, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-			for _, bar in ipairs(gripBars) do
-				TweenService:Create(bar, info, {BackgroundColor3 = color}):Play()
-			end
-			TweenService:Create(HandleBack, info, {
-				BackgroundColor3 = (hovered or dragging) and Color3.fromRGB(28, 28, 40) or Color3.fromRGB(18, 18, 26),
+			local on = hovered or dragging
+			TweenService:Create(ResizeIcon, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				ImageColor3 = on and accent or idleIcon,
+				ImageTransparency = on and 0 or 0.5,
 			}):Play()
-			if gripStroke then
-				gripStroke.Color = color
-				gripStroke.Transparency = (hovered or dragging) and 0 or 0.05
-			end
 		end
+		local function pinResizeHandle()
+			if not (HandleBack and HandleBack.Parent and Main and Main.Parent) then return end
+			local pap = HandleBack.Parent.AbsolutePosition
+			HandleBack.Position = UDim2.fromOffset(
+				Main.AbsolutePosition.X + Main.AbsoluteSize.X - 2 - pap.X,
+				Main.AbsolutePosition.Y + Main.AbsoluteSize.Y - 2 - pap.Y
+			)
+		end
+		pinResizeHandle()
+		Main:GetPropertyChangedSignal("AbsolutePosition"):Connect(pinResizeHandle)
+		Main:GetPropertyChangedSignal("AbsoluteSize"):Connect(pinResizeHandle)
 		HandleBack.MouseEnter:Connect(function()
 			if not Window._Resizing then
 				paintGrip(true, false)
