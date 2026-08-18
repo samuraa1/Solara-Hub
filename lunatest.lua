@@ -10168,6 +10168,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			pcall(function() writefile(path, HttpService:JSONEncode(tbl)) end)
 		end
 		local source = "ScriptBlox"
+		local VALID_SOURCES = {
+			ScriptBlox = true,
+			RScripts = true,
+			HaxHell = true,
+			RobloxScripts = true,
+		}
 		local pageNum = 1
 		local maxPages = 1
 		local loading = false
@@ -10276,7 +10282,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local sourceDropdown = { CurrentOption = "ScriptBlox", Class = "Dropdown", IgnoreConfig = true, Settings = { Name = "API Source" } }
 		function sourceDropdown:Set(v)
 			local opt = unwrapOpt(v)
-			if opt ~= "ScriptBlox" and opt ~= "RScripts" then
+			if type(opt) ~= "string" or not VALID_SOURCES[opt] then
 				return
 			end
 			source = opt
@@ -10315,7 +10321,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		composer.BackgroundColor3 = th0.surface
 		composer.BackgroundTransparency = 0.08
 		composer.BorderSizePixel = 0
-		composer.Size = UDim2.new(1, 0, 0, phoneUI and 206 or 164)
+		composer.Size = UDim2.new(1, 0, 0, phoneUI and 246 or 204)
 		composer.LayoutOrder = 1
 		composer.Parent = searchPage
 		ssCorner(composer, 12)
@@ -10441,12 +10447,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			queryInput:Set(gname)
 			runSearch(1)
 		end)
-		local toolsRow = Instance.new("Frame")
-		toolsRow.Name = RandomName()
-		toolsRow.BackgroundTransparency = 1
-		toolsRow.Size = UDim2.new(1, 0, 0, 32)
-		toolsRow.LayoutOrder = 2
-		toolsRow.Parent = composer
+		local sourceRow = Instance.new("Frame")
+		sourceRow.Name = RandomName()
+		sourceRow.BackgroundTransparency = 1
+		sourceRow.Size = UDim2.new(1, 0, 0, 32)
+		sourceRow.LayoutOrder = 2
+		sourceRow.Parent = composer
+		local sortRow = Instance.new("Frame")
+		sortRow.Name = RandomName()
+		sortRow.BackgroundTransparency = 1
+		sortRow.Size = UDim2.new(1, 0, 0, 32)
+		sortRow.LayoutOrder = 3
+		sortRow.Parent = composer
 		local function makeSeg(parent, pos, size, items, getId, onPick)
 			local t = ssTheme()
 			local wrap = Instance.new("Frame")
@@ -10491,7 +10503,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				b.BackgroundTransparency = 1
 				b.Size = UDim2.new(1 / #items, -3, 1, 0)
 				b.Font = Enum.Font.GothamSemibold
-				b.TextSize = 11
+				b.TextSize = (#items >= 4) and 10 or 11
 				b.Text = item.label
 				b.TextColor3 = t.dim
 				b.AutoButtonColor = false
@@ -10508,9 +10520,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			paint()
 			return paint
 		end
-		paintSource = makeSeg(toolsRow, UDim2.new(0, 0, 0, 0), UDim2.new(0.5, -5, 1, 0), {
+		paintSource = makeSeg(sourceRow, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 1, 0), {
 			{ id = "ScriptBlox", label = "ScriptBlox" },
 			{ id = "RScripts", label = "RScripts" },
+			{ id = "HaxHell", label = "HaxHell" },
+			{ id = "RobloxScripts", label = "RBX Scripts" },
 		}, function()
 			return source
 		end, function(id)
@@ -10519,7 +10533,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if updateFilterVisibility then updateFilterVisibility() end
 			setStatus("Source: " .. source)
 		end)
-		paintSort = makeSeg(toolsRow, UDim2.new(0.5, 5, 0, 0), UDim2.new(0.5, -5, 1, 0), {
+		paintSort = makeSeg(sortRow, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 1, 0), {
 			{ id = "date", label = "Newest" },
 			{ id = "views", label = "Views" },
 			{ id = "likes", label = "Likes" },
@@ -10585,26 +10599,32 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			lay.Parent = row
 			return row
 		end
-		local sbFilterRow = makeChipRow(3)
+		local sbFilterRow = makeChipRow(4)
 		makeFilterChip(sbFilterRow, "Key", "KEY", function() return filters.key end, function(v) filters.key = v end)
 		makeFilterChip(sbFilterRow, "Universal", "UNIVERSAL", function() return filters.universal end, function(v) filters.universal = v end)
 		makeFilterChip(sbFilterRow, "Verified", "VERIFIED", function() return filters.verified end, function(v) filters.verified = v end)
 		makeFilterChip(sbFilterRow, "Patched", "PATCHED", function() return filters.patched end, function(v) filters.patched = v end)
-		local rsFilterRow = makeChipRow(3)
+		local rsFilterRow = makeChipRow(4)
 		makeFilterChip(rsFilterRow, "Verified", "VERIFIED", function() return filters.verifiedOnly end, function(v) filters.verifiedOnly = v end)
 		makeFilterChip(rsFilterRow, "Free", "KEYLESS", function() return filters.notPaid end, function(v) filters.notPaid = v end)
 		makeFilterChip(rsFilterRow, "Unpatched", "MOBILE", function() return filters.unpatched end, function(v) filters.unpatched = v end)
 		makeFilterChip(rsFilterRow, "No key", "KEYLESS", function() return filters.noKeySystem end, function(v) filters.noKeySystem = v end)
+		local rbxFilterRow = makeChipRow(4)
+		makeFilterChip(rbxFilterRow, "Key", "KEY", function() return filters.key end, function(v) filters.key = v end)
+		makeFilterChip(rbxFilterRow, "Free", "KEYLESS", function() return filters.notPaid end, function(v) filters.notPaid = v end)
+		makeFilterChip(rbxFilterRow, "Verified", "VERIFIED", function() return filters.verified end, function(v) filters.verified = v end)
+		makeFilterChip(rbxFilterRow, "Universal", "UNIVERSAL", function() return filters.universal end, function(v) filters.universal = v end)
 		updateFilterVisibility = function()
-			sbFilterRow.Visible = source == "ScriptBlox"
+			sbFilterRow.Visible = (source == "ScriptBlox" or source == "HaxHell")
 			rsFilterRow.Visible = source == "RScripts"
+			rbxFilterRow.Visible = source == "RobloxScripts"
 		end
 		updateFilterVisibility()
 		local statusText = Instance.new("TextLabel")
 		statusText.Name = RandomName()
 		statusText.BackgroundTransparency = 1
 		statusText.Size = UDim2.new(1, 0, 0, 16)
-		statusText.LayoutOrder = 4
+		statusText.LayoutOrder = 5
 		statusText.Font = Enum.Font.Gotham
 		statusText.TextSize = 11
 		statusText.TextColor3 = th0.dim
@@ -10788,6 +10808,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			table.insert(favorites, 1, {
 				Title = data.title, Game = data.game, Source = data.source or source,
 				Link = data.link, FetchUrl = data.fetchUrl, Raw = data.raw, Ts = os.time(),
+				Image = data.image, PlaceId = data.placeId,
 			})
 			ssWriteJson(FAV_FILE, favorites)
 			if renderFavorites then renderFavorites() end
@@ -10891,22 +10912,99 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			codeLbl.ZIndex = 204
 			codeLbl.Parent = codeScroll
 		end
+		local CARD_H = 122
+		local function absUrl(base, path)
+			if type(path) ~= "string" or path == "" then return nil end
+			if path:sub(1, 4) == "http" then return path end
+			if path:sub(1, 2) == "//" then return "https:" .. path end
+			if path:sub(1, 1) == "/" then return base .. path end
+			return path
+		end
+		local function normalizeThumbUrl(url)
+			if type(url) ~= "string" or url == "" then return nil end
+			url = url:gsub("^%s+", ""):gsub("%s+$", "")
+			if url:sub(1, 2) == "//" then url = "https:" .. url end
+			url = url:gsub("/Image/Webp/", "/Image/Png/")
+			url = url:gsub("Webp/noFilter", "Png/noFilter")
+			return url
+		end
+		local function resolveThumb(data)
+			local url = normalizeThumbUrl(data.image)
+			if url then return url end
+			local pid = tonumber(data.placeId)
+			if pid then
+				return "rbxthumb://type=PlaceIcon&id=" .. tostring(pid) .. "&w=150&h=150"
+			end
+			return nil
+		end
+		local function applyThumb(img, data, theme)
+			local url = resolveThumb(data)
+			img.BackgroundColor3 = theme.surface
+			img.ScaleType = Enum.ScaleType.Crop
+			img.ImageColor3 = Color3.new(1, 1, 1)
+			if not url then
+				img.ScaleType = Enum.ScaleType.Fit
+				img.ImageColor3 = theme.muted
+				ApplyIcon(img, GetIcon("photo", "Material") or GetIcon("code", "Material"))
+				return
+			end
+			if url:find("rbxthumb://", 1, true) or url:find("rbxcdn.com", 1, true) then
+				img.Image = url
+				return
+			end
+			img.Image = url
+			if getcustomasset and writefile then
+				task.spawn(function()
+					local body = LunaHttpGet(url)
+					if not body or #body < 80 or not img.Parent then return end
+					local h = 0
+					for i = 1, math.min(#url, 80) do
+						h = (h * 33 + string.byte(url, i)) % 1000000007
+					end
+					local fname = "solara_ss_" .. tostring(h) .. ".png"
+					pcall(function()
+						writefile(fname, body)
+						if img.Parent then
+							img.Image = getcustomasset(fname)
+							img.ImageColor3 = Color3.new(1, 1, 1)
+							img.ScaleType = Enum.ScaleType.Crop
+						end
+					end)
+				end)
+			end
+		end
 				local function makeCard(data, order, parentScroll)
 			parentScroll = parentScroll or Scroll
 			local theme = ssTheme()
 			local card = Instance.new("Frame")
 			card.BackgroundColor3 = theme.elevated
 			card.BackgroundTransparency = 0.08
-			card.Size = UDim2.fromOffset(cardWidth(), 116)
+			card.Size = UDim2.fromOffset(cardWidth(), CARD_H)
 			card.LayoutOrder = order
 			card.ZIndex = 2
 			card.Parent = parentScroll
 			ssCorner(card, 12)
 			local cStroke = ssStroke(card, theme.stroke, 0.55)
+			local thumbWrap = Instance.new("Frame")
+			thumbWrap.BackgroundColor3 = theme.surface
+			thumbWrap.BackgroundTransparency = 0.1
+			thumbWrap.Position = UDim2.new(0, 8, 0, 8)
+			thumbWrap.Size = UDim2.fromOffset(88, 72)
+			thumbWrap.ZIndex = 3
+			thumbWrap.ClipsDescendants = true
+			thumbWrap.Parent = card
+			ssCorner(thumbWrap, 10)
+			local thumb = Instance.new("ImageLabel")
+			thumb.BackgroundTransparency = 1
+			thumb.Size = UDim2.fromScale(1, 1)
+			thumb.ScaleType = Enum.ScaleType.Crop
+			thumb.ZIndex = 3
+			thumb.Parent = thumbWrap
+			applyThumb(thumb, data, theme)
 			local title = Instance.new("TextLabel")
 			title.BackgroundTransparency = 1
-			title.Position = UDim2.new(0, 10, 0, 6)
-			title.Size = UDim2.new(1, -20, 0, 18)
+			title.Position = UDim2.new(0, 104, 0, 8)
+			title.Size = UDim2.new(1, -114, 0, 18)
 			title.Font = Enum.Font.GothamSemibold
 			title.TextSize = 13
 			title.TextColor3 = theme.text
@@ -10925,10 +11023,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if data.universal then table.insert(badges, "UNIVERSAL") end
 			if data.ranCount and data.ranCount > 0 then table.insert(badges, "RAN x" .. data.ranCount) end
 			if #badges > 0 then
-				local badgeRow = LunaMakeTagRow(card, badges, { Name = "LunaTags", Max = 6, Height = 16, TextSize = 9, Align = Enum.HorizontalAlignment.Left })
+				local badgeRow = LunaMakeTagRow(card, badges, { Name = "LunaTags", Max = 5, Height = 16, TextSize = 9, Align = Enum.HorizontalAlignment.Left })
 				if badgeRow then
 					badgeRow.AnchorPoint = Vector2.new(0, 0)
-					badgeRow.Position = UDim2.new(0, 10, 0, 26)
+					badgeRow.Position = UDim2.new(0, 104, 0, 28)
 				end
 			end
 			local metaParts = {}
@@ -10940,8 +11038,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if upd then table.insert(metaParts, "upd " .. upd) end
 			local meta = Instance.new("TextLabel")
 			meta.BackgroundTransparency = 1
-			meta.Position = UDim2.new(0, 10, 0, 41)
-			meta.Size = UDim2.new(1, -20, 0, 14)
+			meta.Position = UDim2.new(0, 104, 0, 48)
+			meta.Size = UDim2.new(1, -114, 0, 14)
 			meta.Font = Enum.Font.Gotham
 			meta.TextSize = 11
 			meta.TextColor3 = theme.dim
@@ -10950,46 +11048,53 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			meta.TextXAlignment = Enum.TextXAlignment.Left
 			meta.Text = table.concat(metaParts, "  •  ")
 			meta.Parent = card
-			local function btnRow(y)
-				local row = Instance.new("Frame")
-				row.BackgroundTransparency = 1
-				row.Position = UDim2.new(0, 8, 0, y)
-				row.Size = UDim2.new(1, -16, 0, 24)
-				row.Parent = card
-				local rl = Instance.new("UIListLayout")
-				rl.FillDirection = Enum.FillDirection.Horizontal
-				rl.Padding = UDim.new(0, 6)
-				rl.SortOrder = Enum.SortOrder.LayoutOrder
-				rl.Parent = row
-				return row
-			end
-			local row1 = btnRow(60)
-			local row2 = btnRow(88)
-			local function miniBtn(row, text, orderB, cb, kind)
-				kind = kind or (text == "Execute" and "primary") or "ghost"
+			local actionBar = Instance.new("Frame")
+			actionBar.BackgroundTransparency = 1
+			actionBar.Position = UDim2.new(0, 8, 1, -36)
+			actionBar.Size = UDim2.new(1, -16, 0, 26)
+			actionBar.Parent = card
+			local actionLay = Instance.new("UIListLayout")
+			actionLay.FillDirection = Enum.FillDirection.Horizontal
+			actionLay.Padding = UDim.new(0, 5)
+			actionLay.SortOrder = Enum.SortOrder.LayoutOrder
+			actionLay.VerticalAlignment = Enum.VerticalAlignment.Center
+			actionLay.Parent = actionBar
+			local function actionBtn(text, iconName, kind, orderB, widthScale, cb)
 				local t = ssTheme()
 				local b = Instance.new("TextButton")
-				b.Size = UDim2.new(1/3, -4, 1, 0)
+				b.Size = UDim2.new(widthScale, -4, 1, 0)
 				b.Font = Enum.Font.GothamSemibold
 				b.TextSize = 11
 				b.TextColor3 = Color3.new(1, 1, 1)
 				b.Text = text
 				b.LayoutOrder = orderB
 				b.AutoButtonColor = false
-				b.Parent = row
+				b.Parent = actionBar
 				ApplyInterfaceFont(b, Enum.Font.GothamSemibold)
-				ssCorner(b, 7)
+				ssCorner(b, 8)
 				if kind == "primary" then
 					b.BackgroundColor3 = t.accent
-					b.BackgroundTransparency = 0.05
+					b.BackgroundTransparency = 0.02
 				else
 					b.BackgroundColor3 = t.surface
-					b.BackgroundTransparency = 0.12
-					ssStroke(b, t.stroke, 0.45)
+					b.BackgroundTransparency = 0.08
+					ssStroke(b, t.stroke, 0.4)
+				end
+				if iconName then
+					local ico = Instance.new("ImageLabel")
+					ico.BackgroundTransparency = 1
+					ico.Size = UDim2.fromOffset(12, 12)
+					ico.Position = UDim2.new(0, 7, 0.5, -6)
+					ico.ImageColor3 = Color3.new(1, 1, 1)
+					ico.ZIndex = 2
+					ico.Parent = b
+					ApplyIcon(ico, GetIcon(iconName, "Material"))
+					b.TextXAlignment = Enum.TextXAlignment.Center
 				end
 				local idleT = b.BackgroundTransparency
 				b.MouseEnter:Connect(function()
-					tween(b, { BackgroundTransparency = math.max(0, idleT - 0.1) })
+					tween(b, { BackgroundTransparency = math.max(0, idleT - 0.12) })
+					tween(cStroke, { Transparency = 0.28 })
 				end)
 				b.MouseLeave:Connect(function()
 					tween(b, { BackgroundTransparency = idleT })
@@ -10998,7 +11103,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				return b
 			end
 			local execBtn
-			execBtn = miniBtn(row1, "Execute", 1, function()
+			execBtn = actionBtn("Execute", "play_arrow", "primary", 1, 0.24, function()
 				local function runSearcherScript()
 					if data.raw and data.raw ~= "" then
 						local ok, err = pcall(function() loadstring(data.raw)() end)
@@ -11033,7 +11138,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end)
 			local viewBtn
-			viewBtn = miniBtn(row1, "View", 2, function()
+			viewBtn = actionBtn("View", "visibility", "ghost", 2, 0.18, function()
 				if data.raw and data.raw ~= "" then
 					showCodePopup(data.title, data.raw)
 				elseif data.fetchUrl then
@@ -11050,19 +11155,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end)
 				end
 			end)
-			miniBtn(row1, "Copy", 3, function()
-				if setclipboard and data.raw and data.raw ~= "" then
-					setclipboard(data.raw)
-					notifyCopy("Script copied.")
-				elseif setclipboard and data.fetchUrl then
-					setclipboard(data.fetchUrl)
-					notifyCopy("URL copied.")
-				elseif setclipboard and data.link then
-					setclipboard(data.link)
-					notifyCopy("Link copied.")
-				end
-			end)
-			miniBtn(row2, data.fetchUrl and "Copy LS" or "Copy Raw", 1, function()
+			actionBtn("Copy", "content_copy", "ghost", 3, 0.18, function()
 				if not setclipboard then return end
 				if data.fetchUrl then
 					setclipboard('loadstring(game:HttpGet("' .. data.fetchUrl .. '"))()')
@@ -11070,17 +11163,20 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				elseif data.raw and data.raw ~= "" then
 					setclipboard(data.raw)
 					notifyCopy("Script copied.")
+				elseif data.link then
+					setclipboard(data.link)
+					notifyCopy("Link copied.")
 				end
 			end)
 			local favBtn
-			favBtn = miniBtn(row2, isFavorite(data) and "* Fav" or "+ Fav", 2, function()
-				favBtn.Text = toggleFavorite(data) and "* Fav" or "+ Fav"
+			favBtn = actionBtn(isFavorite(data) and "Fav" or "+ Fav", "star", "ghost", 4, 0.18, function()
+				favBtn.Text = toggleFavorite(data) and "Fav" or "+ Fav"
 			end)
-			miniBtn(row2, "+ My Scripts", 3, function()
+			actionBtn("Save", "playlist_add", "ghost", 5, 0.22, function()
 				addToMyScripts(data)
 			end)
-			card.MouseEnter:Connect(function() tween(cStroke, {Transparency = 0.35}) end)
-			card.MouseLeave:Connect(function() tween(cStroke, {Transparency = 0.75}) end)
+			card.MouseEnter:Connect(function() tween(cStroke, {Transparency = 0.28}) end)
+			card.MouseLeave:Connect(function() tween(cStroke, {Transparency = 0.55}) end)
 		end
 		local function getQuery()
 			if queryInput and queryInput.CurrentValue then
@@ -11146,6 +11242,116 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if filters.patched then url = url .. "&patched=1" end
 			return url
 		end
+		local function encodeParams(params)
+			local parts = {}
+			for k, v in pairs(params) do
+				if v ~= nil and v ~= "" then
+					table.insert(parts, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(tostring(v)))
+				end
+			end
+			return table.concat(parts, "&")
+		end
+		local function buildHaxHellUrl(q, page)
+			local params = {
+				q = q,
+				page = tostring(page),
+				limit = "20",
+				sort = (sortMode == "views" and "views") or (sortMode == "likes" and "likes") or "latest",
+			}
+			if filters.universal then params.type = "universal" end
+			if filters.patched then params.patched = "true" end
+			if filters.key then params.keySystem = "true" end
+			return "https://haxhell.com/api/v1/scripts?" .. encodeParams(params)
+		end
+		local function buildRobloxScriptsUrl(q, page)
+			local params = {
+				q = q,
+				page = tostring(page),
+				limit = "20",
+				sort = (sortMode == "views" and "most-viewed") or (sortMode == "likes" and "most-liked") or "newest",
+			}
+			if filters.verified then params.verified = "true" end
+			if filters.notPaid then
+				params.access = "free"
+			elseif filters.key then
+				params.access = "key"
+			end
+			return "https://robloxscripts.com/api/v1/scripts?" .. encodeParams(params)
+		end
+		local function parseHaxHell(data)
+			if not data then return {} end
+			local list = data.data
+			if type(list) ~= "table" then return {} end
+			local cards = {}
+			for _, s in ipairs(list) do
+				local flags = s.flags or {}
+				local game = s.game or {}
+				local media = s.media or {}
+				local author = s.author or {}
+				local stats = s.stats or {}
+				local links = s.links or {}
+				if not (filters.verified and not (flags.verified or author.isScripterVerified)) then
+				table.insert(cards, {
+					title = s.title or "Untitled",
+					game = game.name or (s.type == "universal" and "Universal") or nil,
+					author = author.username,
+					views = stats.views,
+					likes = stats.likes,
+					updated = s.updatedAt or s.createdAt,
+					verified = flags.verified or author.isScripterVerified or nil,
+					patched = flags.patched or nil,
+					keySystem = flags.keySystem or nil,
+					paid = flags.isPaid or nil,
+					mobile = flags.mobileSupported or nil,
+					universal = (s.type == "universal") or nil,
+					image = media.thumbnailUrl or game.iconUrl or game.thumbnailUrl,
+					placeId = game.placeId,
+					link = links.webpage or (s.slug and ("https://haxhell.com/scripts/" .. tostring(s.slug))) or nil,
+					fetchUrl = links.raw,
+					raw = nil,
+					source = "HaxHell",
+				})
+				end
+			end
+			return cards
+		end
+		local function parseRobloxScripts(data)
+			if not data then return {} end
+			local list = data.data
+			if type(list) ~= "table" then return {} end
+			local cards = {}
+			for _, s in ipairs(list) do
+				if not (filters.universal and not s.isUniversal) then
+				local gameName = nil
+				if type(s.game) == "table" then
+					gameName = s.game.name or s.game.title
+				elseif type(s.games) == "table" and s.games[1] then
+					gameName = s.games[1]
+				end
+				if s.isUniversal then gameName = gameName or "Universal" end
+				local author = s.author
+				table.insert(cards, {
+					title = s.title or "Untitled",
+					game = gameName,
+					author = type(author) == "table" and author.username or author,
+					views = s.views,
+					likes = s.likes,
+					updated = s.updatedAt or s.createdAt,
+					verified = (type(author) == "table" and author.verified) or nil,
+					keySystem = s.key or (s.accessType == "key") or nil,
+					paid = (s.accessType == "paid") or nil,
+					universal = s.isUniversal or nil,
+					image = s.image,
+					placeId = type(s.game) == "table" and (s.game.placeId or s.game.id) or nil,
+					link = s.scriptPageUrl or (s.slug and ("https://robloxscripts.com/script/" .. tostring(s.slug))) or nil,
+					fetchUrl = s.rawScriptUrl,
+					raw = (not s.rawScriptUrl and s.script) or nil,
+					source = "RobloxScripts",
+				})
+				end
+			end
+			return cards
+		end
 		local function parseRScripts(data)
 			if not data then return {} end
 			local list = data.scripts or (data.data and data.data.scripts)
@@ -11164,6 +11370,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					keySystem = s.keySystem or nil,
 					paid = s.paid or nil,
 					mobile = s.mobileReady or nil,
+					image = s.image or (s.game and (s.game.imgurl or s.game.gameLogo or s.game.imageUrl)) or nil,
+					placeId = s.game and s.game.placeId or nil,
 					link = id and ("https://rscripts.net/script/" .. tostring(id)) or nil,
 					fetchUrl = s.rawScript,
 					raw = nil,
@@ -11191,6 +11399,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					keySystem = s.key or nil,
 					paid = (s.scriptType ~= nil and s.scriptType ~= "free") or nil,
 					universal = s.isUniversal or nil,
+					image = absUrl("https://scriptblox.com", s.image) or absUrl("https://scriptblox.com", s.game and s.game.imageUrl) or nil,
+					placeId = s.game and (s.game.gameId or s.game.placeId) or nil,
 					link = slug and ("https://scriptblox.com/script/" .. tostring(slug)) or nil,
 					fetchUrl = nil,
 					raw = s.script,
@@ -11211,6 +11421,40 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end
 					if #cards == 0 and data.message then
 						errMsg = tostring(data.message)
+					end
+				end
+			elseif source == "HaxHell" then
+				local data, err = LunaHttpJSON(buildHaxHellUrl(query, page))
+				errMsg = err
+				if data then
+					cards = parseHaxHell(data)
+					local pg = data.pagination
+					if pg then
+						if tonumber(pg.totalPages) then
+							mp = tonumber(pg.totalPages)
+						elseif pg.hasMore then
+							mp = page + 1
+						else
+							mp = page
+						end
+					end
+					if #cards == 0 and data.error then
+						errMsg = tostring(data.error)
+					end
+				end
+			elseif source == "RobloxScripts" then
+				local data, err = LunaHttpJSON(buildRobloxScriptsUrl(query, page))
+				errMsg = err
+				if data then
+					cards = parseRobloxScripts(data)
+					local pg = data.pagination
+					if pg and tonumber(pg.pages) then
+						mp = tonumber(pg.pages)
+					elseif pg and pg.hasMore then
+						mp = page + 1
+					end
+					if #cards == 0 and data.error then
+						errMsg = tostring(data.error)
 					end
 				end
 			else
@@ -11350,6 +11594,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				makeCard({
 					title = e.Title, game = e.Game, source = e.Source,
 					link = e.Link, fetchUrl = e.FetchUrl, raw = e.Raw,
+					image = e.Image, placeId = e.PlaceId,
 				}, i, favScroll)
 			end
 			local w = math.max(favScroll.AbsoluteSize.X - 12, 220)
@@ -11399,7 +11644,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ssCorner(xBtn, 6)
 			qBtn.MouseButton1Click:Connect(function()
 				pcall(function() queryInput:Set(e.Query) end)
-				source = (e.Source == "RScripts") and "RScripts" or "ScriptBlox"
+				source = (VALID_SOURCES[e.Source] and e.Source) or "ScriptBlox"
 				pcall(function() sourceDropdown:Set({ CurrentOption = { source } }) end)
 				if updateFilterVisibility then updateFilterVisibility() end
 				searchSub:Activate()
