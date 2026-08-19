@@ -4078,6 +4078,14 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 		end)()
 										local ExtraCards
+		local FeedbackCard
+		local function placeFeedback()
+			if not (FeedbackCard and FeedbackCard.Parent and ExtraCards and ExtraCards.Parent) then
+				return
+			end
+			local y = ExtraCards.Position.Y.Offset + ExtraCards.AbsoluteSize.Y + 8
+			FeedbackCard.Position = UDim2.new(0, 10, 0, math.floor(y))
+		end
 		local function ensureExtraCards()
 			if ExtraCards and ExtraCards.Parent then return ExtraCards end
 			ExtraCards = Instance.new("Frame")
@@ -4134,7 +4142,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 				local function syncCanvas()
 					if not HomeTabPage:IsA("ScrollingFrame") then return end
-					local bottom = pageY(ExtraCards.AbsolutePosition.Y) + ExtraCards.AbsoluteSize.Y + 18
+					local target = FeedbackCard or ExtraCards
+					if not (target and target.Parent) then return end
+					local canvasY = HomeTabPage.CanvasPosition.Y
+					local bottom = target.AbsolutePosition.Y - HomeTabPage.AbsolutePosition.Y + canvasY + target.AbsoluteSize.Y + 18
 					local minH = HomeTabPage.AbsoluteSize.Y
 					HomeTabPage.CanvasSize = UDim2.new(0, 0, 0, math.max(minH, math.floor(bottom)))
 				end
@@ -4148,6 +4159,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						bottom = pageY(dashboard.AbsolutePosition.Y) + 230
 					end
 					ExtraCards.Position = UDim2.new(0, 10, 0, math.floor(bottom) + 12)
+					placeFeedback()
 					task.defer(syncCanvas)
 				end
 				reposition()
@@ -4172,13 +4184,237 @@ function Window:CreateHomeTab(HomeTabSettings)
 					local pageAbsY = HomeTabPage.AbsolutePosition.Y - (HomeTabPage:IsA("ScrollingFrame") and HomeTabPage.CanvasPosition.Y or 0)
 					local relY = detailsholder.AbsolutePosition.Y - pageAbsY + 200
 					ExtraCards.Position = UDim2.new(0, 10, 0, math.max(120, math.floor(relY)))
+					placeFeedback()
 				end
 				reposition()
 				detailsholder:GetPropertyChangedSignal("AbsolutePosition"):Connect(reposition)
 			end
 			return ExtraCards
 		end
-								function HomeTab:CreateButton(opts)
+		function HomeTab:CreateFeedback(opts)
+			opts = Kwargify({
+				Title = "Feedback",
+				Subtitle = "Bugs, ideas, or anything you want in Solara Hub",
+				Placeholder = "Type your message...",
+				SendText = "Send",
+				MaxCharacters = 500,
+				OnSend = function(_) end,
+			}, opts or {})
+			ensureExtraCards()
+			if FeedbackCard and FeedbackCard.Parent then
+				return FeedbackCard
+			end
+			local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(132, 108, 230)
+			local card = Instance.new("Frame")
+			card.Name = RandomName()
+			card:SetAttribute("LunaNoTheme", true)
+			card.BackgroundColor3 = Color3.fromRGB(24, 22, 34)
+			card.BackgroundTransparency = 0
+			card.BorderSizePixel = 0
+			card.Size = UDim2.new(1, -20, 0, 118)
+			card.ZIndex = 3
+			card.Parent = HomeTabPage
+			FeedbackCard = card
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 14)
+			corner.Parent = card
+			local sheen = Instance.new("UIGradient")
+			sheen.Rotation = 125
+			sheen.Color = ColorSequence.new{
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(42, 34, 68)),
+				ColorSequenceKeypoint.new(0.45, Color3.fromRGB(24, 22, 34)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(18, 16, 28)),
+			}
+			sheen.Parent = card
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = Color3.fromRGB(255, 255, 255)
+			stroke.Transparency = 0.82
+			stroke.Thickness = 1
+			stroke.Parent = card
+			local accentBar = Instance.new("Frame")
+			accentBar.BackgroundColor3 = accent
+			accentBar.BorderSizePixel = 0
+			accentBar.Size = UDim2.new(0, 4, 1, -16)
+			accentBar.Position = UDim2.new(0, 8, 0, 8)
+			accentBar.ZIndex = 4
+			accentBar.Parent = card
+			local barCorner = Instance.new("UICorner")
+			barCorner.CornerRadius = UDim.new(1, 0)
+			barCorner.Parent = accentBar
+			local iconHold = Instance.new("Frame")
+			iconHold.BackgroundColor3 = accent
+			iconHold.BackgroundTransparency = 0.78
+			iconHold.BorderSizePixel = 0
+			iconHold.Position = UDim2.new(0, 22, 0, 14)
+			iconHold.Size = UDim2.fromOffset(34, 34)
+			iconHold.ZIndex = 4
+			iconHold.Parent = card
+			local iconHoldCorner = Instance.new("UICorner")
+			iconHoldCorner.CornerRadius = UDim.new(1, 0)
+			iconHoldCorner.Parent = iconHold
+			local iconLbl = Instance.new("ImageLabel")
+			iconLbl.BackgroundTransparency = 1
+			iconLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+			iconLbl.Position = UDim2.fromScale(0.5, 0.5)
+			iconLbl.Size = UDim2.fromOffset(18, 18)
+			iconLbl.ImageColor3 = Color3.fromRGB(255, 255, 255)
+			iconLbl.ZIndex = 5
+			iconLbl.Parent = iconHold
+			ApplyIcon(iconLbl, GetIcon("chat", "Lucide") or GetIcon("rate_review", "Material"))
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.new(0, 66, 0, 12)
+			title.Size = UDim2.new(1, -140, 0, 20)
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 16
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.TextColor3 = Color3.fromRGB(248, 246, 255)
+			title.Text = tostring(opts.Title)
+			title.ZIndex = 4
+			title.Parent = card
+			ApplyInterfaceFont(title, Enum.Font.GothamBold)
+			local subtitle = Instance.new("TextLabel")
+			subtitle.BackgroundTransparency = 1
+			subtitle.Position = UDim2.new(0, 66, 0, 32)
+			subtitle.Size = UDim2.new(1, -140, 0, 16)
+			subtitle.Font = Enum.Font.Gotham
+			subtitle.TextSize = 12
+			subtitle.TextXAlignment = Enum.TextXAlignment.Left
+			subtitle.TextColor3 = Color3.fromRGB(168, 164, 188)
+			subtitle.Text = tostring(opts.Subtitle)
+			subtitle.ZIndex = 4
+			subtitle.Parent = card
+			ApplyInterfaceFont(subtitle, Enum.Font.Gotham)
+			local counter = Instance.new("TextLabel")
+			counter.BackgroundTransparency = 1
+			counter.AnchorPoint = Vector2.new(1, 0)
+			counter.Position = UDim2.new(1, -16, 0, 16)
+			counter.Size = UDim2.fromOffset(64, 16)
+			counter.Font = Enum.Font.GothamMedium
+			counter.TextSize = 11
+			counter.TextXAlignment = Enum.TextXAlignment.Right
+			counter.TextColor3 = Color3.fromRGB(140, 136, 160)
+			counter.Text = "0/" .. tostring(opts.MaxCharacters)
+			counter.ZIndex = 4
+			counter.Parent = card
+			local inputHold = Instance.new("Frame")
+			inputHold.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+			inputHold.BackgroundTransparency = 0.08
+			inputHold.BorderSizePixel = 0
+			inputHold.Position = UDim2.new(0, 22, 0, 62)
+			inputHold.Size = UDim2.new(1, -128, 0, 42)
+			inputHold.ZIndex = 4
+			inputHold.Parent = card
+			local inputCorner = Instance.new("UICorner")
+			inputCorner.CornerRadius = UDim.new(0, 10)
+			inputCorner.Parent = inputHold
+			local inputStroke = Instance.new("UIStroke")
+			inputStroke.Color = Color3.fromRGB(255, 255, 255)
+			inputStroke.Transparency = 0.88
+			inputStroke.Parent = inputHold
+			local box = Instance.new("TextBox")
+			box.BackgroundTransparency = 1
+			box.ClearTextOnFocus = false
+			box.MultiLine = false
+			box.TextXAlignment = Enum.TextXAlignment.Left
+			box.TextYAlignment = Enum.TextYAlignment.Center
+			box.Font = Enum.Font.Gotham
+			box.TextSize = 14
+			box.TextColor3 = Color3.fromRGB(245, 243, 255)
+			box.PlaceholderColor3 = Color3.fromRGB(120, 116, 140)
+			box.PlaceholderText = tostring(opts.Placeholder)
+			box.Text = ""
+			box.Position = UDim2.new(0, 12, 0, 0)
+			box.Size = UDim2.new(1, -24, 1, 0)
+			box.ZIndex = 5
+			box.Parent = inputHold
+			ApplyInterfaceFont(box, Enum.Font.Gotham)
+			local send = Instance.new("TextButton")
+			send.AutoButtonColor = false
+			send.Text = tostring(opts.SendText)
+			send.Font = Enum.Font.GothamBold
+			send.TextSize = 14
+			send.TextColor3 = Color3.fromRGB(255, 255, 255)
+			send.AnchorPoint = Vector2.new(1, 0)
+			send.Position = UDim2.new(1, -14, 0, 62)
+			send.Size = UDim2.fromOffset(90, 42)
+			send.BackgroundColor3 = accent
+			send.BorderSizePixel = 0
+			send.ZIndex = 5
+			send.Parent = card
+			ApplyInterfaceFont(send, Enum.Font.GothamBold)
+			local sendCorner = Instance.new("UICorner")
+			sendCorner.CornerRadius = UDim.new(0, 10)
+			sendCorner.Parent = send
+			local sendGrad = Instance.new("UIGradient")
+			sendGrad.Rotation = 135
+			sendGrad.Color = ColorSequence.new(Color3.fromRGB(150, 118, 255), Color3.fromRGB(86, 58, 190))
+			sendGrad.Parent = send
+			box.Focused:Connect(function()
+				tween(inputStroke, {Transparency = 0.35, Color = accent})
+			end)
+			box.FocusLost:Connect(function()
+				tween(inputStroke, {Transparency = 0.88, Color = Color3.fromRGB(255, 255, 255)})
+			end)
+			box:GetPropertyChangedSignal("Text"):Connect(function()
+				local t = box.Text or ""
+				if #t > opts.MaxCharacters then
+					box.Text = string.sub(t, 1, opts.MaxCharacters)
+					t = box.Text
+				end
+				counter.Text = tostring(#t) .. "/" .. tostring(opts.MaxCharacters)
+			end)
+			send.MouseEnter:Connect(function()
+				tween(send, {BackgroundTransparency = 0.08})
+			end)
+			send.MouseLeave:Connect(function()
+				tween(send, {BackgroundTransparency = 0})
+			end)
+			local busy = false
+			local function doSend()
+				if busy then return end
+				local msg = tostring(box.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+				if msg == "" then
+					Luna:Notification({
+						Title = "Feedback",
+						Content = "Type a message first.",
+						Icon = "error",
+					})
+					return
+				end
+				busy = true
+				send.Text = "..."
+				task.spawn(function()
+					local ok, result = pcall(opts.OnSend, msg)
+					busy = false
+					send.Text = tostring(opts.SendText)
+					if not ok then
+						Luna:Notification({
+							Title = "Callback Error",
+							Content = "Luna Interface Suite | Feedback | " .. tostring(result),
+							Icon = "error",
+						})
+						return
+					end
+					if result ~= false then
+						box.Text = ""
+						counter.Text = "0/" .. tostring(opts.MaxCharacters)
+					end
+				end)
+			end
+			send.MouseButton1Click:Connect(doSend)
+			box.FocusLost:Connect(function(enter)
+				if enter then doSend() end
+			end)
+			if ExtraCards then
+				ExtraCards:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeFeedback)
+			end
+			placeFeedback()
+			task.defer(placeFeedback)
+			task.delay(0.4, placeFeedback)
+			return card
+		end
+		function HomeTab:CreateButton(opts)
 			opts = Kwargify({
 				Name = "Button",
 				Description = "",
@@ -14032,6 +14268,366 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			return true
 		end
 	end
+	do
+		local infoState = {
+			open = false,
+			layer = nil,
+			conns = {},
+		}
+		local function disconnectInfo()
+			for _, c in ipairs(infoState.conns) do
+				pcall(function() c:Disconnect() end)
+			end
+			infoState.conns = {}
+		end
+		local function destroyInfoLayer()
+			disconnectInfo()
+			if infoState.layer then
+				pcall(function() infoState.layer:Destroy() end)
+				infoState.layer = nil
+			end
+			infoState.open = false
+		end
+		function Window:CloseInfoModal()
+			destroyInfoLayer()
+		end
+		function Window:InfoModal(settings)
+			settings = Kwargify({
+				Title = "Info",
+				Subtitle = "",
+				Icon = "info",
+				ImageSource = "Material",
+				Body = "",
+				Lines = nil,
+				Search = false,
+				Placeholder = "Search...",
+				CloseText = "Close",
+			}, settings or {})
+			if infoState.layer then
+				destroyInfoLayer()
+			end
+			if not LunaUI or not LunaUI.Parent then
+				return false
+			end
+			local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+			local surface = (Luna.ActiveTheme and Luna.ActiveTheme.Surface) or Color3.fromRGB(22, 22, 28)
+			local vp = (Camera and Camera.ViewportSize) or Vector2.new(1280, 720)
+			local phone = IsPhoneClient()
+			local CARD_W = math.floor(math.clamp(phone and (vp.X - 36) or 580, 300, math.min(640, vp.X - 36)))
+			local CARD_H = math.floor(math.clamp(phone and (vp.Y - 72) or 500, 320, math.min(560, vp.Y - 48)))
+			local allLines = {}
+			if type(settings.Lines) == "table" then
+				for _, line in ipairs(settings.Lines) do
+					if type(line) == "string" and line ~= "" then
+						table.insert(allLines, line)
+					end
+				end
+			else
+				local raw = tostring(settings.Body or "")
+				raw = raw:gsub("\r\n", "\n"):gsub("\r", "\n")
+				for line in string.gmatch(raw .. "\n", "([^\n]*)\n") do
+					table.insert(allLines, line)
+				end
+			end
+			local numbered = type(settings.Lines) == "table"
+			local fadeInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+			local popInfo = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local closeInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			local layer = Instance.new("Frame")
+			layer.Name = RandomName()
+			layer:SetAttribute("LunaNoTheme", true)
+			layer:SetAttribute("LunaNoTranslate", true)
+			layer.BackgroundTransparency = 1
+			layer.BorderSizePixel = 0
+			layer.Size = UDim2.fromScale(1, 1)
+			layer.Position = UDim2.fromScale(0, 0)
+			layer.ZIndex = 7200
+			layer.Visible = true
+			layer.Parent = LunaUI
+			infoState.layer = layer
+			local backdrop = Instance.new("TextButton")
+			backdrop.Name = RandomName()
+			backdrop.AutoButtonColor = false
+			backdrop.Text = ""
+			backdrop.Size = UDim2.fromScale(1, 1)
+			backdrop.BackgroundColor3 = Color3.fromRGB(4, 4, 10)
+			backdrop.BackgroundTransparency = 1
+			backdrop.BorderSizePixel = 0
+			backdrop.ZIndex = 7200
+			backdrop.Parent = layer
+			local card = Instance.new("Frame")
+			card.Name = RandomName()
+			card.AnchorPoint = Vector2.new(0.5, 0.5)
+			card.Position = UDim2.fromScale(0.5, 0.5)
+			card.Size = UDim2.fromOffset(CARD_W, CARD_H)
+			card.BackgroundColor3 = surface
+			card.BackgroundTransparency = 1
+			card.BorderSizePixel = 0
+			card.ClipsDescendants = true
+			card.ZIndex = 7210
+			card.Parent = layer
+			local cardScale = Instance.new("UIScale")
+			cardScale.Scale = 0.92
+			cardScale.Parent = card
+			local cardCorner = Instance.new("UICorner")
+			cardCorner.CornerRadius = UDim.new(0, 16)
+			cardCorner.Parent = card
+			local cardStroke = Instance.new("UIStroke")
+			cardStroke.Color = accent
+			cardStroke.Thickness = 1.2
+			cardStroke.Transparency = 1
+			cardStroke.Parent = card
+			local grad = Instance.new("UIGradient")
+			grad.Rotation = 135
+			grad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(48, 44, 68)),
+				ColorSequenceKeypoint.new(0.55, surface),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 14, 24)),
+			})
+			grad.Parent = card
+			local iconChip = Instance.new("Frame")
+			iconChip.BackgroundColor3 = accent
+			iconChip.BackgroundTransparency = 0.72
+			iconChip.BorderSizePixel = 0
+			iconChip.Position = UDim2.fromOffset(16, 14)
+			iconChip.Size = UDim2.fromOffset(36, 36)
+			iconChip.ZIndex = 7211
+			iconChip.Parent = card
+			local iconCorner = Instance.new("UICorner")
+			iconCorner.CornerRadius = UDim.new(0, 10)
+			iconCorner.Parent = iconChip
+			local iconLabel = Instance.new("ImageLabel")
+			iconLabel.BackgroundTransparency = 1
+			iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+			iconLabel.Position = UDim2.fromScale(0.5, 0.5)
+			iconLabel.Size = UDim2.fromOffset(20, 20)
+			iconLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
+			iconLabel.ZIndex = 7212
+			iconLabel.Parent = iconChip
+			ApplyIcon(iconLabel, GetIcon(settings.Icon, settings.ImageSource) or GetIcon("info", "Material"))
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.fromOffset(62, 10)
+			title.Size = UDim2.new(1, -110, 0, 22)
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = phone and 17 or 18
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.TextColor3 = Color3.fromRGB(245, 245, 252)
+			title.TextTruncate = Enum.TextTruncate.AtEnd
+			title.Text = tostring(settings.Title)
+			title.ZIndex = 7211
+			title.Parent = card
+			ApplyInterfaceFont(title, Enum.Font.GothamBold)
+			local subtitle = Instance.new("TextLabel")
+			subtitle.BackgroundTransparency = 1
+			subtitle.Position = UDim2.fromOffset(62, 32)
+			subtitle.Size = UDim2.new(1, -110, 0, 16)
+			subtitle.Font = Enum.Font.Gotham
+			subtitle.TextSize = 12
+			subtitle.TextXAlignment = Enum.TextXAlignment.Left
+			subtitle.TextColor3 = Color3.fromRGB(168, 164, 188)
+			subtitle.TextTruncate = Enum.TextTruncate.AtEnd
+			subtitle.Text = tostring(settings.Subtitle or "")
+			subtitle.ZIndex = 7211
+			subtitle.Parent = card
+			ApplyInterfaceFont(subtitle, Enum.Font.Gotham)
+			local closeX = Instance.new("TextButton")
+			closeX.AutoButtonColor = false
+			closeX.AnchorPoint = Vector2.new(1, 0)
+			closeX.Position = UDim2.new(1, -12, 0, 14)
+			closeX.Size = UDim2.fromOffset(32, 32)
+			closeX.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			closeX.BackgroundTransparency = 0.92
+			closeX.Text = "×"
+			closeX.Font = Enum.Font.GothamBold
+			closeX.TextSize = 20
+			closeX.TextColor3 = Color3.fromRGB(230, 228, 240)
+			closeX.ZIndex = 7213
+			closeX.Parent = card
+			local closeXCorner = Instance.new("UICorner")
+			closeXCorner.CornerRadius = UDim.new(0, 8)
+			closeXCorner.Parent = closeX
+			closeX.MouseEnter:Connect(function()
+				closeX.BackgroundTransparency = 0.82
+			end)
+			closeX.MouseLeave:Connect(function()
+				closeX.BackgroundTransparency = 0.92
+			end)
+			local searchBox
+			local searchY = 0
+			if settings.Search then
+				searchY = 40
+				local searchHold = Instance.new("Frame")
+				searchHold.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+				searchHold.BorderSizePixel = 0
+				searchHold.Position = UDim2.fromOffset(16, 58)
+				searchHold.Size = UDim2.new(1, -32, 0, 34)
+				searchHold.ZIndex = 7211
+				searchHold.Parent = card
+				local shCorner = Instance.new("UICorner")
+				shCorner.CornerRadius = UDim.new(0, 9)
+				shCorner.Parent = searchHold
+				local shStroke = Instance.new("UIStroke")
+				shStroke.Color = Color3.fromRGB(255, 255, 255)
+				shStroke.Transparency = 0.88
+				shStroke.Parent = searchHold
+				searchBox = Instance.new("TextBox")
+				searchBox.BackgroundTransparency = 1
+				searchBox.ClearTextOnFocus = false
+				searchBox.Font = Enum.Font.Gotham
+				searchBox.TextSize = 13
+				searchBox.TextXAlignment = Enum.TextXAlignment.Left
+				searchBox.TextColor3 = Color3.fromRGB(245, 243, 255)
+				searchBox.PlaceholderColor3 = Color3.fromRGB(120, 116, 140)
+				searchBox.PlaceholderText = tostring(settings.Placeholder)
+				searchBox.Text = ""
+				searchBox.Position = UDim2.fromOffset(12, 0)
+				searchBox.Size = UDim2.new(1, -24, 1, 0)
+				searchBox.ZIndex = 7212
+				searchBox.Parent = searchHold
+				ApplyInterfaceFont(searchBox, Enum.Font.Gotham)
+				searchBox.Focused:Connect(function()
+					shStroke.Transparency = 0.4
+					shStroke.Color = accent
+				end)
+				searchBox.FocusLost:Connect(function()
+					shStroke.Transparency = 0.88
+					shStroke.Color = Color3.fromRGB(255, 255, 255)
+				end)
+			end
+			local pane = Instance.new("Frame")
+			pane.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+			pane.BackgroundTransparency = 0.2
+			pane.BorderSizePixel = 0
+			pane.Position = UDim2.fromOffset(16, 58 + searchY)
+			pane.Size = UDim2.new(1, -32, 1, -(58 + searchY + 58))
+			pane.ZIndex = 7211
+			pane.Parent = card
+			local paneCorner = Instance.new("UICorner")
+			paneCorner.CornerRadius = UDim.new(0, 10)
+			paneCorner.Parent = pane
+			local paneStroke = Instance.new("UIStroke")
+			paneStroke.Color = Color3.fromRGB(255, 255, 255)
+			paneStroke.Transparency = 0.9
+			paneStroke.Parent = pane
+			local scroll = Instance.new("ScrollingFrame")
+			scroll.BackgroundTransparency = 1
+			scroll.BorderSizePixel = 0
+			scroll.Position = UDim2.fromOffset(10, 8)
+			scroll.Size = UDim2.new(1, -14, 1, -16)
+			scroll.ScrollBarThickness = 4
+			scroll.ScrollBarImageColor3 = accent
+			scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+			scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+			scroll.ZIndex = 7211
+			scroll.Parent = pane
+			local body = Instance.new("TextLabel")
+			body.BackgroundTransparency = 1
+			body.AutomaticSize = Enum.AutomaticSize.Y
+			body.Size = UDim2.new(1, -6, 0, 0)
+			body.Font = Enum.Font.Gotham
+			body.TextSize = 13
+			body.TextXAlignment = Enum.TextXAlignment.Left
+			body.TextYAlignment = Enum.TextYAlignment.Top
+			body.TextColor3 = Color3.fromRGB(214, 212, 228)
+			body.TextWrapped = true
+			body.RichText = false
+			body.ZIndex = 7212
+			body.Parent = scroll
+			ApplyInterfaceFont(body, Enum.Font.Gotham)
+			local function setLines(query)
+				query = string.lower(tostring(query or ""))
+				local out, shown = {}, 0
+				for _, line in ipairs(allLines) do
+					if query == "" or string.find(string.lower(line), query, 1, true) then
+						shown = shown + 1
+						if numbered then
+							table.insert(out, tostring(shown) .. ". " .. line)
+						else
+							table.insert(out, line)
+						end
+					end
+				end
+				body.Text = #out > 0 and table.concat(out, "\n") or "Nothing matched."
+				task.defer(function()
+					if body and body.Parent then
+						body.Size = UDim2.new(1, -8, 0, math.max(24, body.TextBounds.Y + 4))
+					end
+				end)
+				if settings.Search then
+					local base = tostring(settings.Subtitle or "")
+					if base ~= "" then
+						subtitle.Text = base .. "  ·  " .. tostring(shown) .. " shown"
+					else
+						subtitle.Text = tostring(shown) .. " shown"
+					end
+				end
+			end
+			setLines("")
+			if searchBox then
+				searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+					setLines(searchBox.Text)
+				end)
+			end
+			local closeBtn = Instance.new("TextButton")
+			closeBtn.AutoButtonColor = false
+			closeBtn.AnchorPoint = Vector2.new(0.5, 1)
+			closeBtn.Position = UDim2.new(0.5, 0, 1, -14)
+			closeBtn.Size = UDim2.new(1, -32, 0, 36)
+			closeBtn.BackgroundColor3 = accent
+			closeBtn.BackgroundTransparency = 0.05
+			closeBtn.BorderSizePixel = 0
+			closeBtn.Font = Enum.Font.GothamSemibold
+			closeBtn.TextSize = 14
+			closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+			closeBtn.Text = tostring(settings.CloseText)
+			closeBtn.ZIndex = 7212
+			closeBtn.Parent = card
+			ApplyInterfaceFont(closeBtn, Enum.Font.GothamSemibold)
+			local closeCorner = Instance.new("UICorner")
+			closeCorner.CornerRadius = UDim.new(0, 10)
+			closeCorner.Parent = closeBtn
+			closeBtn.MouseEnter:Connect(function()
+				closeBtn.BackgroundTransparency = 0
+			end)
+			closeBtn.MouseLeave:Connect(function()
+				closeBtn.BackgroundTransparency = 0.05
+			end)
+			local function finish()
+				if not infoState.open then
+					return
+				end
+				infoState.open = false
+				local closingLayer = infoState.layer
+				TweenService:Create(backdrop, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(card, closeInfo, { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(cardScale, closeInfo, { Scale = 0.94 }):Play()
+				TweenService:Create(cardStroke, closeInfo, { Transparency = 1 }):Play()
+				task.delay(0.16, function()
+					if infoState.layer == closingLayer then
+						destroyInfoLayer()
+					elseif closingLayer then
+						pcall(function() closingLayer:Destroy() end)
+					end
+				end)
+			end
+			closeBtn.Activated:Connect(finish)
+			closeX.Activated:Connect(finish)
+			backdrop.Activated:Connect(finish)
+			table.insert(infoState.conns, UserInputService.InputBegan:Connect(function(input)
+				if infoState.open and input.KeyCode == Enum.KeyCode.Escape then
+					finish()
+				end
+			end))
+			infoState.open = true
+			TweenService:Create(backdrop, fadeInfo, { BackgroundTransparency = 0.35 }):Play()
+			TweenService:Create(card, fadeInfo, { BackgroundTransparency = 0 }):Play()
+			TweenService:Create(cardScale, popInfo, { Scale = 1 }):Play()
+			TweenService:Create(cardStroke, fadeInfo, { Transparency = 0.45 }):Play()
+			return true
+		end
+	end
 	Window._Main = Main
 	Window.GetMain = function()
 		return Main
@@ -14171,6 +14767,9 @@ function Luna:Destroy()
 	end
 	if Luna._Window and Luna._Window.CloseConfirm then
 		pcall(function() Luna._Window:CloseConfirm("destroyed") end)
+	end
+	if Luna._Window and Luna._Window.CloseInfoModal then
+		pcall(function() Luna._Window:CloseInfoModal() end)
 	end
 	if Luna._Window and Luna._Window._DestroyCustomCursor then
 		pcall(Luna._Window._DestroyCustomCursor)
