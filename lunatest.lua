@@ -1941,14 +1941,31 @@ local function parseContentId(src)
 end
 local function downloadAssetBytes(id)
 	id = tostring(id)
-	local urls = {
-		"https://assetdelivery.roblox.com/v1/asset/?id=" .. id,
-		"https://assetdelivery.roproxy.com/v1/asset/?id=" .. id,
-	}
-	for i = 1, #urls do
-		local body = LunaDownloadBytes(urls[i])
-		if type(body) == "string" and #body > 16 and string.sub(body, 1, 1) ~= "{" then
-			return body
+	local body = LunaDownloadBytes("https://assetdelivery.roblox.com/v1/asset/?id=" .. id)
+	if type(body) == "string" and #body > 16 and string.sub(body, 1, 1) ~= "{" then
+		return body
+	end
+	return nil
+end
+local AssetInflight = {}
+local function peekCachedUri(id)
+	id = tonumber(id)
+	if not id then
+		return nil
+	end
+	if AssetUriCache[id] then
+		return AssetUriCache[id]
+	end
+	ensureCacheFolders()
+	local path = CACHE_ROOT .. "/i/" .. tostring(id)
+	if LunaIsFile then
+		local ok, isf = pcall(LunaIsFile, path)
+		if ok and isf and LunaGetCustomAsset then
+			local okA, uri = pcall(LunaGetCustomAsset, path)
+			if okA and type(uri) == "string" and uri ~= "" then
+				AssetUriCache[id] = uri
+				return uri
+			end
 		end
 	end
 	return nil
@@ -1958,34 +1975,33 @@ local function cacheIdToUri(id)
 	if not id then
 		return ""
 	end
-	if AssetUriCache[id] then
-		return AssetUriCache[id]
+	local cached = peekCachedUri(id)
+	if cached then
+		return cached
 	end
+	if AssetInflight[id] then
+		while AssetInflight[id] do
+			task.wait()
+		end
+		return AssetUriCache[id] or ""
+	end
+	AssetInflight[id] = true
 	ensureCacheFolders()
 	local path = CACHE_ROOT .. "/i/" .. tostring(id)
-	local have = false
-	if LunaIsFile then
-		local ok, isf = pcall(LunaIsFile, path)
-		have = ok and isf
+	local bytes = downloadAssetBytes(id)
+	if bytes and LunaWriteFile then
+		pcall(LunaWriteFile, path, bytes)
 	end
-	if not have then
-		local bytes = downloadAssetBytes(id)
-		if not bytes or not LunaWriteFile then
-			return ""
-		end
-		if not pcall(LunaWriteFile, path, bytes) then
-			return ""
+	local uri = ""
+	if LunaGetCustomAsset then
+		local okA, result = pcall(LunaGetCustomAsset, path)
+		if okA and type(result) == "string" and result ~= "" then
+			uri = result
+			AssetUriCache[id] = uri
 		end
 	end
-	if not LunaGetCustomAsset then
-		return ""
-	end
-	local okA, uri = pcall(LunaGetCustomAsset, path)
-	if okA and type(uri) == "string" and uri ~= "" then
-		AssetUriCache[id] = uri
-		return uri
-	end
-	return ""
+	AssetInflight[id] = nil
+	return uri
 end
 local function cacheUrlToUri(url, key)
 	if type(url) ~= "string" or url == "" then
@@ -2125,48 +2141,55 @@ local function ResolveSecureContent(src)
 	end
 	return ""
 end
+local ImageBindQueue = {}
+local ImageBindBusy = false
+local function pumpImageBinds()
+	if ImageBindBusy then
+		return
+	end
+	ImageBindBusy = true
+	task.spawn(function()
+		while #ImageBindQueue > 0 do
+			local job = table.remove(ImageBindQueue, 1)
+			local uri = ResolveSecureContent(job.src)
+			if uri ~= "" and job.label and job.label.Parent then
+				job.label.Image = uri
+			end
+			task.wait()
+		end
+		ImageBindBusy = false
+	end)
+end
 local function BindSecureImage(imageLabel, src)
 	if not imageLabel then
 		return
 	end
-	imageLabel.Image = ResolveSecureContent(src)
+	if type(src) == "table" then
+		src = src.id
+	end
+	if type(src) == "string" and isEngineAsset(src) then
+		imageLabel.Image = src
+		return
+	end
+	local id = parseContentId(src)
+	if id then
+		local cached = peekCachedUri(id)
+		if cached then
+			imageLabel.Image = cached
+			return
+		end
+	elseif type(src) == "string" and AssetUriCache[src] then
+		imageLabel.Image = AssetUriCache[src]
+		return
+	end
+	imageLabel.Image = ""
+	if src == nil or src == "" or src == 0 then
+		return
+	end
+	table.insert(ImageBindQueue, { label = imageLabel, src = src })
+	pumpImageBinds()
 end
 local UI_MODEL_PATH = "sh_ui.rbxm"
-local function looksLikeModelBytes(body)
-	if type(body) ~= "string" or #body < 32 then
-		return false
-	end
-	local head = string.sub(body, 1, 8)
-	if head == "<roblox!" then
-		return true
-	end
-	head = string.sub(body, 1, 7)
-	if head == "<roblox" then
-		return true
-	end
-	head = string.sub(body, 1, 5)
-	if head == "<?xml" then
-		return true
-	end
-	return false
-end
-local function extractCdnLocation(body)
-	if type(body) ~= "string" then
-		return nil
-	end
-	local loc = string.match(body, '"location"%s*:%s*"([^"]+)"')
-	if not loc then
-		loc = string.match(body, '"locations"%s*:%s*%[%s*{.-"location"%s*:%s*"([^"]+)"')
-	end
-	if loc then
-		loc = loc:gsub("\\/", "/")
-		if string.sub(loc, 1, 2) == "//" then
-			loc = "https:" .. loc
-		end
-		return loc
-	end
-	return nil
-end
 local function tryGetObjects(uri)
 	if type(uri) ~= "string" or uri == "" then
 		return nil
@@ -2199,90 +2222,30 @@ local function tryCustomAsset(path)
 	if not LunaGetCustomAsset then
 		return nil
 	end
-	local uri
-	local ok, result = pcall(LunaGetCustomAsset, path)
-	if ok and type(result) == "string" then
-		uri = result
+	local ok, uri = pcall(LunaGetCustomAsset, path)
+	if not ok or type(uri) ~= "string" then
+		ok, uri = pcall(LunaGetCustomAsset, path, true)
 	end
-	if not uri then
-		ok, result = pcall(LunaGetCustomAsset, path, true)
-		if ok and type(result) == "string" then
-			uri = result
-		end
-	end
-	if not uri then
+	if type(uri) ~= "string" then
 		return nil
 	end
 	return tryGetObjects(uri)
-end
-local function insertInterfaceFromBytes(bytes)
-	if not looksLikeModelBytes(bytes) or not LunaWriteFile then
-		return nil
-	end
-	if not pcall(LunaWriteFile, UI_MODEL_PATH, bytes) then
-		return nil
-	end
-	task.wait()
-	local gui = tryCustomAsset(UI_MODEL_PATH)
-	if gui then
-		return gui
-	end
-	ensureCacheFolders()
-	local nested = CACHE_ROOT .. "/ui.rbxm"
-	if pcall(LunaWriteFile, nested, bytes) then
-		task.wait()
-		gui = tryCustomAsset(nested)
-	end
-	return gui
-end
-local function fetchInterfaceBytes()
-	local id = tostring(86467 * 1000000000 + 455075715)
-	local urls = {
-		"https://assetdelivery.roblox.com/v1/asset/?id=" .. id,
-		"https://assetdelivery.roblox.com/v2/assetId/" .. id,
-		"https://assetdelivery.roproxy.com/v1/asset/?id=" .. id,
-		"https://assetdelivery.roproxy.com/v2/assetId/" .. id,
-	}
-	for i = 1, #urls do
-		local body = LunaDownloadBytes(urls[i])
-		if looksLikeModelBytes(body) then
-			return body
-		end
-		local loc = extractCdnLocation(body)
-		if loc then
-			local cdn = LunaDownloadBytes(loc)
-			if looksLikeModelBytes(cdn) then
-				return cdn
-			end
-		end
-	end
-	return nil
 end
 local function loadLunaInterface()
 	if isStudio then
 		return script.Parent:WaitForChild("Luna UI")
 	end
-	local gui
 	if LunaIsFile then
 		local ok, isf = pcall(LunaIsFile, UI_MODEL_PATH)
 		if ok and isf then
-			gui = tryCustomAsset(UI_MODEL_PATH)
+			local gui = tryCustomAsset(UI_MODEL_PATH)
+			if gui then
+				return gui
+			end
 		end
 	end
-	if not gui then
-		local bytes = fetchInterfaceBytes()
-		if bytes then
-			gui = insertInterfaceFromBytes(bytes)
-		end
-	end
-	if not gui then
-		if LunaDelFile then
-			pcall(LunaDelFile, UI_MODEL_PATH)
-		end
-		local id = 86467 * 1000000000 + 455075715
-		gui = tryGetObjects("rbxassetid://" .. tostring(id))
-	end
-	return gui
+	local id = 86467 * 1000000000 + 455075715
+	return tryGetObjects("rbxassetid://" .. tostring(id))
 end
 local function scrubLoadedAssets(root)
 	if not root then
@@ -2342,26 +2305,47 @@ local LucideIconSet = nil
 local LucideTriedLoad = false
 local function GetLucideIconSet()
     if LucideIconSet then return LucideIconSet end
-    if LucideTriedLoad then return nil end
-    LucideTriedLoad = true
     if isStudio then
         LucideIconSet = IconModule.Lucide
         return LucideIconSet
     end
-    local ok, fetched = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
-    end)
-    if not ok or type(fetched) ~= "string" or #fetched == 0 then
-        return nil
+    local cachePath = CACHE_ROOT .. "/lucide.lua"
+    if LunaIsFile and LunaReadFile then
+        local ok, isf = pcall(LunaIsFile, cachePath)
+        if ok and isf then
+            local okR, src = pcall(LunaReadFile, cachePath)
+            if okR and type(src) == "string" and #src > 0 then
+                local okLoad, loaded = pcall(function()
+                    return loadstring(src)()
+                end)
+                if okLoad and type(loaded) == "table" then
+                    LucideIconSet = loaded
+                    return LucideIconSet
+                end
+            end
+        end
     end
-    local okLoad, loaded = pcall(function()
-        return loadstring(fetched)()
+    if LucideTriedLoad then return nil end
+    LucideTriedLoad = true
+    task.spawn(function()
+        local ok, fetched = pcall(function()
+            return game:HttpGet("https://raw.githubusercontent.com/latte-soft/lucide-roblox/refs/heads/master/lib/Icons.luau")
+        end)
+        if not ok or type(fetched) ~= "string" or #fetched == 0 then
+            return
+        end
+        ensureCacheFolders()
+        if LunaWriteFile then
+            pcall(LunaWriteFile, cachePath, fetched)
+        end
+        local okLoad, loaded = pcall(function()
+            return loadstring(fetched)()
+        end)
+        if okLoad and type(loaded) == "table" then
+            LucideIconSet = loaded
+        end
     end)
-    if not okLoad or type(loaded) ~= "table" then
-        return nil
-    end
-    LucideIconSet = loaded
-    return LucideIconSet
+    return nil
 end
 local function GetIcon(icon, source)
     if not icon or not source then
