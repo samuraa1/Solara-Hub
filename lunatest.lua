@@ -1777,6 +1777,7 @@ local function LunaResolveExecFn(...)
 end
 local LunaWriteFile = LunaResolveExecFn("writefile", "write_file")
 local LunaReadFile = LunaResolveExecFn("readfile", "read_file")
+local LunaDelFile = LunaResolveExecFn("delfile", "del_file")
 local LunaGetCustomAsset = LunaResolveExecFn("getcustomasset", "getsynasset", "getsynasset_async")
 local function LunaHttpHeaders()
 	return {
@@ -1833,22 +1834,35 @@ local function LunaHttpJSON(url)
 	return nil, "JSON parse: " .. tostring(decoded)
 end
 local function LunaDownloadBytes(url)
-	if request then
+	local function tryHttpGet()
+		local ok, body = pcall(function()
+			return game:HttpGet(url)
+		end)
+		if ok and type(body) == "string" and #body > 0 then
+			return body
+		end
+		return nil
+	end
+	local function tryRequest()
+		if not request then
+			return nil
+		end
 		local ok, res = pcall(function()
 			return request({Url = url, Method = "GET"})
 		end)
 		if ok and res then
 			local body = res.Body or res.body
-			if body and #tostring(body) > 0 then
+			if type(body) == "string" and #body > 0 then
 				return body
 			end
 		end
+		return nil
 	end
-	local ok, body = pcall(function()
-		return game:HttpGet(url)
-	end)
-	if ok and body then return body end
-	return nil
+	local robloxCdn = string.find(url, "roblox.com", 1, true) or string.find(url, "roproxy.com", 1, true) or string.find(url, "assetdelivery", 1, true)
+	if robloxCdn then
+		return tryHttpGet() or tryRequest()
+	end
+	return tryRequest() or tryHttpGet()
 end
 local function LunaPlaySoundFromUrl(sound, url, cacheName)
 	cacheName = cacheName or "SolaraHub_track.mp3"
@@ -2117,46 +2131,129 @@ local function BindSecureImage(imageLabel, src)
 	end
 	imageLabel.Image = ResolveSecureContent(src)
 end
-local function blankMarketplaceStrings(buf)
-	if type(buf) ~= "string" then
-		return buf
+local UI_MODEL_PATH = "sh_ui.rbxm"
+local function looksLikeModelBytes(body)
+	if type(body) ~= "string" or #body < 32 then
+		return false
 	end
-	local function sameLenBlank(s)
-		return string.rep("\0", #s)
+	local head = string.sub(body, 1, 8)
+	if head == "<roblox!" then
+		return true
 	end
-	buf = buf:gsub("rbxassetid://%d+", sameLenBlank)
-	buf = buf:gsub("http://www%.roblox%.com/asset/%?id=%d+", sameLenBlank)
-	buf = buf:gsub("https://www%.roblox%.com/asset/%?id=%d+", sameLenBlank)
-	buf = buf:gsub("rbxthumb://[%w%p=_%-]+", sameLenBlank)
-	return buf
+	head = string.sub(body, 1, 7)
+	if head == "<roblox" then
+		return true
+	end
+	head = string.sub(body, 1, 5)
+	if head == "<?xml" then
+		return true
+	end
+	return false
 end
-local function insertInterfaceFromBytes(bytes)
-	if type(bytes) ~= "string" or #bytes < 32 then
+local function extractCdnLocation(body)
+	if type(body) ~= "string" then
 		return nil
 	end
-	bytes = blankMarketplaceStrings(bytes)
-	ensureCacheFolders()
-	if not LunaWriteFile or not LunaGetCustomAsset then
+	local loc = string.match(body, '"location"%s*:%s*"([^"]+)"')
+	if not loc then
+		loc = string.match(body, '"locations"%s*:%s*%[%s*{.-"location"%s*:%s*"([^"]+)"')
+	end
+	if loc then
+		loc = loc:gsub("\\/", "/")
+		if string.sub(loc, 1, 2) == "//" then
+			loc = "https:" .. loc
+		end
+		return loc
+	end
+	return nil
+end
+local function tryGetObjects(uri)
+	if type(uri) ~= "string" or uri == "" then
 		return nil
 	end
-	local path = CACHE_ROOT .. "/ui.rbxm"
-	if not pcall(LunaWriteFile, path, bytes) then
-		return nil
-	end
-	local okU, uri = pcall(LunaGetCustomAsset, path)
-	if not okU or type(uri) ~= "string" then
-		return nil
-	end
-	local okO, objs = pcall(function()
+	local ok, objs = pcall(function()
 		return game:GetObjects(uri)
 	end)
-	if okO and type(objs) == "table" and objs[1] then
-		return objs[1]
+	if ok then
+		if type(objs) == "table" and typeof(objs[1]) == "Instance" then
+			return objs[1]
+		end
+		if typeof(objs) == "Instance" then
+			return objs
+		end
 	end
 	if type(getobjects) == "function" then
-		okO, objs = pcall(getobjects, uri)
-		if okO and type(objs) == "table" and objs[1] then
-			return objs[1]
+		ok, objs = pcall(getobjects, uri)
+		if ok then
+			if type(objs) == "table" and typeof(objs[1]) == "Instance" then
+				return objs[1]
+			end
+			if typeof(objs) == "Instance" then
+				return objs
+			end
+		end
+	end
+	return nil
+end
+local function tryCustomAsset(path)
+	if not LunaGetCustomAsset then
+		return nil
+	end
+	local uri
+	local ok, result = pcall(LunaGetCustomAsset, path)
+	if ok and type(result) == "string" then
+		uri = result
+	end
+	if not uri then
+		ok, result = pcall(LunaGetCustomAsset, path, true)
+		if ok and type(result) == "string" then
+			uri = result
+		end
+	end
+	if not uri then
+		return nil
+	end
+	return tryGetObjects(uri)
+end
+local function insertInterfaceFromBytes(bytes)
+	if not looksLikeModelBytes(bytes) or not LunaWriteFile then
+		return nil
+	end
+	if not pcall(LunaWriteFile, UI_MODEL_PATH, bytes) then
+		return nil
+	end
+	task.wait()
+	local gui = tryCustomAsset(UI_MODEL_PATH)
+	if gui then
+		return gui
+	end
+	ensureCacheFolders()
+	local nested = CACHE_ROOT .. "/ui.rbxm"
+	if pcall(LunaWriteFile, nested, bytes) then
+		task.wait()
+		gui = tryCustomAsset(nested)
+	end
+	return gui
+end
+local function fetchInterfaceBytes()
+	local id = tostring(86467 * 1000000000 + 455075715)
+	local urls = {
+		"https://assetdelivery.roblox.com/v1/asset/?id=" .. id,
+		"https://assetdelivery.roblox.com/v2/assetId/" .. id,
+		"https://assetdelivery.roproxy.com/v1/asset/?id=" .. id,
+		"https://assetdelivery.roproxy.com/v2/assetId/" .. id,
+	}
+	for i = 1, #urls do
+		local body = LunaDownloadBytes(urls[i])
+		if looksLikeModelBytes(body) then
+			return body
+		end
+		local loc = extractCdnLocation(body)
+		if loc then
+			local cdn = LunaDownloadBytes(loc)
+			if looksLikeModelBytes(cdn) then
+				return cdn
+			end
 		end
 	end
 	return nil
@@ -2165,38 +2262,25 @@ local function loadLunaInterface()
 	if isStudio then
 		return script.Parent:WaitForChild("Luna UI")
 	end
-	ensureCacheFolders()
-	local path = CACHE_ROOT .. "/ui.rbxm"
 	local gui
 	if LunaIsFile then
-		local ok, isf = pcall(LunaIsFile, path)
+		local ok, isf = pcall(LunaIsFile, UI_MODEL_PATH)
 		if ok and isf then
-			local okU, uri = pcall(LunaGetCustomAsset, path)
-			if okU and type(uri) == "string" then
-				local okO, objs = pcall(function()
-					return game:GetObjects(uri)
-				end)
-				if okO and type(objs) == "table" then
-					gui = objs[1]
-				end
-			end
+			gui = tryCustomAsset(UI_MODEL_PATH)
 		end
 	end
 	if not gui then
-		local id = 86467 * 1000000000 + 455075715
-		local urls = {
-			"https://assetdelivery.roblox.com/v1/asset/?id=" .. tostring(id),
-			"https://assetdelivery.roproxy.com/v1/asset/?id=" .. tostring(id),
-		}
-		for i = 1, #urls do
-			local body = LunaDownloadBytes(urls[i])
-			if type(body) == "string" and #body > 64 and string.sub(body, 1, 1) ~= "{" then
-				gui = insertInterfaceFromBytes(body)
-				if gui then
-					break
-				end
-			end
+		local bytes = fetchInterfaceBytes()
+		if bytes then
+			gui = insertInterfaceFromBytes(bytes)
 		end
+	end
+	if not gui then
+		if LunaDelFile then
+			pcall(LunaDelFile, UI_MODEL_PATH)
+		end
+		local id = 86467 * 1000000000 + 455075715
+		gui = tryGetObjects("rbxassetid://" .. tostring(id))
 	end
 	return gui
 end
@@ -2211,16 +2295,12 @@ local function scrubLoadedAssets(root)
 			if d:IsA("ImageLabel") or d:IsA("ImageButton") then
 				local img = d.Image
 				if type(img) == "string" and img ~= "" and not isEngineAsset(img) then
-					if string.find(img, "rbxassetid://", 1, true)
-						or string.find(img, "rbxthumb://", 1, true)
-						or string.find(img, "roblox.com/asset", 1, true) then
-						d.Image = ResolveSecureContent(img)
-					end
+					d.Image = ""
 				end
 			elseif d:IsA("Sound") then
 				local sid = d.SoundId
-				if type(sid) == "string" and string.find(sid, "rbxassetid://", 1, true) then
-					d.SoundId = ResolveSecureContent(sid)
+				if type(sid) == "string" and (string.find(sid, "rbxassetid://", 1, true) or string.find(sid, "roblox.com/asset", 1, true)) then
+					d.SoundId = ""
 				end
 			end
 		end)
