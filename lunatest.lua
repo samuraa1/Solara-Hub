@@ -2088,8 +2088,29 @@ local FONT_SKIP = {
 pcall(function()
 	FONT_SKIP[Enum.Font.RobotoMono] = true
 end)
+local HiddenAttrs = setmetatable({}, { __mode = "k" })
+local function ASet(inst, key, value)
+	if not inst then
+		return
+	end
+	local t = HiddenAttrs[inst]
+	if not t then
+		t = {}
+		HiddenAttrs[inst] = t
+	end
+	t[key] = value
+end
+local function AGet(inst, key)
+	local t = inst and HiddenAttrs[inst]
+	if t then
+		return t[key]
+	end
+	return nil
+end
+Luna.Mark = ASet
+Luna.ReadMark = AGet
 local function ApplyInterfaceFont(obj, sourceFont)
-	if not obj or obj:GetAttribute("LunaNoFont") then
+	if not obj or AGet(obj, "NoFont") then
 		return
 	end
 	if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then
@@ -2200,8 +2221,8 @@ local function EnsureAccentBar(tabbtn)
 		return bar
 	end
 	bar = Instance.new("Frame")
-	bar:SetAttribute("LunaAccent", true)
-	bar:SetAttribute("LunaNoTranslate", true)
+	ASet(bar, "Accent", true)
+	ASet(bar, "NoTranslate", true)
 	bar.AnchorPoint = Vector2.new(0, 0.5)
 	bar.Position = UDim2.new(0, 5, 0.5, 0)
 	bar.Size = UDim2.new(0, 3, 0.55, 0)
@@ -2225,7 +2246,7 @@ local function LunaMakeTagRow(parent, tags, opts)
 	holder.BorderSizePixel = 0
 	holder.AutomaticSize = Enum.AutomaticSize.X
 	holder.Size = UDim2.fromOffset(0, opts.Height or 18)
-	holder:SetAttribute("LunaNoTheme", true)
+	ASet(holder, "NoTheme", true)
 	holder.ZIndex = opts.ZIndex or ((parent and parent.ZIndex) or 1) + 2
 	holder.Parent = parent
 	local list = Instance.new("UIListLayout")
@@ -2253,7 +2274,7 @@ local function LunaMakeTagRow(parent, tags, opts)
 			chip.AutomaticSize = Enum.AutomaticSize.X
 			chip.Size = UDim2.fromOffset(0, opts.Height or 18)
 			chip.LayoutOrder = n
-			chip:SetAttribute("LunaNoTheme", true)
+			ASet(chip, "NoTheme", true)
 			chip.ZIndex = holder.ZIndex + 1
 			chip.Parent = holder
 			HideName(chip)
@@ -2280,7 +2301,7 @@ local function LunaMakeTagRow(parent, tags, opts)
 			text.TextSize = opts.TextSize or 10
 			text.TextColor3 = color
 			text.Text = label
-			text:SetAttribute("LunaNoTheme", true)
+			ASet(text, "NoTheme", true)
 			text.ZIndex = chip.ZIndex + 1
 			text.Parent = chip
 			HideName(text)
@@ -2536,10 +2557,10 @@ local function RegisterElement(window, frame, displayName, elementType, tabName)
         frame.Name = RandomName()
     end)
     if displayName then
-        frame:SetAttribute("LunaElementName", tostring(displayName))
+        ASet(frame, "ElementName", tostring(displayName))
     end
-    if frame:GetAttribute("LunaRegistered") then return end
-    frame:SetAttribute("LunaRegistered", true)
+    if AGet(frame, "Registered") then return end
+    ASet(frame, "Registered", true)
     if window and window._SearchIndex then
         table.insert(window._SearchIndex, {
             Name = tostring(displayName or "Unknown"),
@@ -2562,7 +2583,7 @@ local function _isTranslatableText(obj)
     if obj:IsA("TextLabel") or obj:IsA("TextButton") then
                         local cur = obj
         while cur and cur ~= game do
-            if cur:GetAttribute("LunaNoTranslate") then return false end
+            if AGet(cur, "NoTranslate") then return false end
             cur = cur.Parent
         end
         return true
@@ -2626,11 +2647,11 @@ local function LunaSetText(obj, text)
     text = tostring(text or "")
     obj.Text = text
     if text == "" or not _shouldTranslateValue(text) then
-        obj:SetAttribute("LunaOriginalText", nil)
-        obj:SetAttribute("LunaTranslated", nil)
+        ASet(obj, "OriginalText", nil)
+        ASet(obj, "Translated", nil)
     else
-        obj:SetAttribute("LunaOriginalText", text)
-        obj:SetAttribute("LunaTranslated", nil)
+        ASet(obj, "OriginalText", text)
+        ASet(obj, "Translated", nil)
     end
 end
 local _LunaHttpRequest = (syn and syn.request) or (http and http.request) or http_request or request
@@ -2682,35 +2703,35 @@ local function LunaTranslate(text, target)
 end
 local function _translateOne(obj, target)
     if not _isTranslatableText(obj) then return end
-    local orig = obj:GetAttribute("LunaOriginalText")
-    local lastTranslated = obj:GetAttribute("LunaTranslated")
+    local orig = AGet(obj, "OriginalText")
+    local lastTranslated = AGet(obj, "Translated")
     if _isStaleTemplateOriginal(orig, obj.Text) then
         orig = nil
-        obj:SetAttribute("LunaOriginalText", nil)
-        obj:SetAttribute("LunaTranslated", nil)
+        ASet(obj, "OriginalText", nil)
+        ASet(obj, "Translated", nil)
     end
     if orig == nil then
         orig = obj.Text
         if not _shouldTranslateValue(orig) then return end
-        obj:SetAttribute("LunaOriginalText", orig)
+        ASet(obj, "OriginalText", orig)
     elseif lastTranslated and obj.Text ~= lastTranslated and obj.Text ~= orig then
                 orig = obj.Text
         if not _shouldTranslateValue(orig) then
-            obj:SetAttribute("LunaOriginalText", nil)
-            obj:SetAttribute("LunaTranslated", nil)
+            ASet(obj, "OriginalText", nil)
+            ASet(obj, "Translated", nil)
             return
         end
-        obj:SetAttribute("LunaOriginalText", orig)
+        ASet(obj, "OriginalText", orig)
     end
     if target == "en" then
         if obj.Text ~= orig then obj.Text = orig end
-        obj:SetAttribute("LunaTranslated", nil)
+        ASet(obj, "Translated", nil)
         return
     end
     local translated = LunaTranslate(orig, target)
     if translated and obj.Text ~= translated then
         obj.Text = translated
-        obj:SetAttribute("LunaTranslated", translated)
+        ASet(obj, "Translated", translated)
     end
 end
 local LunaTranslateWorkers = 14
@@ -2734,7 +2755,7 @@ local function _translateTree(root, target)
     end
                 local unique = {}
     for _, obj in ipairs(queue) do
-        local orig = obj:GetAttribute("LunaOriginalText") or obj.Text
+        local orig = AGet(obj, "OriginalText") or obj.Text
         if _shouldTranslateValue(orig) and not unique[orig] then
             unique[orig] = true
         end
@@ -2917,7 +2938,7 @@ end
 local OriginalUIName = LunaUI.Name
 if gethui then
 	for _, Interface in ipairs(gethui():GetChildren()) do
-		if Interface ~= LunaUI and (Interface.Name == OriginalUIName or Interface:GetAttribute("LunaUI") == true) then
+		if Interface ~= LunaUI and (Interface.Name == OriginalUIName or AGet(Interface, "UI") == true) then
 			pcall(function() Hide(Interface.SmartWindow) end)
 			Interface.Enabled = false
 			Interface.Name = RandomName()
@@ -2926,7 +2947,7 @@ if gethui then
 	end
 elseif not isStudio then
 	for _, Interface in ipairs(CoreGui:GetChildren()) do
-		if Interface ~= LunaUI and (Interface.Name == OriginalUIName or Interface:GetAttribute("LunaUI") == true) then
+		if Interface ~= LunaUI and (Interface.Name == OriginalUIName or AGet(Interface, "UI") == true) then
 			pcall(function() Hide(Interface.SmartWindow) end)
 			Interface.Enabled = false
 			Interface.Name = RandomName()
@@ -2934,7 +2955,7 @@ elseif not isStudio then
 		end
 	end
 end
-LunaUI:SetAttribute("LunaUI", true)
+ASet(LunaUI, "UI", true)
 LunaUI.Name = RandomName()
 if gethui then
 	LunaUI.Parent = gethui()
@@ -3024,7 +3045,7 @@ local BuilderFontMap = {
 local function HasNoThemeAncestor(obj)
 	local cur = obj
 	while cur and cur ~= LunaUI and cur ~= game do
-		if cur:GetAttribute("LunaNoTheme") then return true end
+		if AGet(cur, "NoTheme") then return true end
 		cur = cur.Parent
 	end
 	return false
@@ -3033,9 +3054,9 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 	if not Luna.ThemeEnabled then return end
 	local T = Luna.ActiveTheme
 	if not T then return end
-	if obj:GetAttribute("LunaNoTheme") then return end
+	if AGet(obj, "NoTheme") then return end
 	if not skipAncestorCheck and HasNoThemeAncestor(obj) then return end
-			if obj:GetAttribute("LunaAccent") then
+			if AGet(obj, "Accent") then
 		if obj:IsA("GuiObject") then obj.BackgroundColor3 = T.Accent end
 		if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then obj.ImageColor3 = T.Accent end
 		if obj:IsA("TextLabel") or obj:IsA("TextButton") then obj.TextColor3 = T.Accent end
@@ -3114,7 +3135,7 @@ LunaSkinElement = function(obj, skipAncestorCheck)
 			and root and root:FindFirstChild("Value") and root:FindFirstChild("Interact")
 			and not RefGet(obj, "Knob") then
 			local knob = Instance.new("Frame")
-			knob:SetAttribute("LunaNoTranslate", true)
+			ASet(knob, "NoTranslate", true)
 			knob.AnchorPoint = Vector2.new(0.5, 0.5)
 			knob.Position = UDim2.new(1, 0, 0.5, 0)
 			knob.Size = UDim2.new(0, 13, 0, 13)
@@ -3188,7 +3209,7 @@ local function ApplyLunaTheme(nameOrTokens)
 	return true
 end
 Luna.ApplyTheme = ApplyLunaTheme
-Luna.GlassMode = true
+Luna.GlassMode = false
 local Lighting = getService("Lighting")
 local GlassBlur = nil
 local GlassSheen = nil
@@ -3205,8 +3226,8 @@ local function EnsureGlassSheen()
 	end
 	GlassSheen = Instance.new("Frame")
 	HideName(GlassSheen)
-	GlassSheen:SetAttribute("LunaNoTheme", true)
-	GlassSheen:SetAttribute("LunaNoTranslate", true)
+	ASet(GlassSheen, "NoTheme", true)
+	ASet(GlassSheen, "NoTranslate", true)
 	GlassSheen.BackgroundColor3 = Color3.new(1, 1, 1)
 	GlassSheen.BorderSizePixel = 0
 	GlassSheen.Size = UDim2.fromScale(1, 1)
@@ -3245,7 +3266,11 @@ local function EnsureGlassSheen()
 end
 local function SetGlassMode(enabled)
 	Luna.GlassMode = enabled and true or false
-	EnsureGlassSheen()
+	if Luna.GlassMode then
+		EnsureGlassSheen()
+	elseif GlassSheen then
+		GlassSheen.Visible = false
+	end
 	if Luna.ActiveTheme then
 		MainBgTransparency = (Luna.ActiveTheme.MainTransparency or 0.04) + (Luna.GlassMode and 0.08 or 0)
 		if Main.Visible then
@@ -3378,8 +3403,8 @@ function Luna:Notification(data)
 		if Luna.ThemeEnabled and Luna.ActiveTheme then
 			notifAccent = Instance.new("Frame")
 			HideName(notifAccent)
-			notifAccent:SetAttribute("LunaAccent", true)
-			notifAccent:SetAttribute("LunaNoTranslate", true)
+			ASet(notifAccent, "Accent", true)
+			ASet(notifAccent, "NoTranslate", true)
 			notifAccent.AnchorPoint = Vector2.new(0, 0.5)
 			notifAccent.Position = UDim2.new(0, 0, 0.5, 0)
 			notifAccent.Size = UDim2.new(0, 3, 1, -14)
@@ -3394,8 +3419,8 @@ function Luna:Notification(data)
 			notifAccent.Parent = newNotification
 			notifProgress = Instance.new("Frame")
 			HideName(notifProgress)
-			notifProgress:SetAttribute("LunaAccent", true)
-			notifProgress:SetAttribute("LunaNoTranslate", true)
+			ASet(notifProgress, "Accent", true)
+			ASet(notifProgress, "NoTranslate", true)
 			notifProgress.AnchorPoint = Vector2.new(0, 1)
 			notifProgress.Position = UDim2.new(0, 10, 1, -4)
 			notifProgress.Size = UDim2.new(1, -20, 0, 2)
@@ -3511,7 +3536,7 @@ local function Unhide(Window, currentTab)
 	end
 	for _, tabbtn in ipairs(Window.Navigation.Tabs:GetChildren()) do
 		if tabbtn.ClassName == "Frame" and tabbtn.Name ~= "InActive Template" then
-										local displayName = tabbtn:GetAttribute("LunaTabName") or tabbtn.Name
+										local displayName = AGet(tabbtn, "TabName") or tabbtn.Name
 				local accentBar = RefGet(tabbtn, "AccentBar")
 				if displayName == currentTab then
 					TweenService:Create(tabbtn, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0}):Play()
@@ -3586,7 +3611,7 @@ function Luna:CreateWindow(WindowSettings)
 						ZoomEnabled = true,
 								Theme = "Midnight",
 		ThemeEnabled = true,
-				GlassMode = true,
+		GlassMode = false,
 	}, WindowSettings or {})
 	WindowSettings.ConfigSettings = Kwargify({
 		RootFolder = nil,
@@ -3608,7 +3633,7 @@ function Luna:CreateWindow(WindowSettings)
 	}, WindowSettings.KeySettings.SecondAction)
 	local Passthrough = false
 		Luna.ThemeEnabled = WindowSettings.ThemeEnabled ~= false
-	Luna.GlassMode = WindowSettings.GlassMode ~= false
+	Luna.GlassMode = WindowSettings.GlassMode == true
 	local Window = {
 		Bind = Enum.KeyCode.K,
 		CurrentTab = nil,
@@ -3640,7 +3665,7 @@ function Luna:CreateWindow(WindowSettings)
 		if label then
 			label.Text = subtitle
 			pcall(function()
-				label:SetAttribute("LunaOriginalText", subtitle)
+				ASet(label, "OriginalText", subtitle)
 			end)
 		end
 	end
@@ -3660,8 +3685,8 @@ function Luna:CreateWindow(WindowSettings)
 		if not navTip then
 			navTip = Instance.new("Frame")
 			HideName(navTip)
-			navTip:SetAttribute("LunaNoTheme", true)
-			navTip:SetAttribute("LunaNoTranslate", true)
+			ASet(navTip, "NoTheme", true)
+			ASet(navTip, "NoTranslate", true)
 			navTip.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(28, 28, 36)
 			navTip.BackgroundTransparency = 0.04
 			navTip.BorderSizePixel = 0
@@ -3957,7 +3982,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Window:SetContextTitle("Home")
 			end
 		end
-				HomeTabButton:SetAttribute("LunaTabName", "Home")
+				ASet(HomeTabButton, "TabName", "Home")
 		Window._Tabs["Home"] = { Activate = function() HomeTab:Activate() end, Page = HomeTabPage }
 		Window._HomeTabButton = HomeTabButton
 		Window._TabRegistry["Home"] = {
@@ -3976,7 +4001,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		HomeTabPage.player.Text.Text = "Hello, " .. Players.LocalPlayer.DisplayName
 		HomeTabPage.player.user.Text = Players.LocalPlayer.Name .. " - ".. WindowSettings.Name
 		local dashRoot = HomeTabPage.detailsholder.dashboard
-		dashRoot:SetAttribute("LunaNoTheme", true)
+		ASet(dashRoot, "NoTheme", true)
 		Window._ProfileRefs = {
 			NavIcon = Navigation.Player.icon.ImageLabel,
 			NavDisplay = Navigation.Player.Namez,
@@ -4243,7 +4268,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			local accent = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(132, 108, 230)
 			local card = Instance.new("Frame")
 			card.Name = RandomName()
-			card:SetAttribute("LunaNoTheme", true)
+			ASet(card, "NoTheme", true)
 			card.BackgroundColor3 = Color3.fromRGB(24, 22, 34)
 			card.BackgroundTransparency = 0
 			card.BorderSizePixel = 0
@@ -4641,8 +4666,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 		}, TabSettings or {})
 		local TabButton = Navigation.Tabs["InActive Template"]:Clone()
 						TabButton.Name = RandomName()
-		TabButton:SetAttribute("LunaNoTranslate", nil)
-		TabButton:SetAttribute("LunaTabName", TabSettings.Name)
+		ASet(TabButton, "NoTranslate", nil)
+		ASet(TabButton, "TabName", TabSettings.Name)
 		TabButton.TextLabel.Text = TabSettings.Name
 		TabButton.Parent = Navigation.Tabs
 		ApplyIcon(TabButton.ImageLabel, GetIcon(TabSettings.Icon, TabSettings.ImageSource))
@@ -4653,8 +4678,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 								local TabAccentBar = EnsureAccentBar(TabButton)
 		local TabPage = Elements.Template:Clone()
 		TabPage.Name = RandomName()
-		TabPage:SetAttribute("LunaNoTranslate", nil)
-		TabPage:SetAttribute("LunaTabName", TabSettings.Name)
+		ASet(TabPage, "NoTranslate", nil)
+		ASet(TabPage, "TabName", TabSettings.Name)
 		TabPage.Title.Visible = TabSettings.ShowTitle
 		TabPage.Title.Text = TabSettings.Name
 		TabPage.Visible = true
@@ -4744,8 +4769,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			wrapper.BackgroundTransparency = 1
 			wrapper.BorderSizePixel = 0
 			wrapper.Size = UDim2.fromScale(1, 1)
-			wrapper:SetAttribute("LunaTabName", TabSettings.Name)
-			wrapper:SetAttribute("LunaSubPage", SubTabSettings.Name)
+			ASet(wrapper, "TabName", TabSettings.Name)
+			ASet(wrapper, "SubPage", SubTabSettings.Name)
 			wrapper.LayoutOrder = TabPage.LayoutOrder
 			wrapper.Visible = true
 			wrapper.Parent = Elements
@@ -4799,8 +4824,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 						local subPage = Elements.Template:Clone()
 			subPage.Name = RandomName()
-			subPage:SetAttribute("LunaNoTranslate", nil)
-			subPage:SetAttribute("LunaTabName", TabSettings.Name)
+			ASet(subPage, "NoTranslate", nil)
+			ASet(subPage, "TabName", TabSettings.Name)
 			subPage.Title.Visible = false
 			subPage.Visible = true
 			for _, TemplateElement in ipairs(subPage:GetChildren()) do
@@ -8676,7 +8701,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		headerTitle.TextXAlignment = Enum.TextXAlignment.Left
 		headerTitle.TextYAlignment = Enum.TextYAlignment.Bottom
 		headerTitle.TextTruncate = Enum.TextTruncate.AtEnd
-		headerTitle:SetAttribute("LunaNoTranslate", true)
+		ASet(headerTitle, "NoTranslate", true)
 		headerTitle.Parent = Header
 		local headerSub = Instance.new("TextLabel")
 		headerSub.BackgroundTransparency = 1
@@ -8688,7 +8713,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		headerSub.TextSize = 11
 		headerSub.TextXAlignment = Enum.TextXAlignment.Left
 		headerSub.TextYAlignment = Enum.TextYAlignment.Top
-		headerSub:SetAttribute("LunaNoTranslate", true)
+		ASet(headerSub, "NoTranslate", true)
 		headerSub.Parent = Header
 		local function makeHeaderBtn(iconName, xOffset)
 			local btn = Instance.new("ImageButton")
@@ -8779,7 +8804,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		NewChatBtn.TextSize = 13
 		NewChatBtn.TextColor3 = TEXT_PRIMARY
 		NewChatBtn.AutoButtonColor = false
-		NewChatBtn:SetAttribute("LunaNoTranslate", true)
+		ASet(NewChatBtn, "NoTranslate", true)
 		NewChatBtn.Parent = Sidebar
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = NewChatBtn
@@ -8820,7 +8845,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SearchInput.TextSize = 12
 		SearchInput.TextXAlignment = Enum.TextXAlignment.Left
 		SearchInput.ClearTextOnFocus = false
-		SearchInput:SetAttribute("LunaNoTranslate", true)
+		ASet(SearchInput, "NoTranslate", true)
 		SearchInput.Parent = SearchBox
 		local ChatList = Instance.new("ScrollingFrame")
 		ChatList.Name = RandomName()
@@ -8832,7 +8857,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		ChatList.ScrollBarImageColor3 = ACCENT
 		ChatList.CanvasSize = UDim2.new(0, 0, 0, 0)
 		ChatList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-		ChatList:SetAttribute("LunaNoTranslate", true)
+		ASet(ChatList, "NoTranslate", true)
 		ChatList.Parent = Sidebar
 		do
 			local l = Instance.new("UIListLayout")
@@ -8851,7 +8876,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Messages.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Messages.ScrollingDirection = Enum.ScrollingDirection.Y
-		Messages:SetAttribute("LunaNoTranslate", true)
+		ASet(Messages, "NoTranslate", true)
 		Messages.Parent = ChatPane
 		do
 			local l = Instance.new("UIListLayout")
@@ -8906,7 +8931,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		InputBox.TextYAlignment = Enum.TextYAlignment.Center
 		InputBox.ClearTextOnFocus = false
 		InputBox.MultiLine = false
-		InputBox:SetAttribute("LunaNoTranslate", true)
+		ASet(InputBox, "NoTranslate", true)
 		InputBox.Parent = InputBar
 		local SendButton = Instance.new("ImageButton")
 		SendButton.Name = RandomName()
@@ -9064,7 +9089,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Label.TextXAlignment = Enum.TextXAlignment.Left
 			Label.TextYAlignment = Enum.TextYAlignment.Top
 			Label.TextWrapped = true
-			Label:SetAttribute("LunaNoTranslate", true)
+			ASet(Label, "NoTranslate", true)
 			Label.Parent = parent
 			return Label
 		end
@@ -9093,7 +9118,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			langLabel.TextColor3 = Color3.fromRGB(180, 170, 220)
 			langLabel.TextXAlignment = Enum.TextXAlignment.Left
 			langLabel.TextYAlignment = Enum.TextYAlignment.Center
-			langLabel:SetAttribute("LunaNoTranslate", true)
+			ASet(langLabel, "NoTranslate", true)
 			langLabel.Parent = TitleBar
 			local function smallBtn(text, xOffset)
 				local b = Instance.new("TextButton")
@@ -9107,7 +9132,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				b.TextSize = 11
 				b.TextColor3 = Color3.fromRGB(240, 235, 255)
 				b.AutoButtonColor = false
-				b:SetAttribute("LunaNoTranslate", true)
+				ASet(b, "NoTranslate", true)
 				b.Parent = TitleBar
 				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 5); bc.Parent = b
 				local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(160, 145, 230); bs.Transparency = 0.5; bs.Parent = b
@@ -9134,7 +9159,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			codeLabel.TextXAlignment = Enum.TextXAlignment.Left
 			codeLabel.TextYAlignment = Enum.TextYAlignment.Top
 			codeLabel.TextWrapped = true
-			codeLabel:SetAttribute("LunaNoTranslate", true)
+			ASet(codeLabel, "NoTranslate", true)
 			codeLabel.Parent = Block
 			copyBtn.MouseButton1Click:Connect(function()
 				if copyToClipboard(code) then
@@ -9221,7 +9246,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					b.TextColor3 = Color3.fromRGB(220, 215, 240)
 					b.AutoButtonColor = false
 					b.LayoutOrder = layoutOrder
-					b:SetAttribute("LunaNoTranslate", true)
+					ASet(b, "NoTranslate", true)
 					b.Parent = metaRow
 					local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 5); c.Parent = b
 					b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0.05}) end)
@@ -9231,7 +9256,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local cpy = metaBtn("Copy", 1)
 				local retry = metaBtn("Retry", 2)
 				cpy.MouseButton1Click:Connect(function()
-					if copyToClipboard(Label:GetAttribute("LunaRawText") or text or "") then
+					if copyToClipboard(AGet(Label, "RawText") or text or "") then
 						cpy.Text = "Copied!"
 						task.delay(1.2, function() if cpy and cpy.Parent then cpy.Text = "Copy" end end)
 					end
@@ -9241,7 +9266,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 			end
 									local function setContent(raw)
-				Label:SetAttribute("LunaRawText", raw)
+				ASet(Label, "RawText", raw)
 								for _, child in ipairs(Holder:GetChildren()) do
 					if child:IsA("Frame") and child ~= Bubble and child ~= metaRow then
 						child:Destroy()
@@ -9310,7 +9335,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			title.TextSize = 13
 			title.TextColor3 = Color3.fromRGB(245, 250, 240)
 			title.TextXAlignment = Enum.TextXAlignment.Left
-			title:SetAttribute("LunaNoTranslate", true)
+			ASet(title, "NoTranslate", true)
 			title.Parent = Card
 			local desc = Instance.new("TextLabel")
 			desc.BackgroundTransparency = 1
@@ -9322,7 +9347,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			desc.TextColor3 = Color3.fromRGB(220, 235, 220)
 			desc.TextXAlignment = Enum.TextXAlignment.Left
 			desc.TextWrapped = true
-			desc:SetAttribute("LunaNoTranslate", true)
+			ASet(desc, "NoTranslate", true)
 			desc.Parent = Card
 			local sendBtn = Instance.new("TextButton")
 			sendBtn.AnchorPoint = Vector2.new(1, 0.5)
@@ -9335,7 +9360,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sendBtn.TextSize = 13
 			sendBtn.TextColor3 = Color3.fromRGB(245, 255, 240)
 			sendBtn.AutoButtonColor = false
-			sendBtn:SetAttribute("LunaNoTranslate", true)
+			ASet(sendBtn, "NoTranslate", true)
 			sendBtn.Parent = Card
 			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = sendBtn
 			sendBtn.MouseButton1Click:Connect(function()
@@ -9448,7 +9473,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				b.TextTransparency = 1
 				b.AutoButtonColor = false
 				b.LayoutOrder = i
-				b:SetAttribute("LunaNoTranslate", true)
+				ASet(b, "NoTranslate", true)
 				b.Parent = QuickRow
 				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
 				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 1; s.Parent = b
@@ -9546,7 +9571,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			t1.TextSize = 18
 			t1.TextColor3 = TEXT_PRIMARY
 			t1.TextXAlignment = Enum.TextXAlignment.Left
-			t1:SetAttribute("LunaNoTranslate", true)
+			ASet(t1, "NoTranslate", true)
 			t1.Parent = card
 			local t2 = Instance.new("TextLabel")
 			t2.BackgroundTransparency = 1
@@ -9557,7 +9582,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			t2.TextSize = 12
 			t2.TextColor3 = TEXT_DIM
 			t2.TextXAlignment = Enum.TextXAlignment.Left
-			t2:SetAttribute("LunaNoTranslate", true)
+			ASet(t2, "NoTranslate", true)
 			t2.Parent = card
 									local keyWarnShown = (aiToken == nil)
 			if keyWarnShown then
@@ -9570,7 +9595,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				kw.TextSize = 11
 				kw.TextColor3 = Color3.fromRGB(255, 200, 90)
 				kw.TextXAlignment = Enum.TextXAlignment.Left
-				kw:SetAttribute("LunaNoTranslate", true)
+				ASet(kw, "NoTranslate", true)
 				kw.Parent = card
 			end
 			local listFrame = Instance.new("Frame")
@@ -9593,7 +9618,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				row.TextColor3 = TEXT_PRIMARY
 				row.TextXAlignment = Enum.TextXAlignment.Left
 				row.AutoButtonColor = false
-				row:SetAttribute("LunaNoTranslate", true)
+				ASet(row, "NoTranslate", true)
 				row.Parent = listFrame
 				local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 7); rc.Parent = row
 				row.MouseEnter:Connect(function() tween(row, {BackgroundTransparency = 0.05}) end)
@@ -9707,7 +9732,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			titleLbl.TextColor3 = TEXT_PRIMARY
 			titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 			titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
-			titleLbl:SetAttribute("LunaNoTranslate", true)
+			ASet(titleLbl, "NoTranslate", true)
 			titleLbl.Parent = Item
 			local prev = Instance.new("TextLabel")
 			prev.BackgroundTransparency = 1
@@ -9719,7 +9744,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			prev.TextColor3 = TEXT_DIM
 			prev.TextXAlignment = Enum.TextXAlignment.Left
 			prev.TextTruncate = Enum.TextTruncate.AtEnd
-			prev:SetAttribute("LunaNoTranslate", true)
+			ASet(prev, "NoTranslate", true)
 			prev.Parent = Item
 			local timeLbl = Instance.new("TextLabel")
 			timeLbl.BackgroundTransparency = 1
@@ -9730,14 +9755,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			timeLbl.TextSize = 10
 			timeLbl.TextColor3 = TEXT_DIM
 			timeLbl.TextXAlignment = Enum.TextXAlignment.Right
-			timeLbl:SetAttribute("LunaNoTranslate", true)
+			ASet(timeLbl, "NoTranslate", true)
 			timeLbl.Parent = Item
 			local Click = Instance.new("TextButton")
 			Click.BackgroundTransparency = 1
 			Click.Size = UDim2.new(1, 0, 1, 0)
 			Click.Text = ""
 			Click.AutoButtonColor = false
-			Click:SetAttribute("LunaNoTranslate", true)
+			ASet(Click, "NoTranslate", true)
 			Click.Parent = Item
 			Click.MouseEnter:Connect(function()
 				if not isActive then tween(Item, {BackgroundTransparency = 0.15}) end
@@ -9873,7 +9898,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 14
 			lbl.TextColor3 = TEXT_PRIMARY; lbl.TextXAlignment = Enum.TextXAlignment.Left
 			lbl.ZIndex = 101
-			lbl:SetAttribute("LunaNoTranslate", true)
+			ASet(lbl, "NoTranslate", true)
 			lbl.Parent = dialog
 			local box = Instance.new("TextBox")
 			box.BackgroundColor3 = PANEL_BG_LT; box.BackgroundTransparency = 0.2
@@ -9884,7 +9909,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			box.PlaceholderText = "Chat name"
 			box.ClearTextOnFocus = false
 			box.ZIndex = 101
-			box:SetAttribute("LunaNoTranslate", true)
+			ASet(box, "NoTranslate", true)
 			box.Parent = dialog
 			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 7); bc.Parent = box
 			local bp = Instance.new("UIPadding"); bp.PaddingLeft = UDim.new(0, 8); bp.PaddingRight = UDim.new(0, 8); bp.Parent = box
@@ -9899,7 +9924,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			okBtn.Font = Enum.Font.GothamBold; okBtn.TextSize = 12
 			okBtn.TextColor3 = TEXT_PRIMARY; okBtn.AutoButtonColor = false
 			okBtn.ZIndex = 101
-			okBtn:SetAttribute("LunaNoTranslate", true)
+			ASet(okBtn, "NoTranslate", true)
 			okBtn.Parent = dialog
 			local okc = Instance.new("UICorner"); okc.CornerRadius = UDim.new(0, 7); okc.Parent = okBtn
 			local cancelBtn = Instance.new("TextButton")
@@ -9909,7 +9934,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			cancelBtn.Font = Enum.Font.GothamMedium; cancelBtn.TextSize = 12
 			cancelBtn.TextColor3 = TEXT_PRIMARY; cancelBtn.AutoButtonColor = false
 			cancelBtn.ZIndex = 101
-			cancelBtn:SetAttribute("LunaNoTranslate", true)
+			ASet(cancelBtn, "NoTranslate", true)
 			cancelBtn.Parent = dialog
 			local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 7); cc.Parent = cancelBtn
 			task.spawn(function() box:CaptureFocus() end)
@@ -10682,7 +10707,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		queryBox.TextSize = 13
 		queryBox.TextXAlignment = Enum.TextXAlignment.Left
 		queryBox.TextTruncate = Enum.TextTruncate.AtEnd
-		queryBox:SetAttribute("LunaNoTranslate", true)
+		ASet(queryBox, "NoTranslate", true)
 		queryBox.Parent = hero
 		ApplyInterfaceFont(queryBox, Enum.Font.GothamMedium)
 		local function ssActionBtn(parent, text, primary)
@@ -12478,7 +12503,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					local ancestor = entry.Frame and entry.Frame.Parent
 					local guard = 0
 					while ancestor and ancestor ~= Elements and guard < 12 do
-						if ancestor:GetAttribute("LunaSubPage") ~= nil then
+						if AGet(ancestor, "SubPage") ~= nil then
 							local activateSub = Window._SubPageActivation and Window._SubPageActivation[ancestor]
 							if activateSub then
 								pcall(activateSub)
@@ -12683,8 +12708,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local idleIcon = Color3.fromRGB(235, 235, 245)
 		local HandleBack = Instance.new("TextButton")
 		HandleBack.Name = RandomName()
-		HandleBack:SetAttribute("LunaNoTheme", true)
-		HandleBack:SetAttribute("LunaNoTranslate", true)
+		ASet(HandleBack, "NoTheme", true)
+		ASet(HandleBack, "NoTranslate", true)
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
 		HandleBack.Position = UDim2.fromOffset(0, 0)
 		HandleBack.Size = UDim2.fromOffset(18, 18)
@@ -12697,7 +12722,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		HandleBack.Parent = LunaUI
 		local ResizeIcon = Instance.new("ImageLabel")
 		ResizeIcon.Name = RandomName()
-		ResizeIcon:SetAttribute("LunaNoTheme", true)
+		ASet(ResizeIcon, "NoTheme", true)
 		ResizeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 		ResizeIcon.Position = UDim2.fromScale(0.5, 0.5)
 		ResizeIcon.Size = UDim2.fromOffset(14, 14)
@@ -12893,7 +12918,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 						pcall(function() Window.SetTheme(Window._ThemeName) end)
 		task.delay(0.5, function() pcall(function() Window.RefreshTheme() end) end)
-				pcall(EnsureGlassSheen)
+				pcall(function()
+			if Luna.GlassMode then
+				EnsureGlassSheen()
+			end
+		end)
 		pcall(function() SetGlassBlur(Luna.GlassMode and Main.Visible) end)
 		local function focusStartup()
 			Window:ActivateStartupTab(WindowSettings.StartupTab)
@@ -12916,7 +12945,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 										local function shouldRecolour(obj)
 			local cur = obj
 			while cur and cur ~= game do
-				if cur:GetAttribute("LunaNoTheme") then return false end
+				if AGet(cur, "NoTheme") then return false end
 				cur = cur.Parent
 			end
 			return true
@@ -13074,7 +13103,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if Navigation and Navigation.Tabs then
 				for _, child in ipairs(Navigation.Tabs:GetChildren()) do
 					if child.ClassName == "Frame" and child.Name ~= "InActive Template" then
-						local tabName = child:GetAttribute("LunaTabName")
+						local tabName = AGet(child, "TabName")
 						if tabName and tabName ~= "" then
 							addEntry(tabName, child.LayoutOrder)
 						end
@@ -13159,9 +13188,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			for _, label in ipairs(labels) do
 				if label then
 					if enabled then
-						label:SetAttribute("LunaNoTranslate", true)
+						ASet(label, "NoTranslate", true)
 					else
-						label:SetAttribute("LunaNoTranslate", nil)
+						ASet(label, "NoTranslate", nil)
 					end
 				end
 			end
@@ -13464,8 +13493,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local hoverInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			local layer = Instance.new("Frame")
 			layer.Name = RandomName()
-			layer:SetAttribute("LunaNoTheme", true)
-			layer:SetAttribute("LunaNoTranslate", true)
+			ASet(layer, "NoTheme", true)
+			ASet(layer, "NoTranslate", true)
 			layer.BackgroundTransparency = 1
 			layer.BorderSizePixel = 0
 			layer.Size = UDim2.fromScale(1, 1)
@@ -14079,8 +14108,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local closeInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 			local layer = Instance.new("Frame")
 			layer.Name = RandomName()
-			layer:SetAttribute("LunaNoTheme", true)
-			layer:SetAttribute("LunaNoTranslate", true)
+			ASet(layer, "NoTheme", true)
+			ASet(layer, "NoTranslate", true)
 			layer.BackgroundTransparency = 1
 			layer.BorderSizePixel = 0
 			layer.Size = UDim2.fromScale(1, 1)
@@ -14355,8 +14384,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local closeInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 			local layer = Instance.new("Frame")
 			layer.Name = RandomName()
-			layer:SetAttribute("LunaNoTheme", true)
-			layer:SetAttribute("LunaNoTranslate", true)
+			ASet(layer, "NoTheme", true)
+			ASet(layer, "NoTranslate", true)
 			layer.BackgroundTransparency = 1
 			layer.BorderSizePixel = 0
 			layer.Size = UDim2.fromScale(1, 1)
@@ -14826,10 +14855,10 @@ function Luna:SetLanguage(targetCode, customTranslator)
 		task.delay(0.4, function()
 			for _, obj in ipairs(LunaUI:GetDescendants()) do
 				if _isTranslatableText(obj) then
-					local orig = obj:GetAttribute("LunaOriginalText")
+					local orig = AGet(obj, "OriginalText")
 					if _isStaleTemplateOriginal(orig, obj.Text) then
-						obj:SetAttribute("LunaOriginalText", nil)
-						obj:SetAttribute("LunaTranslated", nil)
+						ASet(obj, "OriginalText", nil)
+						ASet(obj, "Translated", nil)
 					end
 				end
 			end
