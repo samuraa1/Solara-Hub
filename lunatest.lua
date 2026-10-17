@@ -4492,9 +4492,6 @@ function Window:CreateHomeTab(HomeTabSettings)
 				tween(TabAccentBar, {BackgroundTransparency = 0})
 			end
 		local jumpTarget = TabPage
-		if Tab._ActiveSubTab and Tab._ActiveSubTab._Wrapper then
-			jumpTarget = Tab._ActiveSubTab._Wrapper
-		end
 		Elements.UIPageLayout:JumpTo(jumpTarget)
 		task.wait(0.05)
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
@@ -4556,16 +4553,28 @@ function Window:CreateHomeTab(HomeTabSettings)
 			}, SubTabSettings or {})
 			local SubTab = {}
 			SubTab.Name = SubTabSettings.Name
-									local wrapper = Instance.new("Frame")
+			if not Tab._SubHostReady then
+				Tab._SubHostReady = true
+				pcall(function()
+					local lay = TabPage:FindFirstChildOfClass("UIListLayout")
+					if lay then
+						lay.Enabled = false
+					end
+					TabPage.ScrollingEnabled = false
+					TabPage.AutomaticCanvasSize = Enum.AutomaticSize.None
+					TabPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+				end)
+			end
+			local wrapper = Instance.new("Frame")
 			wrapper.Name = RandomName()
 			wrapper.BackgroundTransparency = 1
 			wrapper.BorderSizePixel = 0
 			wrapper.Size = UDim2.fromScale(1, 1)
+			wrapper.Position = UDim2.fromScale(0, 0)
 			ASet(wrapper, "TabName", TabSettings.Name)
 			ASet(wrapper, "SubPage", SubTabSettings.Name)
-			wrapper.LayoutOrder = TabPage.LayoutOrder
-			wrapper.Visible = true
-			wrapper.Parent = Elements
+			wrapper.Visible = false
+			wrapper.Parent = TabPage
 			SubTab._Wrapper = wrapper
 												local bar
 			local showPageTitle = TabSettings.ShowTitle ~= false
@@ -4696,11 +4705,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 			SubTab._PillIcon = pillIcon
 			function SubTab:Activate()
 				Tab._ActiveSubTab = SubTab
+				for _, st in ipairs(Tab._SubTabs) do
+					if st._Wrapper then
+						st._Wrapper.Visible = (st == SubTab)
+					end
+				end
 				if Tab._ContextHeading then
 					Tab._ContextHeading.Parent = wrapper
 				end
 				bar.Parent = wrapper
-				Elements.UIPageLayout:JumpTo(wrapper)
+				Elements.UIPageLayout:JumpTo(TabPage)
 				Window.CurrentTab = TabSettings.Name
 				if Window.SetContextTitle then
 					Window:SetContextTitle(TabSettings.Name, SubTab.Name)
@@ -4745,13 +4759,18 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 									if Tab._ActiveSubTab == nil or SubTabSettings.Default then
 				Tab._ActiveSubTab = SubTab
+				for _, st in ipairs(Tab._SubTabs) do
+					if st._Wrapper then
+						st._Wrapper.Visible = (st == SubTab)
+					end
+				end
 				if Tab._ContextHeading then
 					Tab._ContextHeading.Parent = wrapper
 				end
 				bar.Parent = wrapper
 				refreshSubTabPills()
 				if Window.CurrentTab == TabSettings.Name then
-					Elements.UIPageLayout:JumpTo(wrapper)
+					Elements.UIPageLayout:JumpTo(TabPage)
 					if Window.SetContextTitle then
 						Window:SetContextTitle(TabSettings.Name, SubTab.Name)
 					end
