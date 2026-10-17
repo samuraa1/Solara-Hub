@@ -2026,7 +2026,7 @@ local function enumFont(name, fallback)
 	end
 	return fallback
 end
-Luna.ActiveFontName = "Gotham"
+Luna.ActiveFontName = "Builder Sans"
 local FontPacks = {
 	["Builder Sans"] = {
 		Regular = enumFont("BuilderSans", Enum.Font.Gotham),
@@ -2193,21 +2193,12 @@ local function LunaResolveTags(settings)
 	end
 	return LunaInferTags(settings.Name, settings.Description)
 end
-local _LunaRandom = Random.new()
-local function RandomName()
-	local hex = "0123456789abcdef"
-	local out = {}
-	for i = 1, 16 do
-		local n = _LunaRandom:NextInteger(1, #hex)
-		out[i] = hex:sub(n, n)
-	end
-	return "_" .. table.concat(out)
-end
+local HIDDEN_NAME = "\0"
 local HiddenRefs = setmetatable({}, { __mode = "k" })
 local function HideName(inst)
 	if inst then
 		pcall(function()
-			inst.Name = RandomName()
+			inst.Name = HIDDEN_NAME
 		end)
 	end
 	return inst
@@ -2235,12 +2226,31 @@ local function RefGet(owner, key)
 	return nil
 end
 local function EnsureAccentBar(tabbtn)
-	return tabbtn and RefGet(tabbtn, "AccentBar") or nil
+	if not tabbtn then
+		return nil
+	end
+	local bar = RefGet(tabbtn, "AccentBar")
+	if bar and bar.Parent then
+		return bar
+	end
+	bar = Instance.new("Frame")
+	ASet(bar, "Accent", true)
+	ASet(bar, "NoTranslate", true)
+	bar.AnchorPoint = Vector2.new(0, 0.5)
+	bar.Position = UDim2.new(0, 5, 0.5, 0)
+	bar.Size = UDim2.new(0, 3, 0.55, 0)
+	bar.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Accent) or Color3.fromRGB(122, 162, 247)
+	bar.BackgroundTransparency = 1
+	bar.BorderSizePixel = 0
+	bar.ZIndex = tabbtn.ZIndex + 2
+	local barCorner = Instance.new("UICorner")
+	barCorner.CornerRadius = UDim.new(1, 0)
+	barCorner.Parent = bar
+	HideName(barCorner)
+	bar.Parent = tabbtn
+	return RefSet(tabbtn, "AccentBar", bar)
 end
 local function LunaMakeTagRow(parent, tags, opts)
-	return nil
-end
-local function LunaMakeTagRow_unused(parent, tags, opts)
 	opts = opts or {}
 	local maxN = opts.Max or 4
 	local holder = Instance.new("Frame")
@@ -2364,6 +2374,9 @@ local function LunaAttachButtonTags(button, tags)
 		button:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 		task.defer(fit)
 	end
+end
+local function RandomName()
+	return HIDDEN_NAME
 end
 local BindSettings, ButtonSettings, SliderSettings, ToggleSettings,
     InputSettings, DropdownSettings, ColorPickerSettings
@@ -3079,9 +3092,6 @@ local function HasNoThemeAncestor(obj)
 	return false
 end
 LunaSkinElement = function(obj, skipAncestorCheck)
-	return
-end
-local function LunaSkinElement_unused(obj, skipAncestorCheck)
 	if not Luna.ThemeEnabled then return end
 	local T = Luna.ActiveTheme
 	if not T then return end
@@ -3133,8 +3143,9 @@ local function LunaSkinElement_unused(obj, skipAncestorCheck)
 			obj.TextColor3 = MapTextColor(orig.Text, T)
 			orig.MappedText = obj.TextColor3
 		end
-			if orig.Font then
-			end
+		if orig.Font then
+			ApplyInterfaceFont(obj, orig.Font)
+		end
 		if orig.Placeholder and obj:IsA("TextBox") then
 			obj.PlaceholderTextColor = T.TextMuted
 		end
@@ -3158,10 +3169,56 @@ local function LunaSkinElement_unused(obj, skipAncestorCheck)
 			end
 		end
 	end
+			if obj:IsA("Frame") and obj.Name == "Progress" then
+		local main = obj.Parent
+		local root = main and main.Parent
+		if main and main.Name == "Main"
+			and root and root:FindFirstChild("Value") and root:FindFirstChild("Interact")
+			and not RefGet(obj, "Knob") then
+			local knob = Instance.new("Frame")
+			ASet(knob, "NoTranslate", true)
+			knob.AnchorPoint = Vector2.new(0.5, 0.5)
+			knob.Position = UDim2.new(1, 0, 0.5, 0)
+			knob.Size = UDim2.new(0, 13, 0, 13)
+			knob.BackgroundColor3 = Color3.new(1, 1, 1)
+			knob.BorderSizePixel = 0
+			knob.ZIndex = obj.ZIndex + 2
+			local knobCorner = Instance.new("UICorner")
+			knobCorner.CornerRadius = UDim.new(1, 0)
+			knobCorner.Parent = knob
+			HideName(knobCorner)
+			local knobStroke = Instance.new("UIStroke")
+			knobStroke.Color = Color3.new(1, 1, 1)
+			knobStroke.Transparency = 0.8
+			knobStroke.Parent = knob
+			HideName(knobStroke)
+			knob.Parent = obj
+			RefSet(obj, "Knob", knob)
+		end
+	end
 end
 local function LunaSkinTree(root)
-	return
+	if not Luna.ThemeEnabled or not Luna.ActiveTheme then return end
+	for _, d in ipairs(root:GetDescendants()) do
+		pcall(LunaSkinElement, d)
+	end
 end
+local SkinQueue = {}
+local SkinFlushPending = false
+LunaUI.DescendantAdded:Connect(function(obj)
+	if not Luna.ThemeEnabled or not Luna.ActiveTheme then return end
+	SkinQueue[obj] = true
+	if not SkinFlushPending then
+		SkinFlushPending = true
+		task.delay(0.12, function()
+			SkinFlushPending = false
+			for inst in pairs(SkinQueue) do
+				SkinQueue[inst] = nil
+				if inst.Parent then pcall(LunaSkinElement, inst) end
+			end
+		end)
+	end
+end)
 local function ApplyLunaTheme(nameOrTokens)
 	if not Luna.ThemeEnabled then return false end
 	local tokens
@@ -3186,6 +3243,7 @@ local function ApplyLunaTheme(nameOrTokens)
 			LunaUI.ThemeRemote.Value = not LunaUI.ThemeRemote.Value
 		end)
 	end
+	pcall(LunaSkinTree, LunaUI)
 	if Main.Visible then
 		pcall(function() Main.BackgroundTransparency = MainBgTransparency end)
 	end
@@ -3203,14 +3261,64 @@ SetGlassBlur = function(_enabled)
 	end
 end
 local function EnsureGlassSheen()
-	return
+	if GlassSheen and GlassSheen.Parent then
+		GlassSheen.Visible = Luna.GlassMode
+		return
+	end
+	GlassSheen = Instance.new("Frame")
+	HideName(GlassSheen)
+	ASet(GlassSheen, "NoTheme", true)
+	ASet(GlassSheen, "NoTranslate", true)
+	GlassSheen.BackgroundColor3 = Color3.new(1, 1, 1)
+	GlassSheen.BorderSizePixel = 0
+	GlassSheen.Size = UDim2.fromScale(1, 1)
+	GlassSheen.ZIndex = 1
+	GlassSheen.Active = false
+	GlassSheen.Visible = Luna.GlassMode
+	local sheenGradient = Instance.new("UIGradient")
+	sheenGradient.Rotation = 90
+	sheenGradient.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.88),
+		NumberSequenceKeypoint.new(0.35, 0.97),
+		NumberSequenceKeypoint.new(1, 1),
+	}
+	sheenGradient.Parent = GlassSheen
+	HideName(sheenGradient)
+	local sheenCorner = Instance.new("UICorner")
+	sheenCorner.CornerRadius = UDim.new(0, 10)
+	sheenCorner.Parent = GlassSheen
+	HideName(sheenCorner)
+	GlassSheen.Parent = Main
+			pcall(function()
+		local stroke = Main:FindFirstChildOfClass("UIStroke")
+		if stroke and not stroke:FindFirstChildOfClass("UIGradient") then
+			stroke.Color = Color3.new(1, 1, 1)
+			local strokeGradient = Instance.new("UIGradient")
+			strokeGradient.Rotation = 90
+			strokeGradient.Transparency = NumberSequence.new{
+				NumberSequenceKeypoint.new(0, 0.55),
+				NumberSequenceKeypoint.new(0.5, 0.85),
+				NumberSequenceKeypoint.new(1, 0.97),
+			}
+			strokeGradient.Parent = stroke
+			HideName(strokeGradient)
+		end
+	end)
 end
 local function SetGlassMode(enabled)
-	Luna.GlassMode = false
-	if GlassSheen then
+	Luna.GlassMode = enabled and true or false
+	if Luna.GlassMode then
+		EnsureGlassSheen()
+	elseif GlassSheen then
 		GlassSheen.Visible = false
 	end
-	SetGlassBlur(false)
+	if Luna.ActiveTheme then
+		MainBgTransparency = (Luna.ActiveTheme.MainTransparency or 0.04) + (Luna.GlassMode and 0.08 or 0)
+		if Main.Visible then
+			pcall(function() Main.BackgroundTransparency = MainBgTransparency end)
+		end
+	end
+	SetGlassBlur(Luna.GlassMode and Main.Visible and Main.BackgroundTransparency < 1)
 end
 Luna.SetGlassMode = SetGlassMode
 local function Draggable(Bar, Window, enableTaptic, _tapticOffset)
@@ -3332,7 +3440,42 @@ function Luna:Notification(data)
 				newNotification.Title.Text = data.Title
 		newNotification.Description.Text = data.Content
 		ApplyIcon(newNotification.Icon, GetIcon(data.Icon, data.ImageSource))
-		newNotification.BackgroundTransparency = 1
+						local notifAccent, notifProgress
+		if Luna.ThemeEnabled and Luna.ActiveTheme then
+			notifAccent = Instance.new("Frame")
+			HideName(notifAccent)
+			ASet(notifAccent, "Accent", true)
+			ASet(notifAccent, "NoTranslate", true)
+			notifAccent.AnchorPoint = Vector2.new(0, 0.5)
+			notifAccent.Position = UDim2.new(0, 0, 0.5, 0)
+			notifAccent.Size = UDim2.new(0, 3, 1, -14)
+			notifAccent.BackgroundColor3 = Luna.ActiveTheme.Accent
+			notifAccent.BackgroundTransparency = 1
+			notifAccent.BorderSizePixel = 0
+			notifAccent.ZIndex = newNotification.ZIndex + 2
+			local stripCorner = Instance.new("UICorner")
+			stripCorner.CornerRadius = UDim.new(1, 0)
+			stripCorner.Parent = notifAccent
+			HideName(stripCorner)
+			notifAccent.Parent = newNotification
+			notifProgress = Instance.new("Frame")
+			HideName(notifProgress)
+			ASet(notifProgress, "Accent", true)
+			ASet(notifProgress, "NoTranslate", true)
+			notifProgress.AnchorPoint = Vector2.new(0, 1)
+			notifProgress.Position = UDim2.new(0, 10, 1, -4)
+			notifProgress.Size = UDim2.new(1, -20, 0, 2)
+			notifProgress.BackgroundColor3 = Luna.ActiveTheme.Accent
+			notifProgress.BackgroundTransparency = 1
+			notifProgress.BorderSizePixel = 0
+			notifProgress.ZIndex = newNotification.ZIndex + 2
+			local progressCorner = Instance.new("UICorner")
+			progressCorner.CornerRadius = UDim.new(1, 0)
+			progressCorner.Parent = notifProgress
+			HideName(progressCorner)
+			notifProgress.Parent = newNotification
+		end
+				newNotification.BackgroundTransparency = 1
 		newNotification.Title.TextTransparency = 1
 		newNotification.Description.TextTransparency = 1
 		local stroke = notifStroke()
@@ -3531,7 +3674,7 @@ function Luna:CreateWindow(WindowSettings)
 	}, WindowSettings.KeySettings.SecondAction)
 	local Passthrough = false
 		Luna.ThemeEnabled = WindowSettings.ThemeEnabled ~= false
-	Luna.GlassMode = false
+	Luna.GlassMode = WindowSettings.GlassMode == true
 	local Window = {
 		Bind = Enum.KeyCode.K,
 		CurrentTab = nil,
@@ -3571,10 +3714,82 @@ function Luna:CreateWindow(WindowSettings)
 	local navTipLabel
 	local navTipScale
 	local function hideNavTooltip()
+		if not navTip then return end
+		navTip.Visible = false
 	end
 	local function showNavTooltip(anchor, text)
+		if not anchor or not text or text == "" then return end
+		if Navigation and Navigation.AbsoluteSize.X > 110 then
+			hideNavTooltip()
+			return
+		end
+		if not navTip then
+			navTip = Instance.new("Frame")
+			HideName(navTip)
+			ASet(navTip, "NoTheme", true)
+			ASet(navTip, "NoTranslate", true)
+			navTip.BackgroundColor3 = (Luna.ActiveTheme and Luna.ActiveTheme.Elevated) or Color3.fromRGB(28, 28, 36)
+			navTip.BackgroundTransparency = 0.04
+			navTip.BorderSizePixel = 0
+			navTip.ZIndex = 7000
+			navTip.Parent = LunaUI
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, 8)
+			c.Parent = navTip
+			HideName(c)
+			local s = Instance.new("UIStroke")
+			s.Color = Color3.fromRGB(255, 255, 255)
+			s.Transparency = 0.82
+			s.Parent = navTip
+			HideName(s)
+			navTipLabel = Instance.new("TextLabel")
+			navTipLabel.BackgroundTransparency = 1
+			navTipLabel.Font = Enum.Font.GothamMedium
+			navTipLabel.TextSize = 13
+			navTipLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+			navTipLabel.TextXAlignment = Enum.TextXAlignment.Left
+			navTipLabel.ZIndex = 7001
+			navTipLabel.Parent = navTip
+			HideName(navTipLabel)
+			navTipScale = Instance.new("UIScale")
+			navTipScale.Scale = 0.94
+			navTipScale.Parent = navTip
+			HideName(navTipScale)
+		end
+		navTipLabel.Text = tostring(text)
+		local width = 80
+		pcall(function()
+			width = game:GetService("TextService"):GetTextSize(tostring(text), 13, Enum.Font.GothamMedium, Vector2.new(280, 24)).X + 20
+		end)
+		width = math.clamp(width, 72, 240)
+		navTip.Size = UDim2.fromOffset(width, 28)
+		navTipLabel.Size = UDim2.new(1, -14, 1, 0)
+		navTipLabel.Position = UDim2.fromOffset(10, 0)
+		local origin = LunaUI.AbsolutePosition
+		local pos = anchor.AbsolutePosition
+		local sz = anchor.AbsoluteSize
+		navTip.Position = UDim2.fromOffset(pos.X - origin.X + sz.X + 10, pos.Y - origin.Y + sz.Y * 0.5 - 14)
+		navTip.Visible = true
+		navTipScale.Scale = 0.94
+		TweenService:Create(navTipScale, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	end
 	local function attachNavTooltip(button, text)
+		if not button then return end
+		local interact = button:FindFirstChild("Interact") or button
+		interact.MouseEnter:Connect(function()
+			showNavTooltip(button, text)
+		end)
+		interact.MouseLeave:Connect(hideNavTooltip)
+		interact.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				showNavTooltip(button, text)
+			end
+		end)
+		interact.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				hideNavTooltip()
+			end
+		end)
 	end
 	Window.AttachNavTooltip = attachNavTooltip
 	Main.Logo.Image = "rbxassetid://" .. WindowSettings.LogoID
@@ -3789,9 +4004,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			tween(HomeTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
 			tween(HomeTabButton, {BackgroundTransparency = 0})
 			tween(HomeTabButton.UIStroke, {Transparency = 0.41})
-			if HomeAccentBar then
-				tween(HomeAccentBar, {BackgroundTransparency = 0})
-			end
+			tween(HomeAccentBar, {BackgroundTransparency = 0})
 			Elements.UIPageLayout:JumpTo(HomeTabPage)
 			task.wait(0.05)
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
@@ -4526,10 +4739,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			tween(TabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(255,255,255)})
 			tween(TabButton, {BackgroundTransparency = 0})
 			tween(TabButton.UIStroke, {Transparency = 0.41})
-			if TabAccentBar then
-				tween(TabAccentBar, {BackgroundTransparency = 0})
-			end
+			tween(TabAccentBar, {BackgroundTransparency = 0})
 		local jumpTarget = TabPage
+		if Tab._ActiveSubTab and Tab._ActiveSubTab._Wrapper then
+			jumpTarget = Tab._ActiveSubTab._Wrapper
+		end
 		Elements.UIPageLayout:JumpTo(jumpTarget)
 		task.wait(0.05)
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
@@ -4591,28 +4805,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 			}, SubTabSettings or {})
 			local SubTab = {}
 			SubTab.Name = SubTabSettings.Name
-			if not Tab._SubHostReady then
-				Tab._SubHostReady = true
-				pcall(function()
-					local lay = TabPage:FindFirstChildOfClass("UIListLayout")
-					if lay then
-						lay.Enabled = false
-					end
-					TabPage.ScrollingEnabled = false
-					TabPage.AutomaticCanvasSize = Enum.AutomaticSize.None
-					TabPage.CanvasSize = UDim2.new(0, 0, 0, 0)
-				end)
-			end
-			local wrapper = Instance.new("Frame")
+									local wrapper = Instance.new("Frame")
 			wrapper.Name = RandomName()
 			wrapper.BackgroundTransparency = 1
 			wrapper.BorderSizePixel = 0
 			wrapper.Size = UDim2.fromScale(1, 1)
-			wrapper.Position = UDim2.fromScale(0, 0)
 			ASet(wrapper, "TabName", TabSettings.Name)
 			ASet(wrapper, "SubPage", SubTabSettings.Name)
-			wrapper.Visible = false
-			wrapper.Parent = TabPage
+			wrapper.LayoutOrder = TabPage.LayoutOrder
+			wrapper.Visible = true
+			wrapper.Parent = Elements
 			SubTab._Wrapper = wrapper
 												local bar
 			local showPageTitle = TabSettings.ShowTitle ~= false
@@ -4743,16 +4945,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			SubTab._PillIcon = pillIcon
 			function SubTab:Activate()
 				Tab._ActiveSubTab = SubTab
-				for _, st in ipairs(Tab._SubTabs) do
-					if st._Wrapper then
-						st._Wrapper.Visible = (st == SubTab)
-					end
-				end
 				if Tab._ContextHeading then
 					Tab._ContextHeading.Parent = wrapper
 				end
 				bar.Parent = wrapper
-				Elements.UIPageLayout:JumpTo(TabPage)
+				Elements.UIPageLayout:JumpTo(wrapper)
 				Window.CurrentTab = TabSettings.Name
 				if Window.SetContextTitle then
 					Window:SetContextTitle(TabSettings.Name, SubTab.Name)
@@ -4797,18 +4994,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end
 									if Tab._ActiveSubTab == nil or SubTabSettings.Default then
 				Tab._ActiveSubTab = SubTab
-				for _, st in ipairs(Tab._SubTabs) do
-					if st._Wrapper then
-						st._Wrapper.Visible = (st == SubTab)
-					end
-				end
 				if Tab._ContextHeading then
 					Tab._ContextHeading.Parent = wrapper
 				end
 				bar.Parent = wrapper
 				refreshSubTabPills()
 				if Window.CurrentTab == TabSettings.Name then
-					Elements.UIPageLayout:JumpTo(TabPage)
+					Elements.UIPageLayout:JumpTo(wrapper)
 					if Window.SetContextTitle then
 						Window:SetContextTitle(TabSettings.Name, SubTab.Name)
 					end
@@ -12766,6 +12958,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 		end
 						pcall(function() Window.SetTheme(Window._ThemeName) end)
+		task.delay(0.5, function() pcall(function() Window.RefreshTheme() end) end)
+				pcall(function()
+			if Luna.GlassMode then
+				EnsureGlassSheen()
+			end
+		end)
+		pcall(function() SetGlassBlur(Luna.GlassMode and Main.Visible) end)
 		local function focusStartup()
 			Window:ActivateStartupTab(WindowSettings.StartupTab)
 		end
@@ -12798,6 +12997,22 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 		local function forEachThemeStroke(callback)
+			local roots = {LunaUI, Main, dragBar}
+			for _, root in ipairs(roots) do
+				if root and root.Parent then
+					for _, d in ipairs(root:GetDescendants()) do
+						if d:IsA("UIStroke") and shouldRecolour(d) and d.Transparency < 0.9 then
+							callback(d)
+						end
+					end
+					if root:IsA("GuiObject") then
+						local direct = root:FindFirstChildOfClass("UIStroke")
+						if direct and shouldRecolour(direct) and direct.Transparency < 0.9 then
+							callback(direct)
+						end
+					end
+				end
+			end
 		end
 		Window.SetThemeAccent = function(color)
 			if typeof(color) ~= "Color3" then return end
@@ -12859,10 +13074,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if ok then
 				Window._ThemeName = Luna.CurrentTheme
 			end
+			if Window.GetCustomCursor and Window.GetCustomCursor() and Window.SetCustomCursor then
+				pcall(Window.SetCustomCursor, true)
+			end
 			return ok
 		end
 		Window.RefreshTheme = function()
 			if not Luna.ThemeEnabled then return end
+			pcall(LunaSkinTree, LunaUI)
 			if Main.Visible then
 				pcall(function() Main.BackgroundTransparency = MainBgTransparency end)
 			end
@@ -12883,10 +13102,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				return false
 			end
 			Luna.ActiveFontName = name
+			if LunaUI then
+				for _, d in ipairs(LunaUI:GetDescendants()) do
+					if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+						local orig = OriginalSkin[d]
+						ApplyInterfaceFont(d, orig and orig.Font or d.Font)
+					end
+				end
+			end
 			return true
 		end
 		Window.GetInterfaceFont = function()
-			return Luna.ActiveFontName or "Gotham"
+			return Luna.ActiveFontName or "Builder Sans"
 		end
 		Window.GetActiveTheme = function()
 			return Luna.CurrentTheme
@@ -13273,15 +13500,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 		end
 		function Window:StartTour(steps, opts)
-			opts = opts or {}
-			if type(opts.OnFinish) == "function" then
-				task.defer(function()
-					pcall(opts.OnFinish, "skipped")
-				end)
-			end
-			return false
-		end
-		function Window:StartTour_unused(steps, opts)
 			opts = opts or {}
 			if type(steps) ~= "table" or #steps == 0 then
 				return false
@@ -13901,24 +14119,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				OnCancel = nil,
 				OnDontAskAgain = nil,
 			}, settings or {})
-			if type(settings.OnConfirm) == "function" then
-				pcall(settings.OnConfirm)
+			if confirmState.open then
+				self:CloseConfirm("replaced")
 			end
-			return true
-		end
-		function Window:Confirm_unused(settings)
-			settings = Kwargify({
-				Title = "Are you sure?",
-				Body = "",
-				ConfirmText = "Confirm",
-				CancelText = "Cancel",
-				Icon = "warning",
-				ImageSource = "Material",
-				DontAskAgain = false,
-				OnConfirm = nil,
-				OnCancel = nil,
-				OnDontAskAgain = nil,
-			}, settings or {})
 			if not Main or not Main.Parent then
 				if type(settings.OnConfirm) == "function" then
 					pcall(settings.OnConfirm)
@@ -14190,20 +14393,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				Placeholder = "Search...",
 				CloseText = "Close",
 			}, settings or {})
-			return false
-		end
-		function Window:InfoModal_unused(settings)
-			settings = Kwargify({
-				Title = "Info",
-				Subtitle = "",
-				Icon = "info",
-				ImageSource = "Material",
-				Body = "",
-				Lines = nil,
-				Search = false,
-				Placeholder = "Search...",
-				CloseText = "Close",
-			}, settings or {})
+			if infoState.layer then
+				destroyInfoLayer()
+			end
 			if not LunaUI or not LunaUI.Parent then
 				return false
 			end
@@ -14577,14 +14769,83 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 		end
 		local function ensureCursor()
-			return false
+			if cursorScreen and cursorScreen.Parent then
+				return true
+			end
+			local parent = LunaUI and LunaUI.Parent
+			if not parent then
+				return false
+			end
+			cursorScreen = Instance.new("ScreenGui")
+			cursorScreen.Name = RandomName()
+			cursorScreen.IgnoreGuiInset = true
+			cursorScreen.DisplayOrder = 2147483647
+			cursorScreen.ZIndexBehavior = Enum.ZIndexBehavior.Global
+			cursorScreen.ResetOnSpawn = false
+			cursorScreen.Enabled = false
+			cursorScreen.Parent = parent
+			cursorRoot = Instance.new("Frame")
+			HideName(cursorRoot)
+			cursorRoot.BackgroundTransparency = 1
+			cursorRoot.BorderSizePixel = 0
+			cursorRoot.Size = UDim2.fromOffset(20, 20)
+			cursorRoot.ZIndex = 2147483647
+			cursorRoot.Visible = false
+			cursorRoot.Parent = cursorScreen
+			cursorImg = Instance.new("ImageLabel")
+			HideName(cursorImg)
+			cursorImg.BackgroundTransparency = 1
+			cursorImg.Size = UDim2.fromScale(1, 1)
+			cursorImg.BorderSizePixel = 0
+			cursorImg.Image = "rbxassetid://132511743665753"
+			cursorImg.ImageColor3 = cursorColor()
+			cursorImg.ScaleType = Enum.ScaleType.Fit
+			cursorImg.Rotation = -90
+			cursorImg.Parent = cursorRoot
+			cursorConn = RunService.RenderStepped:Connect(function()
+				if not cursorRoot or not cursorRoot.Visible then
+					return
+				end
+				local loc = UserInputService:GetMouseLocation()
+				cursorRoot.Position = UDim2.fromOffset(loc.X - 2, loc.Y - 2)
+			end)
+			return true
 		end
 		Window.SetCustomCursor = function(enabled)
-			destroyCursor()
-			return false
+			if IsPhoneClient() then
+				destroyCursor()
+				return false
+			end
+			local on = enabled == true
+			if not on then
+				if cursorRoot then
+					cursorRoot.Visible = false
+				end
+				if cursorScreen then
+					cursorScreen.Enabled = false
+				end
+				pcall(function()
+					UserInputService.MouseIconEnabled = true
+				end)
+				cursorOn = false
+				return true
+			end
+			if not ensureCursor() then
+				return false
+			end
+			if cursorImg then
+				cursorImg.ImageColor3 = cursorColor()
+			end
+			cursorRoot.Visible = true
+			cursorScreen.Enabled = true
+			pcall(function()
+				UserInputService.MouseIconEnabled = false
+			end)
+			cursorOn = true
+			return true
 		end
 		Window.GetCustomCursor = function()
-			return false
+			return cursorOn == true
 		end
 		Window._DestroyCustomCursor = destroyCursor
 	end
