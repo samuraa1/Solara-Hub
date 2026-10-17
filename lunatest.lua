@@ -1763,15 +1763,6 @@ local function LunaResolveExecFn(...)
 			if type(fn) == "function" then return fn end
 		end
 	end
-	if type(getfenv) == "function" then
-		local ok, env = pcall(getfenv, 0)
-		if ok and type(env) == "table" then
-			for i = 1, #names do
-				local fn = env[names[i]]
-				if type(fn) == "function" then return fn end
-			end
-		end
-	end
 	return nil
 end
 local LunaWriteFile = LunaResolveExecFn("writefile", "write_file")
@@ -1810,12 +1801,6 @@ local function LunaHttpRequest(url)
 	local raw = LunaHttpGetRaw(url)
 	if raw then
 		return raw, 200
-	end
-	local ok, body = pcall(function()
-		return game:HttpGet(url)
-	end)
-	if ok and body and body ~= "" then
-		return body, 200
 	end
 	return nil, nil
 end
@@ -1857,13 +1842,7 @@ local function LunaDownloadBytes(url)
 			end
 		end
 	end
-	local raw = LunaHttpGetRaw(url)
-	if raw then return raw end
-	local ok, body = pcall(function()
-		return game:HttpGet(url)
-	end)
-	if ok and body then return body end
-	return nil
+	return LunaHttpGetRaw(url)
 end
 local function LunaPlaySoundFromUrl(sound, url, cacheName)
 	cacheName = cacheName or "SolaraHub_track.mp3"
@@ -2690,10 +2669,6 @@ local function _googleTranslate(text, target)
     if not body then
         body = LunaHttpGetRaw(url)
     end
-    if not body then
-        local ok, res = pcall(function() return game:HttpGet(url, true) end)
-        if ok then body = res end
-    end
     if not body then return text end
     local okDec, decoded = pcall(function() return HttpService:JSONDecode(body) end)
     if not okDec or type(decoded) ~= "table" or type(decoded[1]) ~= "table" then return text end
@@ -2899,12 +2874,6 @@ local function loadUiAsset()
 		if ok and type(result) == "table" and typeof(result[1]) == "Instance" then
 			return result[1]
 		end
-	end
-	local ok, result = pcall(function()
-		return game:GetObjects(asset)[1]
-	end)
-	if ok and typeof(result) == "Instance" then
-		return result
 	end
 	error("Luna UI asset failed to load")
 end
