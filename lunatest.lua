@@ -2431,8 +2431,7 @@ local KeySystem : Frame = Main.KeySystem
 
 -- Halloween theme. The window asset ships with a cool purple palette, and a lot of
 -- element code writes those purples back on hover, so both the baked GUI and the
--- literals below are retinted. Decorations sit outside the window or in the header
--- so they don't cover buttons.
+-- literals below are retinted. Decorations stay inside the window.
 do
 	local HW = {
 		Void = Color3.fromRGB(10, 5, 8),
@@ -2748,173 +2747,63 @@ do
 		return root
 	end
 
-	local function makeBat(parent, px)
-		local root = Instance.new("Frame")
-		root.Name = RandomName()
-		root.BackgroundTransparency = 1
-		root.Size = UDim2.fromOffset(px, math.floor(px * 0.46))
-		root.AnchorPoint = Vector2.new(0.5, 0.5)
-		root.Position = UDim2.fromScale(0.5, 0.5)
-		root.ZIndex = (parent.ZIndex or 1) + 1
-		deadGui(root)
-		root.Parent = parent
+	-- Bottom corners of the window. Clipped so nothing hangs past the frame.
+	-- Left one tracks the sidebar so it stays in the content corner, off the profile card.
+	-- Right one sits just left of the resize grip.
+	local cornerHost = Instance.new("Frame")
+	cornerHost.Name = RandomName()
+	cornerHost.BackgroundTransparency = 1
+	cornerHost.Size = UDim2.fromScale(1, 1)
+	cornerHost.ClipsDescendants = true
+	cornerHost.ZIndex = 6
+	deadGui(cornerHost)
+	cornerHost.Parent = Main
 
-		local function wing(side)
-			local w = Instance.new("Frame")
-			w.Name = RandomName()
-			w.AnchorPoint = Vector2.new(side < 0 and 1 or 0, 0.5)
-			w.Position = UDim2.fromScale(side < 0 and 0.42 or 0.58, 0.48)
-			w.Size = UDim2.fromScale(0.48, 0.72)
-			w.BackgroundColor3 = Color3.fromRGB(14, 8, 16)
-			w.Rotation = side * 18
-			w.ZIndex = root.ZIndex
-			deadGui(w)
-			local c = Instance.new("UICorner")
-			c.CornerRadius = UDim.new(1, 0)
-			c.Parent = w
-			mark(c)
-			w.Parent = root
-			TweenService:Create(w, TweenInfo.new(0.42, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-				Rotation = side * -26,
-			}):Play()
-		end
-		wing(-1)
-		wing(1)
-
-		local body = Instance.new("Frame")
-		body.Name = RandomName()
-		body.AnchorPoint = Vector2.new(0.5, 0.5)
-		body.Position = UDim2.fromScale(0.5, 0.55)
-		body.Size = UDim2.fromScale(0.28, 0.5)
-		body.BackgroundColor3 = Color3.fromRGB(22, 12, 20)
-		body.ZIndex = root.ZIndex + 2
-		deadGui(body)
-		local bc = Instance.new("UICorner")
-		bc.CornerRadius = UDim.new(1, 0)
-		bc.Parent = body
-		mark(bc)
-		body.Parent = root
-
-		for _, x in ipairs({0.38, 0.62}) do
-			local eye = Instance.new("Frame")
-			eye.Name = RandomName()
-			eye.AnchorPoint = Vector2.new(0.5, 0.5)
-			eye.Position = UDim2.fromScale(x, 0.42)
-			eye.Size = UDim2.fromOffset(2, 2)
-			eye.BackgroundColor3 = HW.Candle
-			eye.ZIndex = body.ZIndex + 1
-			deadGui(eye)
-			local ec = Instance.new("UICorner")
-			ec.CornerRadius = UDim.new(1, 0)
-			ec.Parent = eye
-			mark(ec)
-			eye.Parent = body
-		end
-
-		TweenService:Create(root, TweenInfo.new(_LunaRandom:NextNumber(2.4, 3.4), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-			Position = UDim2.new(0.5, _LunaRandom:NextInteger(18, 34), 0.5, _LunaRandom:NextInteger(-6, 4)),
-		}):Play()
-		return root
-	end
-
-	local stickers = {}
-	local halo = Instance.new("Frame")
-	halo.Name = RandomName()
-	halo.BackgroundColor3 = Color3.fromRGB(255, 90, 16)
-	halo.BackgroundTransparency = 0.9
-	halo.Visible = Main.Visible
-	halo.ZIndex = 0
-	deadGui(halo)
-	local haloCorner = Instance.new("UICorner")
-	haloCorner.CornerRadius = UDim.new(0, 16)
-	haloCorner.Parent = halo
-	mark(haloCorner)
-	local haloStroke = Instance.new("UIStroke")
-	haloStroke.Color = Color3.fromRGB(255, 112, 24)
-	haloStroke.Thickness = 2
-	haloStroke.Transparency = 0.4
-	haloStroke.Parent = halo
-	mark(haloStroke)
-	halo.Parent = LunaUI
-	TweenService:Create(haloStroke, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-		Transparency = 0.72,
-	}):Play()
-	TweenService:Create(halo, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-		BackgroundTransparency = 0.82,
-	}):Play()
-
-	local function addSticker(alongX, alongY, pixX, pixY, anchor, px, face, tilt)
+	local function pinPumpkin(px, face, tilt)
 		local holder = Instance.new("Frame")
 		holder.Name = RandomName()
 		holder.BackgroundTransparency = 1
 		holder.Size = UDim2.fromOffset(px, px)
-		holder.AnchorPoint = anchor
-		holder.Visible = Main.Visible
-		holder.ZIndex = 50
+		holder.ZIndex = cornerHost.ZIndex
 		deadGui(holder)
-		holder.Parent = LunaUI
+		holder.Parent = cornerHost
 		makePumpkin(holder, px, face, tilt)
-		table.insert(stickers, {
-			holder = holder,
-			alongX = alongX,
-			alongY = alongY,
-			pixX = pixX,
-			pixY = pixY,
-		})
+		return holder
 	end
 
-	addSticker(0.18, 0, 0, 8, Vector2.new(0.5, 1), 46, true, -6)
-	addSticker(0.36, 0, 0, 10, Vector2.new(0.5, 1), 62, true, 4)
-	addSticker(0.54, 0, 0, 8, Vector2.new(0.5, 1), 40, true, -3)
-	addSticker(0.3, 1, 0, -4, Vector2.new(0.5, 0), 50, true, 5)
-	addSticker(0.7, 1, 0, -2, Vector2.new(0.5, 0), 36, true, -7)
+	local leftPump = pinPumpkin(44, true, 6)
+	leftPump.AnchorPoint = Vector2.new(0, 1)
+	local rightPump = pinPumpkin(38, true, -7)
+	rightPump.AnchorPoint = Vector2.new(1, 1)
+	rightPump.Position = UDim2.new(1, -40, 1, -8)
 
-	local function addBat(alongX, pixY)
-		local holder = Instance.new("Frame")
-		holder.Name = RandomName()
-		holder.BackgroundTransparency = 1
-		holder.Size = UDim2.fromOffset(40, 20)
-		holder.AnchorPoint = Vector2.new(0.5, 0.5)
-		holder.Visible = Main.Visible
-		holder.ZIndex = 50
-		deadGui(holder)
-		holder.Parent = LunaUI
-		makeBat(holder, 36)
-		table.insert(stickers, {
-			holder = holder,
-			alongX = alongX,
-			alongY = 0,
-			pixX = 0,
-			pixY = pixY,
-		})
-	end
-	addBat(0.08, -26)
-	addBat(0.8, -20)
-
-	local function syncOutside()
-		if not sceneOn or not Main.Parent then return end
-		local p = Main.Position
-		local s = Main.Size
-		local ap = Main.AnchorPoint
-		local grow = 26
-		halo.AnchorPoint = ap
-		halo.Position = UDim2.new(p.X.Scale, p.X.Offset - grow * ap.X, p.Y.Scale, p.Y.Offset - grow * ap.Y)
-		halo.Size = UDim2.new(s.X.Scale, s.X.Offset + grow, s.Y.Scale, s.Y.Offset + grow)
-		halo.Visible = Main.Visible
-		for _, st in ipairs(stickers) do
-			local xScale = p.X.Scale + s.X.Scale * (st.alongX - ap.X)
-			local yScale = p.Y.Scale + s.Y.Scale * (st.alongY - ap.Y)
-			local xOff = p.X.Offset + s.X.Offset * (st.alongX - ap.X) + st.pixX
-			local yOff = p.Y.Offset + s.Y.Offset * (st.alongY - ap.Y) + st.pixY
-			st.holder.Position = UDim2.new(xScale, xOff, yScale, yOff)
-			st.holder.Visible = Main.Visible
+	local function navWidth()
+		local w = 0
+		pcall(function()
+			w = Navigation.AbsoluteSize.X
+		end)
+		if w < 40 then
+			pcall(function()
+				w = Navigation.Size.X.Offset
+			end)
 		end
+		if w < 40 then w = 205 end
+		return w
 	end
 
-	Main:GetPropertyChangedSignal("Position"):Connect(syncOutside)
-	Main:GetPropertyChangedSignal("Size"):Connect(syncOutside)
-	Main:GetPropertyChangedSignal("Visible"):Connect(syncOutside)
-	syncOutside()
+	local function syncCorners()
+		if not sceneOn then return end
+		leftPump.Position = UDim2.new(0, navWidth() + 8, 1, -8)
+		local h = 0
+		pcall(function()
+			h = Main.AbsoluteSize.Y
+		end)
+		cornerHost.Visible = (h == 0 or h >= 90)
+	end
+
+	Navigation:GetPropertyChangedSignal("Size"):Connect(syncCorners)
+	Main:GetPropertyChangedSignal("Size"):Connect(syncCorners)
+	syncCorners()
 
 	local veil = Instance.new("Frame")
 	veil.Name = RandomName()
