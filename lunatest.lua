@@ -3534,9 +3534,9 @@ function Luna:CreateWindow(WindowSettings)
 		-- off on mobile because the existing fullscreen layout already fits.
 		Resizable = true,
 
-		-- New: if true, an AI Chat tab is auto-added (Groq). The chat asks for an
-		-- API key with /key. Set false to skip; the host can still create it
-		-- manually with Window:CreateAiTab().
+		-- New: if true, an AI Chat tab is auto-added (Groq or OpenRouter). The chat
+		-- asks for an API key before the first message. Set false to skip; the host
+		-- can still create it manually with Window:CreateAiTab().
 		AiTab = false,
 		AiSettings = nil,
 		ScriptSearcherTab = false,
@@ -8704,23 +8704,31 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local chats = {}
 		local chatOrder = {}
 		local activeId = nil
-								local GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
-		local function groqKeyTutorial()
-			return table.concat({
-				"**Groq API key is required** — Solara Hub AI will not send without one.",
-				"",
-				"**How to get a free key:**",
-				"1. Open **https://console.groq.com** (from [groq.com](https://groq.com/) → Start building).",
-				"2. Sign in with Google, GitHub, or email.",
-				"3. Open **https://console.groq.com/keys**.",
-				"4. Click **Create API Key**, copy it (starts with `gsk_`).",
-				"5. Paste it here:",
-				"`/key gsk_...your key...`",
-				"",
-				"`/key off` removes it. The key is saved locally (workspace `*_Token.txt`).",
-				"`/image` still uses a separate image endpoint and does not need Groq.",
-			}, "\n")
-		end
+		local GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+		local OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+		local GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
+		local OPENROUTER_DEFAULT_MODEL = "google/gemini-3.8-flash"
+		local PROVIDER_MODELS = {
+			groq = {
+				{ id = "llama-3.3-70b-versatile", name = "Llama 3.3 70B" },
+				{ id = "llama-3.1-8b-instant", name = "Llama 3.1 8B" },
+				{ id = "openai/gpt-oss-120b", name = "GPT-OSS 120B" },
+				{ id = "openai/gpt-oss-20b", name = "GPT-OSS 20B" },
+				{ id = "qwen/qwen3.8-27b", name = "Qwen 3.8 27B" },
+			},
+			openrouter = {
+				{ id = "openai/gpt-6-luna", name = "GPT-6 Luna" },
+				{ id = "google/gemini-3.8-flash", name = "Gemini 3.8 Flash" },
+				{ id = "openai/gpt-6.1-sol", name = "GPT-6.1 Sol" },
+				{ id = "google/gemini-4-argon", name = "Gemini 4 Argon" },
+				{ id = "anthropic/claude-sonnet-5.5", name = "Claude Sonnet 5.5" },
+				{ id = "anthropic/claude-opus-5.5", name = "Claude Opus 5.5" },
+				{ id = "x-ai/grok-4.7", name = "Grok 4.7" },
+				{ id = "deepseek/deepseek-v4.1-flash", name = "DeepSeek V4.1 Flash" },
+				{ id = "moonshotai/kimi-k3.1-pro", name = "Kimi K3.1 Pro" },
+				{ id = "z-ai/glm-5.3-flash", name = "GLM 5.3 Flash" },
+			},
+		}
 		local function normalizeGroqModel(m)
 			m = tostring(m or "")
 			if m == "" or m == "openai" or m == "gpt-4o" or m == "gpt-4o-mini" or m == "o3-mini"
@@ -8729,24 +8737,86 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end
 			return m
 		end
-		local currentModel = normalizeGroqModel(opts.Model or GROQ_DEFAULT_MODEL)
-										local aiToken = nil
+		local aiProvider = "groq"
+		local aiKeys = { groq = nil, openrouter = nil }
+		local aiModels = {
+			groq = normalizeGroqModel(opts.Model or GROQ_DEFAULT_MODEL),
+			openrouter = OPENROUTER_DEFAULT_MODEL,
+		}
+		local currentModel = aiModels.groq
+		local aiToken = nil
+		local tokenHasPrefs = false
 		local tokenFile = (tostring(opts.SaveFile):gsub("%.%w+$", "")) .. "_Token.txt"
-		local function loadToken()
-			if isfile and readfile and isfile(tokenFile) then
-				local ok, t = pcall(readfile, tokenFile)
-				if ok and type(t) == "string" then
-					t = t:gsub("%s+", "")
-					if t ~= "" then aiToken = t end
-				end
+		local function syncToken()
+			aiToken = aiKeys[aiProvider]
+		end
+		local function providerLabel()
+			return aiProvider == "openrouter" and "OpenRouter" or "Groq"
+		end
+		local function providerEndpoint()
+			if aiProvider == "openrouter" then return OPENROUTER_ENDPOINT end
+			return opts.Endpoint or GROQ_ENDPOINT
+		end
+		local function setProvider(id)
+			if id ~= "groq" and id ~= "openrouter" then return end
+			aiProvider = id
+			currentModel = aiModels[id]
+			if not currentModel or currentModel == "" then
+				currentModel = (id == "groq") and GROQ_DEFAULT_MODEL or OPENROUTER_DEFAULT_MODEL
+				aiModels[id] = currentModel
 			end
+			syncToken()
+		end
+		local function setModel(id)
+			id = tostring(id or ""):gsub("^%s+", ""):gsub("%s+$", "")
+			if id == "" then return end
+			if aiProvider == "groq" then id = normalizeGroqModel(id) end
+			aiModels[aiProvider] = id
+			currentModel = id
+		end
+		local function modelDisplayName(provider, id)
+			for _, m in ipairs(PROVIDER_MODELS[provider] or {}) do
+				if m.id == id then return m.name end
+			end
+			return tostring(id or "")
+		end
+		local function loadToken()
+			if not (isfile and readfile and isfile(tokenFile)) then return end
+			local ok, t = pcall(readfile, tokenFile)
+			if not ok or type(t) ~= "string" or t == "" then return end
+			local okj, decoded = pcall(HttpService.JSONDecode, HttpService, t)
+			if okj and type(decoded) == "table" and decoded.v == 1 then
+				tokenHasPrefs = true
+				if decoded.provider == "groq" or decoded.provider == "openrouter" then
+					aiProvider = decoded.provider
+				end
+				if type(decoded.keys) == "table" then
+					if type(decoded.keys.groq) == "string" and decoded.keys.groq ~= "" then aiKeys.groq = decoded.keys.groq end
+					if type(decoded.keys.openrouter) == "string" and decoded.keys.openrouter ~= "" then aiKeys.openrouter = decoded.keys.openrouter end
+				end
+				if type(decoded.models) == "table" then
+					if type(decoded.models.groq) == "string" and decoded.models.groq ~= "" then aiModels.groq = decoded.models.groq end
+					if type(decoded.models.openrouter) == "string" and decoded.models.openrouter ~= "" then aiModels.openrouter = decoded.models.openrouter end
+				end
+				currentModel = aiModels[aiProvider] or currentModel
+			else
+				t = t:gsub("%s+", "")
+				if t ~= "" then aiKeys.groq = t end
+			end
+			syncToken()
 		end
 		local function saveToken()
-			if aiToken and writefile then
-				pcall(writefile, tokenFile, aiToken)
-			elseif not aiToken and delfile and isfile and isfile(tokenFile) then
-				pcall(delfile, tokenFile)
+			if not writefile then return end
+			if not aiKeys.groq and not aiKeys.openrouter then
+				if delfile and isfile and isfile(tokenFile) then pcall(delfile, tokenFile) end
+				return
 			end
+			pcall(writefile, tokenFile, HttpService:JSONEncode({
+				v = 1,
+				provider = aiProvider,
+				keys = { groq = aiKeys.groq or "", openrouter = aiKeys.openrouter or "" },
+				models = { groq = aiModels.groq, openrouter = aiModels.openrouter },
+			}))
 		end
 		loadToken()
 						local generation = { token = 0, active = false, chatId = nil }
@@ -8819,7 +8889,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local function saveAll()
 			if not opts.AutoSave or not writefile then return end
 			pcall(function()
-				local payload = { v = STORAGE_VERSION, activeId = activeId, model = currentModel, chats = {} }
+				local payload = { v = STORAGE_VERSION, activeId = activeId, model = currentModel, provider = aiProvider, chats = {} }
 				for _, id in ipairs(chatOrder) do
 					local c = chats[id]
 					if c then
@@ -8850,7 +8920,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					end
 				end
 				if data.activeId and chats[data.activeId] then activeId = data.activeId end
-				if type(data.model) == "string" and data.model ~= "" then currentModel = normalizeGroqModel(data.model) end
+				if not tokenHasPrefs and type(data.model) == "string" and data.model ~= "" then
+					currentModel = normalizeGroqModel(data.model)
+					aiModels.groq = currentModel
+					syncToken()
+				end
 			elseif type(data.conv) == "table" then
 								local id = newChatId()
 				local c = {
@@ -9087,7 +9161,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Messages.BackgroundTransparency = 1
 		Messages.BorderSizePixel = 0
 		Messages.Position = UDim2.new(0, 0, 0, 0)
-		Messages.Size = UDim2.new(1, 0, 1, -96)
+		Messages.Size = UDim2.new(1, 0, 1, -126)
 		Messages.ScrollBarThickness = 3
 		Messages.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
 		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -9107,7 +9181,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local QuickRow = Instance.new("Frame")
 		QuickRow.Name = RandomName()
 		QuickRow.AnchorPoint = Vector2.new(0, 1)
-		QuickRow.Position = UDim2.new(0, 0, 1, -54)
+		QuickRow.Position = UDim2.new(0, 0, 1, -84)
 		QuickRow.Size = UDim2.new(1, 0, 0, 28)
 		QuickRow.BackgroundTransparency = 1
 		QuickRow.Visible = false
@@ -9126,7 +9200,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		InputBar.BorderSizePixel = 0
 		InputBar.AnchorPoint = Vector2.new(0, 1)
 		InputBar.Position = UDim2.new(0, 0, 1, 0)
-		InputBar.Size = UDim2.new(1, 0, 0, 48)
+		InputBar.Size = UDim2.new(1, 0, 0, 78)
 		InputBar.Parent = ChatPane
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = InputBar
@@ -9136,8 +9210,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		local InputBox = Instance.new("TextBox")
 		InputBox.Name = RandomName()
 		InputBox.BackgroundTransparency = 1
-		InputBox.Position = UDim2.new(0, 14, 0, 0)
-		InputBox.Size = UDim2.new(1, -68, 1, 0)
+		InputBox.Position = UDim2.new(0, 12, 0, 36)
+		InputBox.Size = UDim2.new(1, -58, 0, 36)
 		InputBox.PlaceholderText = "Ask anything — code, Solara Hub, errors..."
 		InputBox.PlaceholderColor3 = TEXT_DIM
 		InputBox.Text = ""
@@ -9150,20 +9224,194 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		InputBox.MultiLine = false
 		ASet(InputBox, "NoTranslate", true)
 		InputBox.Parent = InputBar
+		local ModelBtn = Instance.new("TextButton")
+		ModelBtn.Name = RandomName()
+		ModelBtn.Position = UDim2.new(0, 8, 0, 6)
+		ModelBtn.Size = UDim2.new(1, -16, 0, 26)
+		ModelBtn.BackgroundColor3 = Color3.fromRGB(48, 42, 70)
+		ModelBtn.BackgroundTransparency = 0.12
+		ModelBtn.Text = ""
+		ModelBtn.AutoButtonColor = false
+		ModelBtn.ZIndex = 6
+		ASet(ModelBtn, "NoTranslate", true)
+		ASet(ModelBtn, "NoTheme", true)
+		ModelBtn.Parent = InputBar
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = ModelBtn
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.45; s.Parent = ModelBtn
+		end
+		local ProvTag = Instance.new("TextLabel")
+		ProvTag.BackgroundTransparency = 1
+		ProvTag.Position = UDim2.new(0, 10, 0, 0)
+		ProvTag.Size = UDim2.new(0, 86, 1, 0)
+		ProvTag.Font = Enum.Font.GothamBold
+		ProvTag.TextSize = 11
+		ProvTag.TextXAlignment = Enum.TextXAlignment.Left
+		ProvTag.TextColor3 = Color3.fromRGB(198, 176, 255)
+		ProvTag.Text = "Groq"
+		ProvTag.ZIndex = 7
+		ASet(ProvTag, "NoTranslate", true)
+		ProvTag.Parent = ModelBtn
+		local ModelLabel = Instance.new("TextLabel")
+		ModelLabel.BackgroundTransparency = 1
+		ModelLabel.Position = UDim2.new(0, 96, 0, 0)
+		ModelLabel.Size = UDim2.new(1, -122, 1, 0)
+		ModelLabel.Font = Enum.Font.GothamMedium
+		ModelLabel.TextSize = 12
+		ModelLabel.TextXAlignment = Enum.TextXAlignment.Left
+		ModelLabel.TextColor3 = TEXT_PRIMARY
+		ModelLabel.Text = modelDisplayName(aiProvider, currentModel)
+		ModelLabel.ZIndex = 7
+		ASet(ModelLabel, "NoTranslate", true)
+		pcall(function() ModelLabel.TextTruncate = Enum.TextTruncate.AtEnd end)
+		ModelLabel.Parent = ModelBtn
+		local ModelCaret = Instance.new("ImageLabel")
+		ModelCaret.BackgroundTransparency = 1
+		ModelCaret.AnchorPoint = Vector2.new(1, 0.5)
+		ModelCaret.Position = UDim2.new(1, -6, 0.5, 0)
+		ModelCaret.Size = UDim2.fromOffset(14, 14)
+		ModelCaret.ImageColor3 = TEXT_DIM
+		ModelCaret.ZIndex = 7
+		ModelCaret.Parent = ModelBtn
+		ApplyIcon(ModelCaret, GetIcon("expand_more", "Material"))
+		local ModelMenu = Instance.new("Frame")
+		ModelMenu.Name = RandomName()
+		ModelMenu.AnchorPoint = Vector2.new(0, 1)
+		ModelMenu.Position = UDim2.new(0, 8, 1, -82)
+		ModelMenu.Size = UDim2.fromOffset(280, 268)
+		ModelMenu.BackgroundColor3 = Color3.fromRGB(28, 24, 42)
+		ModelMenu.BorderSizePixel = 0
+		ModelMenu.Visible = false
+		ModelMenu.ZIndex = 40
+		ASet(ModelMenu, "NoTheme", true)
+		ASet(ModelMenu, "NoTranslate", true)
+		ModelMenu.Parent = ChatPane
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = ModelMenu
+			local s = Instance.new("UIStroke"); s.Color = ACCENT; s.Transparency = 0.45; s.Parent = ModelMenu
+		end
+		local ModelList = Instance.new("ScrollingFrame")
+		ModelList.BackgroundTransparency = 1
+		ModelList.BorderSizePixel = 0
+		ModelList.Size = UDim2.fromScale(1, 1)
+		ModelList.ScrollBarThickness = 3
+		ModelList.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		ModelList.CanvasSize = UDim2.new()
+		ModelList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		ModelList.ScrollingDirection = Enum.ScrollingDirection.Y
+		ModelList.ZIndex = 41
+		ModelList.Parent = ModelMenu
+		do
+			local l = Instance.new("UIListLayout")
+			l.Padding = UDim.new(0, 4)
+			l.SortOrder = Enum.SortOrder.LayoutOrder
+			l.Parent = ModelList
+			local p = Instance.new("UIPadding")
+			p.PaddingTop = UDim.new(0, 6); p.PaddingBottom = UDim.new(0, 6)
+			p.PaddingLeft = UDim.new(0, 6); p.PaddingRight = UDim.new(0, 6)
+			p.Parent = ModelList
+		end
+		local function refreshModelPicker()
+			ProvTag.Text = providerLabel()
+			ModelLabel.Text = modelDisplayName(aiProvider, currentModel)
+			for _, child in ipairs(ModelList:GetChildren()) do
+				if child:IsA("GuiObject") then child:Destroy() end
+			end
+			local seen = false
+			local function addRow(id, name, order)
+				local selected = id == currentModel
+				if selected then seen = true end
+				local b = Instance.new("TextButton")
+				b.LayoutOrder = order
+				b.Size = UDim2.new(1, 0, 0, 30)
+				b.BackgroundColor3 = selected and ACCENT_DEEP or Color3.fromRGB(46, 40, 66)
+				b.BackgroundTransparency = selected and 0.02 or 0.28
+				b.Text = name
+				b.Font = Enum.Font.GothamMedium
+				b.TextSize = 13
+				b.TextColor3 = TEXT_PRIMARY
+				b.TextXAlignment = Enum.TextXAlignment.Left
+				b.AutoButtonColor = false
+				b.ZIndex = 42
+				ASet(b, "NoTranslate", true)
+				ASet(b, "NoTheme", true)
+				b.Parent = ModelList
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
+				local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0, 10); pad.PaddingRight = UDim.new(0, 10); pad.Parent = b
+				b.MouseEnter:Connect(function()
+					if id ~= currentModel then tween(b, {BackgroundTransparency = 0.05}) end
+				end)
+				b.MouseLeave:Connect(function()
+					if id ~= currentModel then tween(b, {BackgroundTransparency = selected and 0.02 or 0.28}) end
+				end)
+				b.MouseButton1Click:Connect(function()
+					setModel(id)
+					saveToken()
+					saveAll()
+					ModelMenu.Visible = false
+					refreshModelPicker()
+				end)
+			end
+			for i, m in ipairs(PROVIDER_MODELS[aiProvider] or {}) do
+				addRow(m.id, m.name, i)
+			end
+			if not seen and currentModel and currentModel ~= "" then
+				addRow(currentModel, currentModel, 0)
+			end
+		end
+		ModelBtn.MouseButton1Click:Connect(function()
+			ModelMenu.Visible = not ModelMenu.Visible
+			if ModelMenu.Visible then refreshModelPicker() end
+		end)
+		ModelBtn.MouseEnter:Connect(function() tween(ModelBtn, {BackgroundTransparency = 0}) end)
+		ModelBtn.MouseLeave:Connect(function() tween(ModelBtn, {BackgroundTransparency = 0.12}) end)
+		local SendGlow = Instance.new("Frame")
+		SendGlow.Name = RandomName()
+		SendGlow.AnchorPoint = Vector2.new(1, 1)
+		SendGlow.Position = UDim2.new(1, -8, 1, -8)
+		SendGlow.Size = UDim2.fromOffset(44, 44)
+		SendGlow.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
+		SendGlow.BackgroundTransparency = 0.55
+		SendGlow.BorderSizePixel = 0
+		SendGlow.ZIndex = 5
+		ASet(SendGlow, "NoTheme", true)
+		SendGlow.Parent = InputBar
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = SendGlow
+		end
 		local SendButton = Instance.new("ImageButton")
 		SendButton.Name = RandomName()
-		SendButton.AnchorPoint = Vector2.new(1, 0.5)
-		SendButton.Position = UDim2.new(1, -8, 0.5, 0)
-		SendButton.Size = UDim2.fromOffset(40, 32)
-		SendButton.BackgroundColor3 = ACCENT
-		SendButton.BackgroundTransparency = 0.05
+		SendButton.AnchorPoint = Vector2.new(1, 1)
+		SendButton.Position = UDim2.new(1, -8, 1, -8)
+		SendButton.Size = UDim2.fromOffset(34, 34)
+		SendButton.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
+		SendButton.BackgroundTransparency = 0
 		SendButton.AutoButtonColor = false
-		SendButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		SendButton.Image = ""
+		SendButton.ClipsDescendants = true
+		SendButton.ZIndex = 6
+		ASet(SendButton, "NoTheme", true)
 		SendButton.Parent = InputBar
-		ApplyIcon(SendButton, GetIcon("send", "Material"))
 		do
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = SendButton
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = SendButton
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(236, 226, 255); s.Transparency = 0.45; s.Thickness = 1.2; s.Parent = SendButton
+			local g = Instance.new("UIGradient")
+			g.Rotation = 90
+			g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(196, 196, 220))
+			g.Parent = SendButton
 		end
+		local sendIcon = Instance.new("ImageLabel")
+		sendIcon.Name = "Icon"
+		sendIcon.BackgroundTransparency = 1
+		sendIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+		sendIcon.Position = UDim2.new(0.5, 1, 0.5, 0)
+		sendIcon.Size = UDim2.fromOffset(16, 16)
+		sendIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		sendIcon.ScaleType = Enum.ScaleType.Fit
+		sendIcon.ZIndex = 7
+		sendIcon.Parent = SendButton
+		ApplyIcon(sendIcon, GetIcon("send", "Material"))
+		refreshModelPicker()
 						local function splitCodeBlocks(text)
 			local segments = {}
 			local cursor = 1
@@ -9807,7 +10055,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				kw.BackgroundTransparency = 1
 				kw.Position = UDim2.new(0, 54, 0, 58)
 				kw.Size = UDim2.new(1, -70, 0, 16)
-				kw.Text = "Groq key required — send /key for the tutorial"
+				kw.Text = "API key required — send a message to add Groq or OpenRouter"
 				kw.Font = Enum.Font.GothamMedium
 				kw.TextSize = 11
 				kw.TextColor3 = Color3.fromRGB(255, 200, 90)
@@ -10086,13 +10334,16 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end)
 								AiTab.Messages = Messages
 		local function setSendEnabled(enabled)
-			SendButton.AutoButtonColor = enabled
+			SendButton.AutoButtonColor = false
+			SendButton.Image = ""
 			if enabled then
-				ApplyIcon(SendButton, GetIcon("send", "Material"))
-				SendButton.BackgroundColor3 = ACCENT
+				ApplyIcon(sendIcon, GetIcon("send", "Material"))
+				SendButton.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
+				SendGlow.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
 			else
-				ApplyIcon(SendButton, GetIcon("stop", "Material"))
-				SendButton.BackgroundColor3 = Color3.fromRGB(190, 90, 90)
+				ApplyIcon(sendIcon, GetIcon("stop", "Material"))
+				SendButton.BackgroundColor3 = Color3.fromRGB(196, 72, 84)
+				SendGlow.BackgroundColor3 = Color3.fromRGB(196, 72, 84)
 			end
 		end
 				function AiTab:_promptRename(currentName)
@@ -10311,19 +10562,23 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 						if decoded and decoded.text then return decoded.text, nil end
 			return nil, "Could not extract `choices[1].message.content` from response."
 		end
-		local function callGroq(conv)
-			if not aiToken then
-				return nil, groqKeyTutorial()
+		local function callProvider(conv)
+			if not aiToken or aiToken == "" then
+				return nil, "API key missing."
 			end
-			local reply, err, body = requestChat(opts.Endpoint, normalizeGroqModel(currentModel), true, conv)
+			local model = currentModel
+			if aiProvider == "groq" then model = normalizeGroqModel(model) end
+			local reply, err, body = requestChat(providerEndpoint(), model, true, conv)
 			if reply then return reply, nil end
+			local who = providerLabel()
 			if err == 401 or err == 403 then
-				return nil, "Groq rejected the key (401/403). Get a new one at **https://console.groq.com/keys**, then `/key gsk_...`."
+				local url = aiProvider == "openrouter" and "https://openrouter.ai/keys" or "https://console.groq.com/keys"
+				return nil, who .. " rejected the key (401/403). Create a new one at **" .. url .. "**."
 			end
 			if err == 429 then
-				return nil, "Groq rate limit — wait a few seconds and resend."
+				return nil, who .. " rate limit — wait a few seconds and resend."
 			end
-			return nil, "Groq request failed: " .. tostring(err) .. (body and (" — " .. tostring(body):sub(1, 200)) or "")
+			return nil, who .. " request failed: " .. tostring(err) .. (body and (" — " .. tostring(body):sub(1, 200)) or "")
 		end
 		local function doSend(prompt, isRegenerate)
 			local chat = getActive()
@@ -10364,7 +10619,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end)
 			task.spawn(function()
-				local ok, replyText, errReason = pcall(callGroq, chat.conv)
+				local ok, replyText, errReason = pcall(callProvider, chat.conv)
 				if not ok then
 					errReason = "Internal error: " .. tostring(replyText)
 					replyText = nil
@@ -10465,7 +10720,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Luna:Notification({ Title = "Generating image…", Content = p, Icon = "image", ImageSource = "Material", Duration = 4 })
 			task.spawn(function()
 				local url = "https://image.pollinations.ai/prompt/" .. urlencode(p)
-				if aiToken then url = url .. "?key=" .. urlencode(aiToken) end
 				local fn = getHttpFn()
 				local shown = false
 				local assetFn = getcustomasset or getsynasset or (syn and syn.getcustomasset)
@@ -10512,43 +10766,284 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				Luna:Notification({ Title = "Export failed", Content = "Executor has no writefile/clipboard.", Icon = "error", ImageSource = "Material", Duration = 5 })
 			end
 		end
+		local keyDialog, dialogCard
+		local function closeKeyDialog()
+			local current, cardInst = keyDialog, dialogCard
+			keyDialog, dialogCard = nil, nil
+			if cardInst and cardInst.Parent then cardInst:Destroy() end
+			if current and current.Parent then current:Destroy() end
+		end
+		local function openKeyDialog()
+			if keyDialog and keyDialog.Parent then return end
+			ModelMenu.Visible = false
+			local picked = aiProvider
+			local overlay = Instance.new("TextButton")
+			overlay.Name = RandomName()
+			overlay.Size = UDim2.fromScale(1, 1)
+			overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+			overlay.BackgroundTransparency = 1
+			overlay.Text = ""
+			overlay.AutoButtonColor = false
+			overlay.ZIndex = 6000
+			ASet(overlay, "NoTheme", true)
+			ASet(overlay, "NoTranslate", true)
+			overlay.Parent = LunaUI
+			keyDialog = overlay
+			TweenService:Create(overlay, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.46}):Play()
+			local view = (Camera and Camera.ViewportSize) or Vector2.new(1280, 720)
+			local cardW = math.clamp(view.X - 36, 300, 420)
+			local card = Instance.new("Frame")
+			card.AnchorPoint = Vector2.new(0.5, 0.5)
+			card.Position = UDim2.fromScale(0.5, 0.5)
+			card.Size = UDim2.fromOffset(cardW, 318)
+			card.BackgroundColor3 = Color3.fromRGB(28, 24, 44)
+			card.BorderSizePixel = 0
+			card.Active = true
+			card.ZIndex = 6010
+			ASet(card, "NoTheme", true)
+			dialogCard = card
+			card.Parent = LunaUI
+			local scale = Instance.new("UIScale"); scale.Scale = 0.94; scale.Parent = card
+			TweenService:Create(scale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+			do
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 16); c.Parent = card
+				local s = Instance.new("UIStroke"); s.Color = ACCENT; s.Transparency = 0.35; s.Thickness = 1.2; s.Parent = card
+				local g = Instance.new("UIGradient")
+				g.Rotation = 90
+				g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(214, 214, 230))
+				g.Parent = card
+			end
+			local icon = Instance.new("ImageLabel")
+			icon.BackgroundTransparency = 1
+			icon.Position = UDim2.fromOffset(16, 16)
+			icon.Size = UDim2.fromOffset(22, 22)
+			icon.ImageColor3 = Color3.fromRGB(214, 196, 255)
+			icon.ZIndex = 6012
+			icon.Parent = card
+			ApplyIcon(icon, GetIcon("vpn_key", "Material"))
+			local title = Instance.new("TextLabel")
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.fromOffset(46, 14)
+			title.Size = UDim2.new(1, -78, 0, 24)
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 16
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.TextColor3 = TEXT_PRIMARY
+			title.Text = "API key required"
+			title.ZIndex = 6012
+			ASet(title, "NoTranslate", true)
+			title.Parent = card
+			local body = Instance.new("TextLabel")
+			body.BackgroundTransparency = 1
+			body.Position = UDim2.fromOffset(16, 46)
+			body.Size = UDim2.new(1, -32, 0, 48)
+			body.Font = Enum.Font.GothamMedium
+			body.TextSize = 13
+			body.TextWrapped = true
+			body.TextYAlignment = Enum.TextYAlignment.Top
+			body.TextXAlignment = Enum.TextXAlignment.Left
+			body.TextColor3 = TEXT_DIM
+			body.Text = "Solara Hub AI can't answer until you add a key. Pick Groq or OpenRouter, paste it once, and it stays on this device."
+			body.ZIndex = 6012
+			ASet(body, "NoTranslate", true)
+			body.Parent = card
+			local function makeChoice(label, sub, xScale, xOff)
+				local b = Instance.new("TextButton")
+				b.Position = UDim2.new(xScale, xOff, 0, 104)
+				b.Size = UDim2.new(0.5, -21, 0, 48)
+				b.Text = ""
+				b.AutoButtonColor = false
+				b.ZIndex = 6012
+				b.Parent = card
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = b
+				local s = Instance.new("UIStroke"); s.Transparency = 0.4; s.Parent = b
+				local t1 = Instance.new("TextLabel")
+				t1.BackgroundTransparency = 1
+				t1.Position = UDim2.fromOffset(10, 6)
+				t1.Size = UDim2.new(1, -16, 0, 18)
+				t1.Font = Enum.Font.GothamBold
+				t1.TextSize = 13
+				t1.TextXAlignment = Enum.TextXAlignment.Left
+				t1.Text = label
+				t1.ZIndex = 6013
+				ASet(t1, "NoTranslate", true)
+				t1.Parent = b
+				local t2 = Instance.new("TextLabel")
+				t2.BackgroundTransparency = 1
+				t2.Position = UDim2.fromOffset(10, 24)
+				t2.Size = UDim2.new(1, -16, 0, 16)
+				t2.Font = Enum.Font.GothamMedium
+				t2.TextSize = 11
+				t2.TextXAlignment = Enum.TextXAlignment.Left
+				t2.Text = sub
+				t2.ZIndex = 6013
+				ASet(t2, "NoTranslate", true)
+				t2.Parent = b
+				return b, s, t1, t2
+			end
+			local groqBtn, groqStroke, groqTitle, groqSub = makeChoice("Groq", "Free and fast", 0, 16)
+			local orBtn, orStroke, orTitle, orSub = makeChoice("OpenRouter", "GPT, Gemini, Claude…", 0.5, 5)
+			local hint = Instance.new("TextLabel")
+			hint.BackgroundTransparency = 1
+			hint.Position = UDim2.fromOffset(16, 160)
+			hint.Size = UDim2.new(1, -32, 0, 36)
+			hint.Font = Enum.Font.Gotham
+			hint.TextSize = 12
+			hint.TextWrapped = true
+			hint.TextYAlignment = Enum.TextYAlignment.Top
+			hint.TextXAlignment = Enum.TextXAlignment.Left
+			hint.TextColor3 = Color3.fromRGB(196, 186, 220)
+			hint.ZIndex = 6012
+			ASet(hint, "NoTranslate", true)
+			hint.Parent = card
+			local keyBox = Instance.new("TextBox")
+			keyBox.Position = UDim2.fromOffset(16, 200)
+			keyBox.Size = UDim2.new(1, -32, 0, 36)
+			keyBox.BackgroundColor3 = Color3.fromRGB(18, 16, 30)
+			keyBox.TextColor3 = TEXT_PRIMARY
+			keyBox.PlaceholderColor3 = TEXT_DIM
+			keyBox.Font = Enum.Font.GothamMedium
+			keyBox.TextSize = 13
+			keyBox.ClearTextOnFocus = false
+			keyBox.TextXAlignment = Enum.TextXAlignment.Left
+			keyBox.ZIndex = 6012
+			ASet(keyBox, "NoTranslate", true)
+			ASet(keyBox, "NoTheme", true)
+			keyBox.Parent = card
+			do
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = keyBox
+				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.4; s.Parent = keyBox
+				local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0, 10); p.PaddingRight = UDim.new(0, 10); p.Parent = keyBox
+			end
+			local drafts = { groq = aiKeys.groq, openrouter = aiKeys.openrouter }
+			local function paint()
+				local function style(btn, stroke, t1, t2, on)
+					btn.BackgroundColor3 = on and ACCENT or Color3.fromRGB(42, 36, 62)
+					btn.BackgroundTransparency = on and 0 or 0.15
+					stroke.Color = on and Color3.fromRGB(214, 196, 255) or STROKE_SOFT
+					t1.TextColor3 = TEXT_PRIMARY
+					t2.TextColor3 = on and Color3.fromRGB(232, 224, 255) or TEXT_DIM
+				end
+				style(groqBtn, groqStroke, groqTitle, groqSub, picked == "groq")
+				style(orBtn, orStroke, orTitle, orSub, picked == "openrouter")
+				keyBox.Text = drafts[picked] or ""
+				keyBox.PlaceholderText = picked == "openrouter" and "sk-or-v1-..." or "gsk_..."
+				hint.Text = picked == "openrouter"
+					and "Key: openrouter.ai/keys. Choose GPT-6 Luna, Gemini 3.8 Flash and the rest in the dropdown above the message box."
+					or "Free key: console.groq.com/keys. It starts with gsk_."
+			end
+			local function choose(id)
+				local typed = keyBox.Text:gsub("%s+", "")
+				drafts[picked] = typed ~= "" and typed or nil
+				picked = id
+				paint()
+			end
+			groqBtn.MouseButton1Click:Connect(function() choose("groq") end)
+			orBtn.MouseButton1Click:Connect(function() choose("openrouter") end)
+			paint()
+			local function commit()
+				local key = keyBox.Text:gsub("%s+", "")
+				if key == "" then
+					Luna:Notification({ Title = "API key", Content = "Paste a key first.", Icon = "error", ImageSource = "Material", Duration = 4 })
+					return
+				end
+				drafts[picked] = key
+				aiKeys.groq = drafts.groq
+				aiKeys.openrouter = drafts.openrouter
+				setProvider(picked)
+				syncToken()
+				saveToken()
+				refreshModelPicker()
+				closeKeyDialog()
+				Luna:Notification({ Title = providerLabel() .. " key saved", Content = "You can send messages now.", Icon = "vpn_key", ImageSource = "Material", Duration = 4 })
+			end
+			local saveBtn = Instance.new("TextButton")
+			saveBtn.AnchorPoint = Vector2.new(1, 1)
+			saveBtn.Position = UDim2.new(1, -16, 1, -14)
+			saveBtn.Size = UDim2.fromOffset(96, 32)
+			saveBtn.BackgroundColor3 = ACCENT
+			saveBtn.Text = "Save key"
+			saveBtn.Font = Enum.Font.GothamBold
+			saveBtn.TextSize = 13
+			saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+			saveBtn.AutoButtonColor = false
+			saveBtn.ZIndex = 6012
+			ASet(saveBtn, "NoTranslate", true)
+			saveBtn.Parent = card
+			local sc = Instance.new("UICorner"); sc.CornerRadius = UDim.new(0, 9); sc.Parent = saveBtn
+			local cancelBtn = Instance.new("TextButton")
+			cancelBtn.AnchorPoint = Vector2.new(1, 1)
+			cancelBtn.Position = UDim2.new(1, -120, 1, -14)
+			cancelBtn.Size = UDim2.fromOffset(84, 32)
+			cancelBtn.BackgroundColor3 = Color3.fromRGB(48, 42, 68)
+			cancelBtn.Text = "Cancel"
+			cancelBtn.Font = Enum.Font.GothamMedium
+			cancelBtn.TextSize = 13
+			cancelBtn.TextColor3 = TEXT_PRIMARY
+			cancelBtn.AutoButtonColor = false
+			cancelBtn.ZIndex = 6012
+			ASet(cancelBtn, "NoTranslate", true)
+			cancelBtn.Parent = card
+			local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 9); cc.Parent = cancelBtn
+			saveBtn.MouseButton1Click:Connect(commit)
+			cancelBtn.MouseButton1Click:Connect(closeKeyDialog)
+			overlay.MouseButton1Click:Connect(closeKeyDialog)
+			keyBox.FocusLost:Connect(function(enterPressed)
+				if enterPressed then commit() end
+			end)
+			task.defer(function()
+				if keyBox.Parent then keyBox:CaptureFocus() end
+			end)
+		end
 		function AiTab:Send(prompt)
 			prompt = tostring(prompt or "")
 			if generation.active then return end
 			if prompt == "" then return end
-			if not aiToken and prompt:sub(1, 1) ~= "/" then
-				appendMessage("assistant", groqKeyTutorial())
+			ModelMenu.Visible = false
+			if prompt:sub(1, 1) ~= "/" and (not aiToken or aiToken == "") then
+				openKeyDialog()
 				return
 			end
+			if InputBox.Text == prompt then InputBox.Text = "" end
 						if prompt:sub(1, 1) == "/" then
 				local cmd, rest = prompt:match("^/(%S+)%s*(.*)$")
 				cmd = (cmd or ""):lower()
 				rest = rest or ""
 				if cmd == "help" then
-					appendMessage("assistant", "**Slash commands**\n`/clear` · `/new` · `/model <name>` · `/explain` · `/fix` · `/lasterror` · `/system <text>` · `/export` · `/image <prompt>` · `/rerun` · `/history` · `/stream on|off` · `/key <gsk_...>` set Groq API key (console.groq.com/keys)")
+					appendMessage("assistant", "**Slash commands**\n`/clear` · `/new` · `/model <name>` · `/explain` · `/fix` · `/lasterror` · `/system <text>` · `/export` · `/image <prompt>` · `/rerun` · `/history` · `/stream on|off` · `/key` opens Groq / OpenRouter setup")
 					return
 				elseif cmd == "key" then
 					if rest == "" then
-						appendMessage("assistant", aiToken
-							and ("A Groq key is set (ends in `…" .. aiToken:sub(-4) .. "`). `/key off` removes it.")
-							or groqKeyTutorial())
+						openKeyDialog()
 					elseif rest:lower() == "off" then
-						aiToken = nil; saveToken()
-						Luna:Notification({ Title = "API key removed", Content = "Solara Hub AI will not send until you set a Groq key with /key.", Icon = "key_off", ImageSource = "Material" })
-					else
-						aiToken = rest:gsub("%s+", "")
+						aiKeys[aiProvider] = nil
+						syncToken()
 						saveToken()
-						Luna:Notification({ Title = "Groq key saved", Content = "Key stored — you can chat now.", Icon = "key", ImageSource = "Material", Duration = 6 })
+						Luna:Notification({ Title = "API key removed", Content = providerLabel() .. " will not answer until you add a key.", Icon = "key_off", ImageSource = "Material" })
+					else
+						local key = rest:gsub("%s+", "")
+						local target = aiProvider
+						if key:sub(1, 6) == "sk-or-" then target = "openrouter"
+						elseif key:sub(1, 4) == "gsk_" then target = "groq" end
+						aiKeys[target] = key
+						setProvider(target)
+						syncToken()
+						saveToken()
+						refreshModelPicker()
+						Luna:Notification({ Title = providerLabel() .. " key saved", Content = "Key stored on this device.", Icon = "vpn_key", ImageSource = "Material", Duration = 5 })
 					end
 					return
 				elseif cmd == "clear" then AiTab:Clear(); return
 				elseif cmd == "new" then AiTab:NewChat(); return
 				elseif cmd == "model" then
 					if rest ~= "" then
-						currentModel = rest; saveAll()
-						Luna:Notification({ Title = "Model set", Content = currentModel, Icon = "smart_toy", ImageSource = "Material" })
+						setModel(rest)
+						saveToken()
+						saveAll()
+						refreshModelPicker()
+						Luna:Notification({ Title = "Model set", Content = modelDisplayName(aiProvider, currentModel), Icon = "smart_toy", ImageSource = "Material" })
 					else
-						Luna:Notification({ Title = "/model", Content = "Current model: " .. currentModel, Icon = "smart_toy", ImageSource = "Material" })
+						Luna:Notification({ Title = "/model", Content = providerLabel() .. ": " .. modelDisplayName(aiProvider, currentModel), Icon = "smart_toy", ImageSource = "Material" })
 					end
 					return
 				elseif cmd == "stream" then
@@ -10556,13 +11051,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					Luna:Notification({ Title = "Streaming", Content = streamingEnabled and "on" or "off", Icon = "bolt", ImageSource = "Material" })
 					return
 				elseif cmd == "explain" then
+					if not aiToken or aiToken == "" then openKeyDialog(); return end
 					doSend("Explain your previous answer/code in detail, step by step.", false); return
 				elseif cmd == "fix" then
+					if not aiToken or aiToken == "" then openKeyDialog(); return end
 					local extra = (lastClientError ~= "") and ("\n\nMost recent client error:\n```\n" .. lastClientError .. "\n```") or ""
 					doSend("Fix the problem in your previous code and give the corrected version." .. extra, false); return
 				elseif cmd == "lasterror" then
 					if lastClientError == "" then
 						Luna:Notification({ Title = "/lasterror", Content = "No client error captured yet.", Icon = "info", ImageSource = "Material" })
+					elseif not aiToken or aiToken == "" then
+						openKeyDialog()
 					else
 						doSend("Help me debug this error:\n```\n" .. lastClientError .. "\n```", false)
 					end
@@ -10610,6 +11109,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		function AiTab:Regenerate()
 			local chat = getActive()
 			if not chat or generation.active then return end
+			if not aiToken or aiToken == "" then openKeyDialog(); return end
 						local lastUserIdx
 			for i = #chat.conv, 1, -1 do
 				if chat.conv[i].role == "user" then lastUserIdx = i; break end
@@ -10635,18 +11135,17 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 			end
 		end
+		InputBox.Focused:Connect(function()
+			ModelMenu.Visible = false
+		end)
 		InputBox.FocusLost:Connect(safeClick("Enter", function(enterPressed)
 			if enterPressed then
-				local t = InputBox.Text
-				InputBox.Text = ""
-				AiTab:Send(t)
+				AiTab:Send(InputBox.Text)
 			end
 		end))
 		SendButton.MouseButton1Click:Connect(safeClick("Send", function()
 			if generation.active then AiTab:Stop(); return end
-			local t = InputBox.Text
-			InputBox.Text = ""
-			AiTab:Send(t)
+			AiTab:Send(InputBox.Text)
 		end))
 		SaveBtn.MouseButton1Click:Connect(safeClick("Save", function() AiTab:Save() end))
 		ClearBtn.MouseButton1Click:Connect(safeClick("Clear", function() AiTab:Clear() end))
@@ -10654,13 +11153,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local sendScale = Instance.new("UIScale"); sendScale.Scale = 1; sendScale.Parent = SendButton
 		SendButton.MouseEnter:Connect(function()
 			if not generation.active then
-				tween(SendButton, {BackgroundTransparency = 0})
-				tween(sendScale, {Scale = 1.06}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+				tween(SendGlow, {BackgroundTransparency = 0.32})
+				tween(sendScale, {Scale = 1.08}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 			end
 		end)
 		SendButton.MouseLeave:Connect(function()
 			if not generation.active then
-				tween(SendButton, {BackgroundTransparency = 0.05})
+				tween(SendGlow, {BackgroundTransparency = 0.55})
 				tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 			end
 		end)
@@ -10680,6 +11179,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			tween(titleIcon, {ImageColor3 = ACCENT}, nil, TweenInfo.new(0.35))
 		end)
 								loadAll()
+		refreshModelPicker()
 		if not (activeId and chats[activeId]) then
 									if chatOrder[1] and chats[chatOrder[1]] then
 				activeId = chatOrder[1]
