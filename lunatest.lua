@@ -8597,6 +8597,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 		})
 		local Page = hostTab.Page
 		Page:SetAttribute("LunaNoTheme", true)
+		Page.BackgroundColor3 = Color3.fromRGB(12, 10, 16)
+		Page.BackgroundTransparency = 0
 						local existingList = Page:FindFirstChildOfClass("UIListLayout")
 		if existingList then existingList:Destroy() end
 		local existingPadding = Page:FindFirstChildOfClass("UIPadding")
@@ -8692,13 +8694,13 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			end)
 			return base
 		end
-								local ACCENT       = Color3.fromRGB(124, 92, 240)
-		local ACCENT_DEEP  = Color3.fromRGB(95, 75, 220)
-		local PANEL_BG     = Color3.fromRGB(24, 22, 36)
-		local PANEL_BG_LT  = Color3.fromRGB(38, 34, 54)
-		local STROKE_SOFT  = Color3.fromRGB(120, 105, 175)
-		local TEXT_PRIMARY = Color3.fromRGB(245, 240, 255)
-		local TEXT_DIM     = Color3.fromRGB(175, 170, 200)
+		local ACCENT       = Color3.fromRGB(214, 168, 104)
+		local ACCENT_DEEP  = Color3.fromRGB(42, 34, 48)
+		local PANEL_BG     = Color3.fromRGB(18, 16, 24)
+		local PANEL_BG_LT  = Color3.fromRGB(28, 24, 36)
+		local STROKE_SOFT  = Color3.fromRGB(58, 50, 68)
+		local TEXT_PRIMARY = Color3.fromRGB(236, 230, 222)
+		local TEXT_DIM     = Color3.fromRGB(150, 142, 134)
 								local STORAGE_VERSION = 2
 		local MAX_CHATS = 50
 		local chats = {}
@@ -8974,17 +8976,19 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Header.Position = UDim2.new(0, 12, 0, 6)
 		Header.Size = UDim2.new(1, -24, 0, 34)
 		Header.Parent = Page
-		local titleIcon = Instance.new("ImageLabel")
-		titleIcon.BackgroundTransparency = 1
-		titleIcon.Size = UDim2.fromOffset(22, 22)
-		titleIcon.Position = UDim2.new(0, 0, 0.5, -11)
-		titleIcon.ImageColor3 = ACCENT
+		local titleIcon = Instance.new("Frame")
+		titleIcon.BackgroundColor3 = ACCENT
+		titleIcon.BorderSizePixel = 0
+		titleIcon.Size = UDim2.fromOffset(8, 8)
+		titleIcon.Position = UDim2.new(0, 2, 0.5, -10)
 		titleIcon.Parent = Header
-		ApplyIcon(titleIcon, GetIcon("auto_awesome", "Material"))
+		do
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = titleIcon
+		end
 		local headerTitle = Instance.new("TextLabel")
 		headerTitle.BackgroundTransparency = 1
-		headerTitle.Position = UDim2.new(0, 30, 0, 0)
-		headerTitle.Size = UDim2.new(1, -250, 0, 18)
+		headerTitle.Position = UDim2.new(0, 18, 0, 0)
+		headerTitle.Size = UDim2.new(1, -150, 0, 18)
 		headerTitle.Text = "Solara Hub AI"
 		headerTitle.TextColor3 = TEXT_PRIMARY
 		headerTitle.Font = Enum.Font.GothamBold
@@ -8996,8 +9000,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		headerTitle.Parent = Header
 		local headerSub = Instance.new("TextLabel")
 		headerSub.BackgroundTransparency = 1
-		headerSub.Position = UDim2.new(0, 30, 0, 18)
-		headerSub.Size = UDim2.new(1, -250, 0, 14)
+		headerSub.Position = UDim2.new(0, 18, 0, 18)
+		headerSub.Size = UDim2.new(1, -150, 0, 14)
 		headerSub.Text = ""
 		headerSub.TextColor3 = TEXT_DIM
 		headerSub.Font = Enum.Font.GothamMedium
@@ -9011,17 +9015,30 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			btn.Name = RandomName()
 			btn.AnchorPoint = Vector2.new(1, 0.5)
 			btn.Position = UDim2.new(1, xOffset, 0.5, 0)
-			btn.Size = UDim2.fromOffset(28, 26)
+			btn.Size = UDim2.fromOffset(28, 28)
 			btn.BackgroundColor3 = PANEL_BG_LT
-			btn.BackgroundTransparency = 0.2
-			btn.ImageColor3 = Color3.fromRGB(230, 225, 245)
+			btn.BackgroundTransparency = 1
+			btn.Image = ""
 			btn.AutoButtonColor = false
 			btn.Parent = Header
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 7); c.Parent = btn
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.6; s.Parent = btn
-			ApplyIcon(btn, GetIcon(iconName, "Material"))
-			btn.MouseEnter:Connect(function() tween(btn, {BackgroundTransparency = 0.05}) end)
-			btn.MouseLeave:Connect(function() tween(btn, {BackgroundTransparency = 0.2}) end)
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = btn
+			local ic = Instance.new("ImageLabel")
+			ic.Name = "Icon"
+			ic.BackgroundTransparency = 1
+			ic.AnchorPoint = Vector2.new(0.5, 0.5)
+			ic.Position = UDim2.fromScale(0.5, 0.5)
+			ic.Size = UDim2.fromOffset(15, 15)
+			ic.ImageColor3 = TEXT_DIM
+			ic.Parent = btn
+			ApplyIcon(ic, GetIcon(iconName, "Material"))
+			btn.MouseEnter:Connect(function()
+				tween(btn, {BackgroundTransparency = 0.35})
+				tween(ic, {ImageColor3 = TEXT_PRIMARY})
+			end)
+			btn.MouseLeave:Connect(function()
+				tween(btn, {BackgroundTransparency = 1})
+				tween(ic, {ImageColor3 = TEXT_DIM})
+			end)
 			return btn
 		end
 		local ClearBtn   = makeHeaderBtn("delete",       -0)
@@ -9041,16 +9058,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Sidebar.Position = UDim2.new(1, 0, 0, 0)
 		Sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
 		Sidebar.BackgroundColor3 = PANEL_BG
-		Sidebar.BackgroundTransparency = 0.15
+		Sidebar.BackgroundTransparency = 0
 		Sidebar.BorderSizePixel = 0
 		Sidebar.Parent = Body
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = Sidebar
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.7; s.Parent = Sidebar
-			local g = Instance.new("UIGradient")
-			g.Rotation = 90
-			g.Transparency = NumberSequence.new(0.05, 0.2)
-			g.Parent = Sidebar
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = Sidebar
 		end
 		local ChatPane = Instance.new("Frame")
 		ChatPane.Name = RandomName()
@@ -9063,7 +9076,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if sidebarOpen then
 				Sidebar.Visible = true
 				TweenService:Create(Sidebar, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-					{Size = UDim2.new(0, SIDEBAR_W, 1, 0), BackgroundTransparency = 0.15}):Play()
+					{Size = UDim2.new(0, SIDEBAR_W, 1, 0), BackgroundTransparency = 0}):Play()
 				TweenService:Create(ChatPane, ti or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 					{Size = UDim2.new(1, -(SIDEBAR_W + SIDEBAR_GAP), 1, 0)}):Play()
 			else
@@ -9088,31 +9101,31 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		NewChatBtn.Name = RandomName()
 		NewChatBtn.Position = UDim2.new(0, 0, 0, 0)
 		NewChatBtn.Size = UDim2.new(1, 0, 0, 32)
-		NewChatBtn.BackgroundColor3 = ACCENT_DEEP
-		NewChatBtn.BackgroundTransparency = 0.05
-		NewChatBtn.Text = "  +  New chat"
-		NewChatBtn.Font = Enum.Font.GothamBold
+		NewChatBtn.BackgroundColor3 = PANEL_BG_LT
+		NewChatBtn.BackgroundTransparency = 1
+		NewChatBtn.Text = "New chat"
+		NewChatBtn.Font = Enum.Font.GothamMedium
 		NewChatBtn.TextSize = 13
 		NewChatBtn.TextColor3 = TEXT_PRIMARY
+		NewChatBtn.TextXAlignment = Enum.TextXAlignment.Left
 		NewChatBtn.AutoButtonColor = false
 		ASet(NewChatBtn, "NoTranslate", true)
 		NewChatBtn.Parent = Sidebar
 		do
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = NewChatBtn
-			local s = Instance.new("UIStroke"); s.Color = ACCENT; s.Transparency = 0.35; s.Parent = NewChatBtn
-			NewChatBtn.MouseEnter:Connect(function() tween(NewChatBtn, {BackgroundTransparency = -0.05}) end)
-			NewChatBtn.MouseLeave:Connect(function() tween(NewChatBtn, {BackgroundTransparency = 0.05}) end)
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = NewChatBtn
+			local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0, 10); p.Parent = NewChatBtn
+			NewChatBtn.MouseEnter:Connect(function() tween(NewChatBtn, {BackgroundTransparency = 0.45}) end)
+			NewChatBtn.MouseLeave:Connect(function() tween(NewChatBtn, {BackgroundTransparency = 1}) end)
 		end
 		local SearchBox = Instance.new("Frame")
 		SearchBox.Name = RandomName()
 		SearchBox.Position = UDim2.new(0, 0, 0, 40)
 		SearchBox.Size = UDim2.new(1, 0, 0, 28)
 		SearchBox.BackgroundColor3 = PANEL_BG_LT
-		SearchBox.BackgroundTransparency = 0.25
+		SearchBox.BackgroundTransparency = 0.15
 		SearchBox.Parent = Sidebar
 		do
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 7); c.Parent = SearchBox
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.7; s.Parent = SearchBox
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = SearchBox
 		end
 		do
 			local searchIcon = Instance.new("ImageLabel")
@@ -9145,7 +9158,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		ChatList.BackgroundTransparency = 1
 		ChatList.BorderSizePixel = 0
 		ChatList.ScrollBarThickness = 2
-		ChatList.ScrollBarImageColor3 = ACCENT
+		ChatList.ScrollBarImageColor3 = STROKE_SOFT
 		ChatList.CanvasSize = UDim2.new(0, 0, 0, 0)
 		ChatList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		ASet(ChatList, "NoTranslate", true)
@@ -9163,7 +9176,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		Messages.Position = UDim2.new(0, 0, 0, 0)
 		Messages.Size = UDim2.new(1, 0, 1, -126)
 		Messages.ScrollBarThickness = 3
-		Messages.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		Messages.ScrollBarImageColor3 = STROKE_SOFT
 		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Messages.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Messages.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -9172,10 +9185,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		do
 			local l = Instance.new("UIListLayout")
 			l.SortOrder = Enum.SortOrder.LayoutOrder
-			l.Padding = UDim.new(0, 10)
+			l.Padding = UDim.new(0, 14)
 			l.Parent = Messages
 			local p = Instance.new("UIPadding")
-			p.PaddingLeft = UDim.new(0, 4); p.PaddingRight = UDim.new(0, 4); p.PaddingBottom = UDim.new(0, 4)
+			p.PaddingLeft = UDim.new(0, 2); p.PaddingRight = UDim.new(0, 2); p.PaddingBottom = UDim.new(0, 8)
 			p.Parent = Messages
 		end
 		local QuickRow = Instance.new("Frame")
@@ -9195,29 +9208,28 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 		local InputBar = Instance.new("Frame")
 		InputBar.Name = RandomName()
-		InputBar.BackgroundColor3 = PANEL_BG_LT
-		InputBar.BackgroundTransparency = 0.15
+		InputBar.BackgroundColor3 = Color3.fromRGB(20, 17, 26)
+		InputBar.BackgroundTransparency = 0
 		InputBar.BorderSizePixel = 0
 		InputBar.AnchorPoint = Vector2.new(0, 1)
 		InputBar.Position = UDim2.new(0, 0, 1, 0)
 		InputBar.Size = UDim2.new(1, 0, 0, 78)
 		InputBar.Parent = ChatPane
 		do
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = InputBar
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.55; s.Parent = InputBar
-			local g = Instance.new("UIGradient"); g.Rotation = 90; g.Transparency = NumberSequence.new(0.1, 0.35); g.Parent = InputBar
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 14); c.Parent = InputBar
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.35; s.Parent = InputBar
 		end
 		local InputBox = Instance.new("TextBox")
 		InputBox.Name = RandomName()
 		InputBox.BackgroundTransparency = 1
 		InputBox.Position = UDim2.new(0, 12, 0, 36)
 		InputBox.Size = UDim2.new(1, -58, 0, 36)
-		InputBox.PlaceholderText = "Ask anything — code, Solara Hub, errors..."
+		InputBox.PlaceholderText = "Message"
 		InputBox.PlaceholderColor3 = TEXT_DIM
 		InputBox.Text = ""
 		InputBox.TextColor3 = TEXT_PRIMARY
 		InputBox.Font = Enum.Font.GothamMedium
-		InputBox.TextSize = 15
+		InputBox.TextSize = 14
 		InputBox.TextXAlignment = Enum.TextXAlignment.Left
 		InputBox.TextYAlignment = Enum.TextYAlignment.Center
 		InputBox.ClearTextOnFocus = false
@@ -9228,8 +9240,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		ModelBtn.Name = RandomName()
 		ModelBtn.Position = UDim2.new(0, 8, 0, 6)
 		ModelBtn.Size = UDim2.new(1, -16, 0, 26)
-		ModelBtn.BackgroundColor3 = Color3.fromRGB(48, 42, 70)
-		ModelBtn.BackgroundTransparency = 0.12
+		ModelBtn.BackgroundColor3 = PANEL_BG_LT
+		ModelBtn.BackgroundTransparency = 1
 		ModelBtn.Text = ""
 		ModelBtn.AutoButtonColor = false
 		ModelBtn.ZIndex = 6
@@ -9238,16 +9250,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		ModelBtn.Parent = InputBar
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = ModelBtn
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.45; s.Parent = ModelBtn
 		end
 		local ProvTag = Instance.new("TextLabel")
 		ProvTag.BackgroundTransparency = 1
 		ProvTag.Position = UDim2.new(0, 10, 0, 0)
 		ProvTag.Size = UDim2.new(0, 86, 1, 0)
-		ProvTag.Font = Enum.Font.GothamBold
-		ProvTag.TextSize = 11
+		ProvTag.Font = Enum.Font.Gotham
+		ProvTag.TextSize = 12
 		ProvTag.TextXAlignment = Enum.TextXAlignment.Left
-		ProvTag.TextColor3 = Color3.fromRGB(198, 176, 255)
+		ProvTag.TextColor3 = TEXT_DIM
 		ProvTag.Text = "Groq"
 		ProvTag.ZIndex = 7
 		ASet(ProvTag, "NoTranslate", true)
@@ -9279,7 +9290,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		ModelMenu.AnchorPoint = Vector2.new(0, 1)
 		ModelMenu.Position = UDim2.new(0, 8, 1, -82)
 		ModelMenu.Size = UDim2.fromOffset(280, 268)
-		ModelMenu.BackgroundColor3 = Color3.fromRGB(28, 24, 42)
+		ModelMenu.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
 		ModelMenu.BorderSizePixel = 0
 		ModelMenu.Visible = false
 		ModelMenu.ZIndex = 40
@@ -9288,14 +9299,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		ModelMenu.Parent = ChatPane
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = ModelMenu
-			local s = Instance.new("UIStroke"); s.Color = ACCENT; s.Transparency = 0.45; s.Parent = ModelMenu
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.25; s.Parent = ModelMenu
 		end
 		local ModelList = Instance.new("ScrollingFrame")
 		ModelList.BackgroundTransparency = 1
 		ModelList.BorderSizePixel = 0
 		ModelList.Size = UDim2.fromScale(1, 1)
 		ModelList.ScrollBarThickness = 3
-		ModelList.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		ModelList.ScrollBarImageColor3 = STROKE_SOFT
 		ModelList.CanvasSize = UDim2.new()
 		ModelList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		ModelList.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -9324,8 +9335,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local b = Instance.new("TextButton")
 				b.LayoutOrder = order
 				b.Size = UDim2.new(1, 0, 0, 30)
-				b.BackgroundColor3 = selected and ACCENT_DEEP or Color3.fromRGB(46, 40, 66)
-				b.BackgroundTransparency = selected and 0.02 or 0.28
+				b.BackgroundColor3 = selected and ACCENT_DEEP or PANEL_BG
+				b.BackgroundTransparency = selected and 0 or 1
 				b.Text = name
 				b.Font = Enum.Font.GothamMedium
 				b.TextSize = 13
@@ -9339,10 +9350,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
 				local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0, 10); pad.PaddingRight = UDim.new(0, 10); pad.Parent = b
 				b.MouseEnter:Connect(function()
-					if id ~= currentModel then tween(b, {BackgroundTransparency = 0.05}) end
+					if id ~= currentModel then tween(b, {BackgroundTransparency = 0.45}) end
 				end)
 				b.MouseLeave:Connect(function()
-					if id ~= currentModel then tween(b, {BackgroundTransparency = selected and 0.02 or 0.28}) end
+					if id ~= currentModel then tween(b, {BackgroundTransparency = 1}) end
 				end)
 				b.MouseButton1Click:Connect(function()
 					setModel(id)
@@ -9363,15 +9374,15 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ModelMenu.Visible = not ModelMenu.Visible
 			if ModelMenu.Visible then refreshModelPicker() end
 		end)
-		ModelBtn.MouseEnter:Connect(function() tween(ModelBtn, {BackgroundTransparency = 0}) end)
-		ModelBtn.MouseLeave:Connect(function() tween(ModelBtn, {BackgroundTransparency = 0.12}) end)
+		ModelBtn.MouseEnter:Connect(function() tween(ModelBtn, {BackgroundTransparency = 0.55}) end)
+		ModelBtn.MouseLeave:Connect(function() tween(ModelBtn, {BackgroundTransparency = 1}) end)
 		local SendGlow = Instance.new("Frame")
 		SendGlow.Name = RandomName()
 		SendGlow.AnchorPoint = Vector2.new(1, 1)
 		SendGlow.Position = UDim2.new(1, -8, 1, -8)
 		SendGlow.Size = UDim2.fromOffset(44, 44)
 		SendGlow.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
-		SendGlow.BackgroundTransparency = 0.55
+		SendGlow.Visible = false
 		SendGlow.BorderSizePixel = 0
 		SendGlow.ZIndex = 5
 		ASet(SendGlow, "NoTheme", true)
@@ -9383,8 +9394,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SendButton.Name = RandomName()
 		SendButton.AnchorPoint = Vector2.new(1, 1)
 		SendButton.Position = UDim2.new(1, -8, 1, -8)
-		SendButton.Size = UDim2.fromOffset(34, 34)
-		SendButton.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
+		SendButton.Size = UDim2.fromOffset(32, 32)
+		SendButton.BackgroundColor3 = Color3.fromRGB(236, 230, 222)
 		SendButton.BackgroundTransparency = 0
 		SendButton.AutoButtonColor = false
 		SendButton.Image = ""
@@ -9394,19 +9405,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		SendButton.Parent = InputBar
 		do
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = SendButton
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(236, 226, 255); s.Transparency = 0.45; s.Thickness = 1.2; s.Parent = SendButton
-			local g = Instance.new("UIGradient")
-			g.Rotation = 90
-			g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(196, 196, 220))
-			g.Parent = SendButton
 		end
 		local sendIcon = Instance.new("ImageLabel")
 		sendIcon.Name = "Icon"
 		sendIcon.BackgroundTransparency = 1
 		sendIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 		sendIcon.Position = UDim2.new(0.5, 1, 0.5, 0)
-		sendIcon.Size = UDim2.fromOffset(16, 16)
-		sendIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		sendIcon.Size = UDim2.fromOffset(14, 14)
+		sendIcon.ImageColor3 = Color3.fromRGB(22, 16, 14)
 		sendIcon.ScaleType = Enum.ScaleType.Fit
 		sendIcon.ZIndex = 7
 		sendIcon.Parent = SendButton
@@ -9525,17 +9531,19 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Bubble.BorderSizePixel = 0
 			Bubble.Size = UDim2.new(1, 0, 0, 0)
 			Bubble.AutomaticSize = Enum.AutomaticSize.Y
-			Bubble.BackgroundTransparency = 0.15
 			if role == "user" then
-				Bubble.BackgroundColor3 = Color3.fromRGB(95, 75, 200)
+				Bubble.BackgroundColor3 = Color3.fromRGB(48, 40, 34)
+				Bubble.BackgroundTransparency = 0
 			else
-				Bubble.BackgroundColor3 = Color3.fromRGB(38, 34, 52)
+				Bubble.BackgroundColor3 = PANEL_BG_LT
+				Bubble.BackgroundTransparency = 1
 			end
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = Bubble
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255, 255, 255); s.Transparency = 0.88; s.Parent = Bubble
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 14); c.Parent = Bubble
 			local pad = Instance.new("UIPadding")
-			pad.PaddingTop = UDim.new(0, 10); pad.PaddingBottom = UDim.new(0, 10)
-			pad.PaddingLeft = UDim.new(0, 14); pad.PaddingRight = UDim.new(0, 14)
+			pad.PaddingTop = UDim.new(0, role == "user" and 8 or 2)
+			pad.PaddingBottom = UDim.new(0, role == "user" and 8 or 2)
+			pad.PaddingLeft = UDim.new(0, role == "user" and 12 or 2)
+			pad.PaddingRight = UDim.new(0, role == "user" and 12 or 2)
 			pad.Parent = Bubble
 			Bubble.Parent = parent
 			return Bubble
@@ -9548,9 +9556,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Label.AutomaticSize = Enum.AutomaticSize.Y
 			Label.RichText = true
 			Label.Text = richText(text)
-			Label.TextColor3 = Color3.fromRGB(245, 245, 250)
-			Label.TextSize = 14
-			Label.Font = Enum.Font.GothamMedium
+			Label.TextColor3 = TEXT_PRIMARY
+			Label.TextSize = 15
+			Label.Font = Enum.Font.Gotham
 			Label.TextXAlignment = Enum.TextXAlignment.Left
 			Label.TextYAlignment = Enum.TextYAlignment.Top
 			Label.TextWrapped = true
@@ -9561,75 +9569,122 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local function makeCodeBlock(parent, code, lang)
 			local Block = Instance.new("Frame")
 			Block.Name = RandomName()
-			Block.BackgroundColor3 = Color3.fromRGB(18, 16, 26)
+			Block.BackgroundColor3 = Color3.fromRGB(14, 12, 18)
 			Block.BackgroundTransparency = 0
 			Block.BorderSizePixel = 0
 			Block.Size = UDim2.new(1, 0, 0, 0)
 			Block.AutomaticSize = Enum.AutomaticSize.Y
+			Block.ClipsDescendants = true
 			Block.Parent = parent
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = Block
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(110, 95, 180); s.Transparency = 0.6; s.Parent = Block
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = Block
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.25; s.Parent = Block
+			local stack = Instance.new("UIListLayout")
+			stack.SortOrder = Enum.SortOrder.LayoutOrder
+			stack.Padding = UDim.new(0, 0)
+			stack.Parent = Block
 			local TitleBar = Instance.new("Frame")
-			TitleBar.BackgroundTransparency = 1
-			TitleBar.Size = UDim2.new(1, 0, 0, 26)
+			TitleBar.BackgroundColor3 = Color3.fromRGB(24, 20, 30)
+			TitleBar.BorderSizePixel = 0
+			TitleBar.Size = UDim2.new(1, 0, 0, 34)
+			TitleBar.LayoutOrder = 1
 			TitleBar.Parent = Block
 			local langLabel = Instance.new("TextLabel")
 			langLabel.BackgroundTransparency = 1
 			langLabel.Position = UDim2.new(0, 12, 0, 0)
-			langLabel.Size = UDim2.new(1, -120, 1, 0)
+			langLabel.Size = UDim2.new(0.45, 0, 1, 0)
 			langLabel.Text = (lang or "code"):lower()
-			langLabel.Font = Enum.Font.GothamMedium
+			langLabel.Font = Enum.Font.Gotham
 			langLabel.TextSize = 12
-			langLabel.TextColor3 = Color3.fromRGB(180, 170, 220)
+			langLabel.TextColor3 = TEXT_DIM
 			langLabel.TextXAlignment = Enum.TextXAlignment.Left
 			langLabel.TextYAlignment = Enum.TextYAlignment.Center
 			ASet(langLabel, "NoTranslate", true)
 			langLabel.Parent = TitleBar
-			local function smallBtn(text, xOffset)
+			local actions = Instance.new("Frame")
+			actions.BackgroundTransparency = 1
+			actions.AnchorPoint = Vector2.new(1, 0.5)
+			actions.Position = UDim2.new(1, -8, 0.5, 0)
+			actions.Size = UDim2.fromOffset(0, 22)
+			actions.AutomaticSize = Enum.AutomaticSize.X
+			actions.Parent = TitleBar
+			local actionList = Instance.new("UIListLayout")
+			actionList.FillDirection = Enum.FillDirection.Horizontal
+			actionList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+			actionList.VerticalAlignment = Enum.VerticalAlignment.Center
+			actionList.Padding = UDim.new(0, 6)
+			actionList.SortOrder = Enum.SortOrder.LayoutOrder
+			actionList.Parent = actions
+			local function barBtn(text, order, filled)
 				local b = Instance.new("TextButton")
-				b.AnchorPoint = Vector2.new(1, 0.5)
-				b.Position = UDim2.new(1, xOffset, 0.5, 0)
-				b.Size = UDim2.fromOffset(54, 20)
-				b.BackgroundColor3 = Color3.fromRGB(70, 60, 130)
-				b.BackgroundTransparency = 0.1
-				b.Text = text
-				b.Font = Enum.Font.GothamSemibold
-				b.TextSize = 11
-				b.TextColor3 = Color3.fromRGB(240, 235, 255)
+				b.LayoutOrder = order
+				b.AutomaticSize = Enum.AutomaticSize.X
+				b.Size = UDim2.fromOffset(0, 22)
+				b.BackgroundColor3 = filled and Color3.fromRGB(236, 230, 222) or Color3.fromRGB(40, 34, 48)
+				b.BackgroundTransparency = filled and 0 or 0.15
+				b.Text = "  " .. text .. "  "
+				b.Font = Enum.Font.Gotham
+				b.TextSize = 12
+				b.TextColor3 = filled and Color3.fromRGB(22, 16, 14) or TEXT_PRIMARY
 				b.AutoButtonColor = false
 				ASet(b, "NoTranslate", true)
-				b.Parent = TitleBar
-				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 5); bc.Parent = b
-				local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(160, 145, 230); bs.Transparency = 0.5; bs.Parent = b
-				b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0}) end)
-				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.1}) end)
+				b.Parent = actions
+				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = b
+				b.MouseEnter:Connect(function()
+					if filled then
+						tween(b, {BackgroundColor3 = Color3.fromRGB(255, 250, 244)})
+					else
+						tween(b, {BackgroundTransparency = 0})
+					end
+				end)
+				b.MouseLeave:Connect(function()
+					if filled then
+						tween(b, {BackgroundColor3 = Color3.fromRGB(236, 230, 222)})
+					else
+						tween(b, {BackgroundTransparency = 0.15})
+					end
+				end)
 				return b
 			end
-			local copyBtn = smallBtn("Copy", -8)
-			local execBtn = smallBtn("Execute", -68)
-			local code_pad = Instance.new("UIPadding")
-			code_pad.PaddingLeft = UDim.new(0, 12)
-			code_pad.PaddingRight = UDim.new(0, 12)
-			code_pad.PaddingBottom = UDim.new(0, 10)
-			code_pad.PaddingTop = UDim.new(0, 30)
-			code_pad.Parent = Block
+			local copyBtn = barBtn("Copy", 1, false)
+			local execBtn = barBtn("Run", 2, true)
+			local lineCount = 1
+			for _ in string.gmatch(code, "\n") do
+				lineCount = lineCount + 1
+			end
+			local codeScroll = Instance.new("ScrollingFrame")
+			codeScroll.BackgroundTransparency = 1
+			codeScroll.BorderSizePixel = 0
+			codeScroll.Size = UDim2.new(1, 0, 0, math.clamp(lineCount * 16 + 20, 52, 280))
+			codeScroll.ScrollBarThickness = 4
+			codeScroll.ScrollBarImageColor3 = STROKE_SOFT
+			codeScroll.CanvasSize = UDim2.new()
+			codeScroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
+			codeScroll.ScrollingDirection = Enum.ScrollingDirection.XY
+			codeScroll.LayoutOrder = 2
+			codeScroll.Parent = Block
+			local codePad = Instance.new("UIPadding")
+			codePad.PaddingTop = UDim.new(0, 10)
+			codePad.PaddingBottom = UDim.new(0, 10)
+			codePad.PaddingLeft = UDim.new(0, 12)
+			codePad.PaddingRight = UDim.new(0, 12)
+			codePad.Parent = codeScroll
 			local codeLabel = Instance.new("TextLabel")
 			codeLabel.BackgroundTransparency = 1
-			codeLabel.Size = UDim2.new(1, 0, 0, 0)
-			codeLabel.AutomaticSize = Enum.AutomaticSize.Y
+			codeLabel.Size = UDim2.fromOffset(0, 0)
+			codeLabel.AutomaticSize = Enum.AutomaticSize.XY
 			codeLabel.Text = code
 			codeLabel.Font = Enum.Font.Code
 			codeLabel.TextSize = 13
-			codeLabel.TextColor3 = Color3.fromRGB(220, 215, 240)
+			codeLabel.TextColor3 = Color3.fromRGB(226, 220, 210)
 			codeLabel.TextXAlignment = Enum.TextXAlignment.Left
 			codeLabel.TextYAlignment = Enum.TextYAlignment.Top
-			codeLabel.TextWrapped = true
+			codeLabel.TextWrapped = false
 			ASet(codeLabel, "NoTranslate", true)
-			codeLabel.Parent = Block
+			codeLabel.Parent = codeScroll
 			copyBtn.MouseButton1Click:Connect(function()
 				if copyToClipboard(code) then
-					copyBtn.Text = "Copied!"
-					task.delay(1.2, function() if copyBtn and copyBtn.Parent then copyBtn.Text = "Copy" end end)
+					copyBtn.Text = "  Copied  "
+					task.delay(1.2, function() if copyBtn and copyBtn.Parent then copyBtn.Text = "  Copy  " end end)
 				end
 			end)
 			execBtn.MouseButton1Click:Connect(function()
@@ -9639,10 +9694,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					task.spawn(fn)
 				end)
 				if ok then
-					execBtn.Text = "Running"
+					execBtn.Text = "  Running  "
 										table.insert(codeRunHistory, 1, code)
 					while #codeRunHistory > 5 do table.remove(codeRunHistory) end
-					task.delay(1.6, function() if execBtn and execBtn.Parent then execBtn.Text = "Execute" end end)
+					task.delay(1.6, function() if execBtn and execBtn.Parent then execBtn.Text = "  Run  " end end)
 				else
 					Luna:Notification({ Title = "Execute failed", Content = tostring(err), Icon = "error", ImageSource = "Material", Duration = 6 })
 				end
@@ -9702,20 +9757,20 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				metaList.Parent = metaRow
 				local function metaBtn(label, layoutOrder)
 					local b = Instance.new("TextButton")
-					b.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
-					b.BackgroundTransparency = 0.25
-					b.Size = UDim2.new(0, 54, 1, 0)
+					b.BackgroundColor3 = PANEL_BG_LT
+					b.BackgroundTransparency = 1
+					b.Size = UDim2.new(0, 48, 1, 0)
 					b.Text = label
-					b.Font = Enum.Font.GothamMedium
-					b.TextSize = 11
-					b.TextColor3 = Color3.fromRGB(220, 215, 240)
+					b.Font = Enum.Font.Gotham
+					b.TextSize = 12
+					b.TextColor3 = TEXT_DIM
 					b.AutoButtonColor = false
 					b.LayoutOrder = layoutOrder
 					ASet(b, "NoTranslate", true)
 					b.Parent = metaRow
 					local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 5); c.Parent = b
-					b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0.05}) end)
-					b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.25}) end)
+					b.MouseEnter:Connect(function() tween(b, {TextColor3 = TEXT_PRIMARY}) end)
+					b.MouseLeave:Connect(function() tween(b, {TextColor3 = TEXT_DIM}) end)
 					return b
 				end
 				local cpy = metaBtn("Copy", 1)
@@ -9768,37 +9823,32 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end)
 			end
 			setContent(text or "")
-									local scaleFx = Instance.new("UIScale"); scaleFx.Scale = 0.94; scaleFx.Parent = Bubble
+			local restTrans = (role == "user") and 0 or 1
 			Bubble.BackgroundTransparency = 1
 			Label.TextTransparency = 1
-			local popInfo  = TweenInfo.new(0.30, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local fadeInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			TweenService:Create(scaleFx, popInfo,  {Scale = 1}):Play()
-			TweenService:Create(Bubble,  fadeInfo, {BackgroundTransparency = 0.15}):Play()
-			TweenService:Create(Label,   fadeInfo, {TextTransparency = 0}):Play()
-			task.delay(0.40, function()
-				if scaleFx and scaleFx.Parent then scaleFx:Destroy() end
-			end)
+			local fadeInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(Bubble, fadeInfo, {BackgroundTransparency = restTrans}):Play()
+			TweenService:Create(Label, fadeInfo, {TextTransparency = 0}):Play()
 			return Row, Bubble, Label, setContent
 		end
 										addScriptRequestCard = function(holder, description)
 			local Card = Instance.new("Frame")
 			Card.Name = RandomName()
-			Card.BackgroundColor3 = Color3.fromRGB(30, 90, 50)
-			Card.BackgroundTransparency = 0.1
+			Card.BackgroundColor3 = PANEL_BG_LT
+			Card.BackgroundTransparency = 0
 			Card.Size = UDim2.new(1, 0, 0, 64)
 			Card.LayoutOrder = 998
 			Card.Parent = holder
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = Card
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 220, 150); s.Transparency = 0.5; s.Parent = Card
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.35; s.Parent = Card
 			local title = Instance.new("TextLabel")
 			title.BackgroundTransparency = 1
-			title.Position = UDim2.new(0, 14, 0, 6)
-			title.Size = UDim2.new(1, -28, 0, 18)
-			title.Text = "Send script request to developers?"
-			title.Font = Enum.Font.GothamBold
+			title.Position = UDim2.new(0, 14, 0, 8)
+			title.Size = UDim2.new(1, -110, 0, 18)
+			title.Text = "Send this request to the developers?"
+			title.Font = Enum.Font.GothamMedium
 			title.TextSize = 13
-			title.TextColor3 = Color3.fromRGB(245, 250, 240)
+			title.TextColor3 = TEXT_PRIMARY
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			ASet(title, "NoTranslate", true)
 			title.Parent = Card
@@ -9809,7 +9859,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			desc.Text = description
 			desc.Font = Enum.Font.GothamMedium
 			desc.TextSize = 12
-			desc.TextColor3 = Color3.fromRGB(220, 235, 220)
+			desc.TextColor3 = TEXT_DIM
 			desc.TextXAlignment = Enum.TextXAlignment.Left
 			desc.TextWrapped = true
 			ASet(desc, "NoTranslate", true)
@@ -9818,12 +9868,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			sendBtn.AnchorPoint = Vector2.new(1, 0.5)
 			sendBtn.Position = UDim2.new(1, -8, 0.5, 0)
 			sendBtn.Size = UDim2.fromOffset(86, 30)
-			sendBtn.BackgroundColor3 = Color3.fromRGB(60, 170, 90)
-			sendBtn.BackgroundTransparency = 0.1
+			sendBtn.BackgroundColor3 = Color3.fromRGB(236, 230, 222)
+			sendBtn.BackgroundTransparency = 0
 			sendBtn.Text = "Send"
-			sendBtn.Font = Enum.Font.GothamBold
+			sendBtn.Font = Enum.Font.GothamMedium
 			sendBtn.TextSize = 13
-			sendBtn.TextColor3 = Color3.fromRGB(245, 255, 240)
+			sendBtn.TextColor3 = Color3.fromRGB(22, 16, 14)
 			sendBtn.AutoButtonColor = false
 			ASet(sendBtn, "NoTranslate", true)
 			sendBtn.Parent = Card
@@ -9898,7 +9948,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			  prompt = "Write a Luau script that " },
 			{ chip = "Explain this error",
 			  prompt = "Help me debug this error:\n```\n\n```" },
-			{ chip = "📋 Paste",
+			{ chip = "Paste",
 			  action = function()
 				local txt = readClipboard()
 				if not txt or txt == "" then
@@ -9907,7 +9957,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				end
 				return txt
 			  end },
-			{ chip = "🐛 Last error",
+			{ chip = "Last error",
 			  action = function()
 				if lastClientError == "" then
 					Luna:Notification({ Title = "Last error", Content = "No client error captured yet.", Icon = "info", ImageSource = "Material", Duration = 4 })
@@ -9928,43 +9978,25 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			for i, qp in ipairs(QUICK_PROMPTS) do
 				local b = Instance.new("TextButton")
 				b.BackgroundColor3 = PANEL_BG_LT
-				b.BackgroundTransparency = 1
+				b.BackgroundTransparency = 0.15
 				b.AutomaticSize = Enum.AutomaticSize.X
 				b.Size = UDim2.new(0, 0, 1, 0)
 				b.Text = "  " .. qp.chip .. "  "
-				b.Font = Enum.Font.GothamMedium
+				b.Font = Enum.Font.Gotham
 				b.TextSize = 12
-				b.TextColor3 = TEXT_PRIMARY
-				b.TextTransparency = 1
+				b.TextColor3 = TEXT_DIM
 				b.AutoButtonColor = false
 				b.LayoutOrder = i
 				ASet(b, "NoTranslate", true)
 				b.Parent = QuickRow
-				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
-				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 1; s.Parent = b
-				local sc = Instance.new("UIScale"); sc.Scale = 0.85; sc.Parent = b
-								task.delay((i - 1) * 0.05, function()
-					if not b.Parent then return end
-					local ti = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-					TweenService:Create(b,  ti, {BackgroundTransparency = 0.2, TextTransparency = 0}):Play()
-					TweenService:Create(s,  TweenInfo.new(0.22), {Transparency = 0.65}):Play()
-					TweenService:Create(sc, ti, {Scale = 1}):Play()
-				end)
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = b
 				b.MouseEnter:Connect(function()
-					tween(b,  {BackgroundTransparency = 0.05})
-					tween(sc, {Scale = 1.05}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+					tween(b, {BackgroundTransparency = 0, TextColor3 = TEXT_PRIMARY})
 				end)
 				b.MouseLeave:Connect(function()
-					tween(b,  {BackgroundTransparency = 0.2})
-					tween(sc, {Scale = 1}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+					tween(b, {BackgroundTransparency = 0.15, TextColor3 = TEXT_DIM})
 				end)
 				b.MouseButton1Click:Connect(function()
-					tween(sc, {Scale = 0.92}, nil, TweenInfo.new(0.08))
-					task.delay(0.1, function()
-						if sc and sc.Parent then
-							tween(sc, {Scale = 1}, nil, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
-						end
-					end)
 					if type(qp.action) == "function" then
 						local ok, res = pcall(qp.action)
 						if ok and type(res) == "string" then
@@ -9987,64 +10019,29 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			welcomeNode.LayoutOrder = 1
 			welcomeNode.Parent = Messages
 			local card = Instance.new("Frame")
-			card.AnchorPoint = Vector2.new(0.5, 0.5)
-			card.Position = UDim2.new(0.5, 0, 0.5, 0)
-			card.Size = UDim2.new(0, 380, 0, 180)
-			card.BackgroundColor3 = PANEL_BG_LT
+			card.AnchorPoint = Vector2.new(0, 0)
+			card.Position = UDim2.new(0, 4, 0, 8)
+			card.Size = UDim2.new(1, -8, 0, 168)
 			card.BackgroundTransparency = 1
 			card.Parent = welcomeNode
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 14); c.Parent = card
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 1; s.Parent = card
-			local g = Instance.new("UIGradient")
-			g.Rotation = 120
-			g.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, ACCENT_DEEP),
-				ColorSequenceKeypoint.new(1, PANEL_BG_LT),
-			})
-			g.Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.72),
-				NumberSequenceKeypoint.new(1, 0.92),
-			})
-			g.Parent = card
-						local cardScale = Instance.new("UIScale"); cardScale.Scale = 0.88; cardScale.Parent = card
-			local popInfo = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			TweenService:Create(card, TweenInfo.new(0.32), {BackgroundTransparency = 0.15}):Play()
-			TweenService:Create(s,    TweenInfo.new(0.32), {Transparency = 0.55}):Play()
-			TweenService:Create(cardScale, popInfo, {Scale = 1}):Play()
-			task.spawn(function()
-				while card.Parent do
-					TweenService:Create(g, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Rotation = 200}):Play()
-					task.wait(3)
-					if not card.Parent then break end
-					TweenService:Create(g, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Rotation = 120}):Play()
-					task.wait(3)
-				end
-			end)
-			local icon = Instance.new("ImageLabel")
-			icon.BackgroundTransparency = 1
-			icon.Size = UDim2.fromOffset(28, 28)
-			icon.Position = UDim2.new(0, 18, 0, 18)
-			icon.ImageColor3 = ACCENT
-			icon.Parent = card
-			ApplyIcon(icon, GetIcon("auto_awesome", "Material"))
 			local t1 = Instance.new("TextLabel")
 			t1.BackgroundTransparency = 1
-			t1.Position = UDim2.new(0, 54, 0, 18)
-			t1.Size = UDim2.new(1, -70, 0, 22)
+			t1.Position = UDim2.new(0, 2, 0, 4)
+			t1.Size = UDim2.new(1, -8, 0, 24)
 			t1.Text = "Solara Hub AI"
 			t1.Font = Enum.Font.GothamBold
-			t1.TextSize = 18
+			t1.TextSize = 20
 			t1.TextColor3 = TEXT_PRIMARY
 			t1.TextXAlignment = Enum.TextXAlignment.Left
 			ASet(t1, "NoTranslate", true)
 			t1.Parent = card
 			local t2 = Instance.new("TextLabel")
 			t2.BackgroundTransparency = 1
-			t2.Position = UDim2.new(0, 54, 0, 42)
-			t2.Size = UDim2.new(1, -70, 0, 16)
-			t2.Text = "Code • Solara Hub help • debugging • Roblox APIs"
-			t2.Font = Enum.Font.GothamMedium
-			t2.TextSize = 12
+			t2.Position = UDim2.new(0, 2, 0, 30)
+			t2.Size = UDim2.new(1, -8, 0, 18)
+			t2.Text = "Scripts, this hub, and errors."
+			t2.Font = Enum.Font.Gotham
+			t2.TextSize = 13
 			t2.TextColor3 = TEXT_DIM
 			t2.TextXAlignment = Enum.TextXAlignment.Left
 			ASet(t2, "NoTranslate", true)
@@ -10053,20 +10050,20 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			if keyWarnShown then
 				local kw = Instance.new("TextLabel")
 				kw.BackgroundTransparency = 1
-				kw.Position = UDim2.new(0, 54, 0, 58)
-				kw.Size = UDim2.new(1, -70, 0, 16)
-				kw.Text = "API key required — send a message to add Groq or OpenRouter"
-				kw.Font = Enum.Font.GothamMedium
-				kw.TextSize = 11
-				kw.TextColor3 = Color3.fromRGB(255, 200, 90)
+				kw.Position = UDim2.new(0, 2, 0, 52)
+				kw.Size = UDim2.new(1, -8, 0, 16)
+				kw.Text = "Add an API key to start. It stays on this device."
+				kw.Font = Enum.Font.Gotham
+				kw.TextSize = 12
+				kw.TextColor3 = TEXT_DIM
 				kw.TextXAlignment = Enum.TextXAlignment.Left
 				ASet(kw, "NoTranslate", true)
 				kw.Parent = card
 			end
 			local listFrame = Instance.new("Frame")
 			listFrame.BackgroundTransparency = 1
-			listFrame.Position = UDim2.new(0, 18, 0, keyWarnShown and 96 or 80)
-			listFrame.Size = UDim2.new(1, -36, 0, keyWarnShown and 74 or 90)
+			listFrame.Position = UDim2.new(0, 0, 0, keyWarnShown and 76 or 56)
+			listFrame.Size = UDim2.new(1, 0, 0, 84)
 			listFrame.Parent = card
 			local ll = Instance.new("UIListLayout")
 			ll.Padding = UDim.new(0, 6)
@@ -10074,20 +10071,18 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			for i, qp in ipairs(QUICK_PROMPTS) do
 				if i > 3 then break end
 				local row = Instance.new("TextButton")
-				row.BackgroundColor3 = PANEL_BG
-				row.BackgroundTransparency = 0.2
+				row.BackgroundTransparency = 1
 				row.Size = UDim2.new(1, 0, 0, 24)
-				row.Text = "  →  " .. qp.chip
-				row.Font = Enum.Font.GothamMedium
-				row.TextSize = 12
-				row.TextColor3 = TEXT_PRIMARY
+				row.Text = qp.chip
+				row.Font = Enum.Font.Gotham
+				row.TextSize = 13
+				row.TextColor3 = TEXT_DIM
 				row.TextXAlignment = Enum.TextXAlignment.Left
 				row.AutoButtonColor = false
 				ASet(row, "NoTranslate", true)
 				row.Parent = listFrame
-				local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 7); rc.Parent = row
-				row.MouseEnter:Connect(function() tween(row, {BackgroundTransparency = 0.05}) end)
-				row.MouseLeave:Connect(function() tween(row, {BackgroundTransparency = 0.2}) end)
+				row.MouseEnter:Connect(function() tween(row, {TextColor3 = TEXT_PRIMARY}) end)
+				row.MouseLeave:Connect(function() tween(row, {TextColor3 = TEXT_DIM}) end)
 				row.MouseButton1Click:Connect(function()
 					InputBox.Text = qp.prompt
 					InputBox:CaptureFocus()
@@ -10168,14 +10163,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Item.Name = RandomName()
 			Item.Size = UDim2.new(1, 0, 0, 50)
 			Item.BackgroundColor3 = isActive and ACCENT_DEEP or PANEL_BG_LT
-			Item.BackgroundTransparency = isActive and 0.05 or 0.3
+			Item.BackgroundTransparency = isActive and 0 or 1
 			Item.BorderSizePixel = 0
 			Item.Parent = ChatList
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 9); c.Parent = Item
-			local s = Instance.new("UIStroke")
-			s.Color = isActive and ACCENT or STROKE_SOFT
-			s.Transparency = isActive and 0.4 or 0.75
-			s.Parent = Item
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = Item
 			local leftPad = 10
 			if chat.pinned then
 				local pinIcon = Instance.new("ImageLabel")
@@ -10192,7 +10183,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			titleLbl.Position = UDim2.new(0, leftPad, 0, 5)
 			titleLbl.Size = UDim2.new(1, -leftPad - 38, 0, 16)
 			titleLbl.Text = chat.name
-			titleLbl.Font = Enum.Font.GothamBold
+			titleLbl.Font = Enum.Font.GothamMedium
 			titleLbl.TextSize = 12
 			titleLbl.TextColor3 = TEXT_PRIMARY
 			titleLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -10230,10 +10221,10 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			ASet(Click, "NoTranslate", true)
 			Click.Parent = Item
 			Click.MouseEnter:Connect(function()
-				if not isActive then tween(Item, {BackgroundTransparency = 0.15}) end
+				if not isActive then tween(Item, {BackgroundTransparency = 0.35}) end
 			end)
 			Click.MouseLeave:Connect(function()
-				if not isActive then tween(Item, {BackgroundTransparency = 0.3}) end
+				if not isActive then tween(Item, {BackgroundTransparency = 1}) end
 			end)
 			Click.MouseButton1Click:Connect(function()
 				AiTab:SwitchTo(chat.id)
@@ -10312,18 +10303,6 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					layoutIdx = layoutIdx + 1
 					local item = makeChatItem(c)
 					item.LayoutOrder = layoutIdx
-					if not suppressItemAnim then
-						local baseTrans = item.BackgroundTransparency
-						item.BackgroundTransparency = 1
-						local sc = Instance.new("UIScale"); sc.Scale = 0.94; sc.Parent = item
-						local delay = (layoutIdx - 1) * 0.035
-						task.delay(delay, function()
-							if not item.Parent then return end
-							TweenService:Create(item, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = baseTrans}):Play()
-							TweenService:Create(sc, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
-							task.delay(0.4, function() if sc and sc.Parent then sc:Destroy() end end)
-						end)
-					end
 				end
 			end
 		end
@@ -10338,12 +10317,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			SendButton.Image = ""
 			if enabled then
 				ApplyIcon(sendIcon, GetIcon("send", "Material"))
-				SendButton.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
-				SendGlow.BackgroundColor3 = Color3.fromRGB(138, 104, 246)
+				sendIcon.ImageColor3 = Color3.fromRGB(22, 16, 14)
+				SendButton.BackgroundColor3 = Color3.fromRGB(236, 230, 222)
 			else
 				ApplyIcon(sendIcon, GetIcon("stop", "Material"))
-				SendButton.BackgroundColor3 = Color3.fromRGB(196, 72, 84)
-				SendGlow.BackgroundColor3 = Color3.fromRGB(196, 72, 84)
+				sendIcon.ImageColor3 = Color3.fromRGB(255, 244, 242)
+				SendButton.BackgroundColor3 = Color3.fromRGB(176, 72, 72)
 			end
 		end
 				function AiTab:_promptRename(currentName)
@@ -10358,12 +10337,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			dialog.ZIndex = 100
 			dialog.Parent = Page
 			local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(0, 12); dc.Parent = dialog
-			local ds = Instance.new("UIStroke"); ds.Color = ACCENT; ds.Transparency = 0.5; ds.Parent = dialog
+			local ds = Instance.new("UIStroke"); ds.Color = STROKE_SOFT; ds.Transparency = 0.25; ds.Parent = dialog
 			local lbl = Instance.new("TextLabel")
 			lbl.BackgroundTransparency = 1
 			lbl.Position = UDim2.new(0, 14, 0, 10); lbl.Size = UDim2.new(1, -28, 0, 18)
 			lbl.Text = "Rename chat"
-			lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 14
+			lbl.Font = Enum.Font.GothamMedium; lbl.TextSize = 14
 			lbl.TextColor3 = TEXT_PRIMARY; lbl.TextXAlignment = Enum.TextXAlignment.Left
 			lbl.ZIndex = 101
 			ASet(lbl, "NoTranslate", true)
@@ -10388,9 +10367,9 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local okBtn = Instance.new("TextButton")
 			okBtn.AnchorPoint = Vector2.new(1, 1)
 			okBtn.Position = UDim2.new(1, -14, 1, -10); okBtn.Size = UDim2.fromOffset(70, 26)
-			okBtn.BackgroundColor3 = ACCENT; okBtn.Text = "Save"
-			okBtn.Font = Enum.Font.GothamBold; okBtn.TextSize = 12
-			okBtn.TextColor3 = TEXT_PRIMARY; okBtn.AutoButtonColor = false
+			okBtn.BackgroundColor3 = Color3.fromRGB(236, 230, 222); okBtn.Text = "Save"
+			okBtn.Font = Enum.Font.GothamMedium; okBtn.TextSize = 12
+			okBtn.TextColor3 = Color3.fromRGB(22, 16, 14); okBtn.AutoButtonColor = false
 			okBtn.ZIndex = 101
 			ASet(okBtn, "NoTranslate", true)
 			okBtn.Parent = dialog
@@ -10796,28 +10775,24 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			card.AnchorPoint = Vector2.new(0.5, 0.5)
 			card.Position = UDim2.fromScale(0.5, 0.5)
 			card.Size = UDim2.fromOffset(cardW, 318)
-			card.BackgroundColor3 = Color3.fromRGB(28, 24, 44)
+			card.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
 			card.BorderSizePixel = 0
 			card.Active = true
 			card.ZIndex = 6010
 			ASet(card, "NoTheme", true)
 			dialogCard = card
 			card.Parent = LunaUI
-			local scale = Instance.new("UIScale"); scale.Scale = 0.94; scale.Parent = card
-			TweenService:Create(scale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+			local scale = Instance.new("UIScale"); scale.Scale = 0.98; scale.Parent = card
+			TweenService:Create(scale, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
 			do
-				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 16); c.Parent = card
-				local s = Instance.new("UIStroke"); s.Color = ACCENT; s.Transparency = 0.35; s.Thickness = 1.2; s.Parent = card
-				local g = Instance.new("UIGradient")
-				g.Rotation = 90
-				g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(214, 214, 230))
-				g.Parent = card
+				local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 14); c.Parent = card
+				local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.2; s.Parent = card
 			end
 			local icon = Instance.new("ImageLabel")
 			icon.BackgroundTransparency = 1
 			icon.Position = UDim2.fromOffset(16, 16)
 			icon.Size = UDim2.fromOffset(22, 22)
-			icon.ImageColor3 = Color3.fromRGB(214, 196, 255)
+			icon.ImageColor3 = TEXT_DIM
 			icon.ZIndex = 6012
 			icon.Parent = card
 			ApplyIcon(icon, GetIcon("vpn_key", "Material"))
@@ -10899,7 +10874,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local keyBox = Instance.new("TextBox")
 			keyBox.Position = UDim2.fromOffset(16, 200)
 			keyBox.Size = UDim2.new(1, -32, 0, 36)
-			keyBox.BackgroundColor3 = Color3.fromRGB(18, 16, 30)
+			keyBox.BackgroundColor3 = Color3.fromRGB(12, 10, 16)
 			keyBox.TextColor3 = TEXT_PRIMARY
 			keyBox.PlaceholderColor3 = TEXT_DIM
 			keyBox.Font = Enum.Font.GothamMedium
@@ -10918,11 +10893,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local drafts = { groq = aiKeys.groq, openrouter = aiKeys.openrouter }
 			local function paint()
 				local function style(btn, stroke, t1, t2, on)
-					btn.BackgroundColor3 = on and ACCENT or Color3.fromRGB(42, 36, 62)
-					btn.BackgroundTransparency = on and 0 or 0.15
-					stroke.Color = on and Color3.fromRGB(214, 196, 255) or STROKE_SOFT
+					btn.BackgroundColor3 = on and Color3.fromRGB(48, 40, 34) or Color3.fromRGB(28, 24, 34)
+					btn.BackgroundTransparency = 0
+					stroke.Color = on and ACCENT or STROKE_SOFT
 					t1.TextColor3 = TEXT_PRIMARY
-					t2.TextColor3 = on and Color3.fromRGB(232, 224, 255) or TEXT_DIM
+					t2.TextColor3 = TEXT_DIM
 				end
 				style(groqBtn, groqStroke, groqTitle, groqSub, picked == "groq")
 				style(orBtn, orStroke, orTitle, orSub, picked == "openrouter")
@@ -10961,11 +10936,11 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			saveBtn.AnchorPoint = Vector2.new(1, 1)
 			saveBtn.Position = UDim2.new(1, -16, 1, -14)
 			saveBtn.Size = UDim2.fromOffset(96, 32)
-			saveBtn.BackgroundColor3 = ACCENT
+			saveBtn.BackgroundColor3 = Color3.fromRGB(236, 230, 222)
 			saveBtn.Text = "Save key"
-			saveBtn.Font = Enum.Font.GothamBold
+			saveBtn.Font = Enum.Font.GothamMedium
 			saveBtn.TextSize = 13
-			saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+			saveBtn.TextColor3 = Color3.fromRGB(22, 16, 14)
 			saveBtn.AutoButtonColor = false
 			saveBtn.ZIndex = 6012
 			ASet(saveBtn, "NoTranslate", true)
@@ -10975,7 +10950,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			cancelBtn.AnchorPoint = Vector2.new(1, 1)
 			cancelBtn.Position = UDim2.new(1, -120, 1, -14)
 			cancelBtn.Size = UDim2.fromOffset(84, 32)
-			cancelBtn.BackgroundColor3 = Color3.fromRGB(48, 42, 68)
+			cancelBtn.BackgroundColor3 = Color3.fromRGB(32, 28, 40)
 			cancelBtn.Text = "Cancel"
 			cancelBtn.Font = Enum.Font.GothamMedium
 			cancelBtn.TextSize = 13
@@ -11153,30 +11128,24 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local sendScale = Instance.new("UIScale"); sendScale.Scale = 1; sendScale.Parent = SendButton
 		SendButton.MouseEnter:Connect(function()
 			if not generation.active then
-				tween(SendGlow, {BackgroundTransparency = 0.32})
-				tween(sendScale, {Scale = 1.08}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+				tween(SendButton, {BackgroundColor3 = Color3.fromRGB(255, 250, 244)})
+				tween(sendScale, {Scale = 1.04}, nil, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 			end
 		end)
 		SendButton.MouseLeave:Connect(function()
 			if not generation.active then
-				tween(SendGlow, {BackgroundTransparency = 0.55})
-				tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+				tween(SendButton, {BackgroundColor3 = Color3.fromRGB(236, 230, 222)})
+				tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 			end
 		end)
 		SendButton.MouseButton1Down:Connect(function()
-			tween(sendScale, {Scale = 0.88}, nil, TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+			tween(sendScale, {Scale = 0.94}, nil, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 		end)
 		SendButton.MouseButton1Up:Connect(function()
-			tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+			tween(sendScale, {Scale = 1}, nil, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 		end)
 				SidebarBtn.MouseButton1Click:Connect(function()
 			tween(SidebarBtn, {Rotation = sidebarOpen and 0 or 180}, nil, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
-		end)
-				Header.MouseEnter:Connect(function()
-			tween(titleIcon, {ImageColor3 = Color3.fromRGB(180, 160, 255)}, nil, TweenInfo.new(0.25))
-		end)
-		Header.MouseLeave:Connect(function()
-			tween(titleIcon, {ImageColor3 = ACCENT}, nil, TweenInfo.new(0.35))
 		end)
 								loadAll()
 		refreshModelPicker()
