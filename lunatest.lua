@@ -8597,7 +8597,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 		})
 		local Page = hostTab.Page
 		Page:SetAttribute("LunaNoTheme", true)
-		Page.BackgroundColor3 = Color3.fromRGB(12, 10, 16)
+		Page.BackgroundColor3 = Color3.fromRGB(28, 22, 42)
 		Page.BackgroundTransparency = 0
 						local existingList = Page:FindFirstChildOfClass("UIListLayout")
 		if existingList then existingList:Destroy() end
@@ -8695,12 +8695,12 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			return base
 		end
 		local ACCENT       = Color3.fromRGB(214, 168, 104)
-		local ACCENT_DEEP  = Color3.fromRGB(42, 34, 48)
-		local PANEL_BG     = Color3.fromRGB(18, 16, 24)
-		local PANEL_BG_LT  = Color3.fromRGB(28, 24, 36)
-		local STROKE_SOFT  = Color3.fromRGB(58, 50, 68)
-		local TEXT_PRIMARY = Color3.fromRGB(236, 230, 222)
-		local TEXT_DIM     = Color3.fromRGB(150, 142, 134)
+		local ACCENT_DEEP  = Color3.fromRGB(72, 54, 98)
+		local PANEL_BG     = Color3.fromRGB(40, 32, 58)
+		local PANEL_BG_LT  = Color3.fromRGB(52, 42, 74)
+		local STROKE_SOFT  = Color3.fromRGB(132, 104, 168)
+		local TEXT_PRIMARY = Color3.fromRGB(246, 240, 232)
+		local TEXT_DIM     = Color3.fromRGB(196, 182, 174)
 								local STORAGE_VERSION = 2
 		local MAX_CHATS = 50
 		local chats = {}
@@ -9208,7 +9208,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		end
 		local InputBar = Instance.new("Frame")
 		InputBar.Name = RandomName()
-		InputBar.BackgroundColor3 = Color3.fromRGB(20, 17, 26)
+		InputBar.BackgroundColor3 = Color3.fromRGB(44, 36, 64)
 		InputBar.BackgroundTransparency = 0
 		InputBar.BorderSizePixel = 0
 		InputBar.AnchorPoint = Vector2.new(0, 1)
@@ -9290,7 +9290,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 		ModelMenu.AnchorPoint = Vector2.new(0, 1)
 		ModelMenu.Position = UDim2.new(0, 8, 1, -82)
 		ModelMenu.Size = UDim2.fromOffset(280, 268)
-		ModelMenu.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
+		ModelMenu.BackgroundColor3 = Color3.fromRGB(48, 38, 70)
 		ModelMenu.BorderSizePixel = 0
 		ModelMenu.Visible = false
 		ModelMenu.ZIndex = 40
@@ -9532,7 +9532,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Bubble.Size = UDim2.new(1, 0, 0, 0)
 			Bubble.AutomaticSize = Enum.AutomaticSize.Y
 			if role == "user" then
-				Bubble.BackgroundColor3 = Color3.fromRGB(48, 40, 34)
+				Bubble.BackgroundColor3 = Color3.fromRGB(72, 56, 46)
 				Bubble.BackgroundTransparency = 0
 			else
 				Bubble.BackgroundColor3 = PANEL_BG_LT
@@ -9569,7 +9569,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				local function makeCodeBlock(parent, code, lang)
 			local Block = Instance.new("Frame")
 			Block.Name = RandomName()
-			Block.BackgroundColor3 = Color3.fromRGB(14, 12, 18)
+			Block.BackgroundColor3 = Color3.fromRGB(58, 46, 82)
 			Block.BackgroundTransparency = 0
 			Block.BorderSizePixel = 0
 			Block.Size = UDim2.new(1, 0, 0, 0)
@@ -9577,17 +9577,25 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			Block.ClipsDescendants = true
 			Block.Parent = parent
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = Block
-			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.25; s.Parent = Block
+			local s = Instance.new("UIStroke"); s.Color = STROKE_SOFT; s.Transparency = 0.35; s.Parent = Block
 			local stack = Instance.new("UIListLayout")
 			stack.SortOrder = Enum.SortOrder.LayoutOrder
 			stack.Padding = UDim.new(0, 0)
 			stack.Parent = Block
 			local TitleBar = Instance.new("Frame")
-			TitleBar.BackgroundColor3 = Color3.fromRGB(24, 20, 30)
+			TitleBar.BackgroundColor3 = Color3.fromRGB(70, 56, 98)
 			TitleBar.BorderSizePixel = 0
-			TitleBar.Size = UDim2.new(1, 0, 0, 34)
+			TitleBar.Size = UDim2.new(1, 0, 0, 36)
 			TitleBar.LayoutOrder = 1
 			TitleBar.Parent = Block
+			local rule = Instance.new("Frame")
+			rule.BackgroundColor3 = STROKE_SOFT
+			rule.BackgroundTransparency = 0.35
+			rule.BorderSizePixel = 0
+			rule.AnchorPoint = Vector2.new(0, 1)
+			rule.Position = UDim2.new(0, 0, 1, 0)
+			rule.Size = UDim2.new(1, 0, 0, 1)
+			rule.Parent = TitleBar
 			local langLabel = Instance.new("TextLabel")
 			langLabel.BackgroundTransparency = 1
 			langLabel.Position = UDim2.new(0, 12, 0, 0)
@@ -9619,8 +9627,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 				b.LayoutOrder = order
 				b.AutomaticSize = Enum.AutomaticSize.X
 				b.Size = UDim2.fromOffset(0, 22)
-				b.BackgroundColor3 = filled and Color3.fromRGB(236, 230, 222) or Color3.fromRGB(40, 34, 48)
-				b.BackgroundTransparency = filled and 0 or 0.15
+				b.BackgroundColor3 = filled and Color3.fromRGB(246, 240, 232) or Color3.fromRGB(88, 70, 122)
+				b.BackgroundTransparency = 0
 				b.Text = "  " .. text .. "  "
 				b.Font = Enum.Font.Gotham
 				b.TextSize = 12
@@ -9633,14 +9641,14 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 					if filled then
 						tween(b, {BackgroundColor3 = Color3.fromRGB(255, 250, 244)})
 					else
-						tween(b, {BackgroundTransparency = 0})
+						tween(b, {BackgroundColor3 = Color3.fromRGB(104, 84, 140)})
 					end
 				end)
 				b.MouseLeave:Connect(function()
 					if filled then
-						tween(b, {BackgroundColor3 = Color3.fromRGB(236, 230, 222)})
+						tween(b, {BackgroundColor3 = Color3.fromRGB(246, 240, 232)})
 					else
-						tween(b, {BackgroundTransparency = 0.15})
+						tween(b, {BackgroundColor3 = Color3.fromRGB(88, 70, 122)})
 					end
 				end)
 				return b
@@ -9654,7 +9662,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local codeScroll = Instance.new("ScrollingFrame")
 			codeScroll.BackgroundTransparency = 1
 			codeScroll.BorderSizePixel = 0
-			codeScroll.Size = UDim2.new(1, 0, 0, math.clamp(lineCount * 16 + 20, 52, 280))
+			codeScroll.Size = UDim2.new(1, 0, 0, math.clamp(lineCount * 18 + 22, 64, 300))
 			codeScroll.ScrollBarThickness = 4
 			codeScroll.ScrollBarImageColor3 = STROKE_SOFT
 			codeScroll.CanvasSize = UDim2.new()
@@ -9674,8 +9682,8 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			codeLabel.AutomaticSize = Enum.AutomaticSize.XY
 			codeLabel.Text = code
 			codeLabel.Font = Enum.Font.Code
-			codeLabel.TextSize = 13
-			codeLabel.TextColor3 = Color3.fromRGB(226, 220, 210)
+			codeLabel.TextSize = 14
+			codeLabel.TextColor3 = Color3.fromRGB(246, 238, 228)
 			codeLabel.TextXAlignment = Enum.TextXAlignment.Left
 			codeLabel.TextYAlignment = Enum.TextYAlignment.Top
 			codeLabel.TextWrapped = false
@@ -10775,7 +10783,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			card.AnchorPoint = Vector2.new(0.5, 0.5)
 			card.Position = UDim2.fromScale(0.5, 0.5)
 			card.Size = UDim2.fromOffset(cardW, 318)
-			card.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
+			card.BackgroundColor3 = Color3.fromRGB(40, 32, 58)
 			card.BorderSizePixel = 0
 			card.Active = true
 			card.ZIndex = 6010
@@ -10874,7 +10882,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local keyBox = Instance.new("TextBox")
 			keyBox.Position = UDim2.fromOffset(16, 200)
 			keyBox.Size = UDim2.new(1, -32, 0, 36)
-			keyBox.BackgroundColor3 = Color3.fromRGB(12, 10, 16)
+			keyBox.BackgroundColor3 = Color3.fromRGB(28, 22, 42)
 			keyBox.TextColor3 = TEXT_PRIMARY
 			keyBox.PlaceholderColor3 = TEXT_DIM
 			keyBox.Font = Enum.Font.GothamMedium
@@ -10893,7 +10901,7 @@ Compatibility note: `[sUNC]` ≈ widely supported. Many Potassium-only APIs are 
 			local drafts = { groq = aiKeys.groq, openrouter = aiKeys.openrouter }
 			local function paint()
 				local function style(btn, stroke, t1, t2, on)
-					btn.BackgroundColor3 = on and Color3.fromRGB(48, 40, 34) or Color3.fromRGB(28, 24, 34)
+					btn.BackgroundColor3 = on and Color3.fromRGB(78, 60, 50) or Color3.fromRGB(52, 42, 74)
 					btn.BackgroundTransparency = 0
 					stroke.Color = on and ACCENT or STROKE_SOFT
 					t1.TextColor3 = TEXT_PRIMARY
