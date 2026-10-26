@@ -3108,20 +3108,6 @@ do
 	TweenService:Create(thread, TweenInfo.new(4.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
 		Size = UDim2.new(0, 1, 0, 12),
 	}):Play()
-
-	local loading = Main:FindFirstChild("LoadingFrame")
-	if loading then
-		local loadPump = Instance.new("Frame")
-		loadPump.Name = RandomName()
-		loadPump.BackgroundTransparency = 1
-		loadPump.AnchorPoint = Vector2.new(0.5, 0.5)
-		loadPump.Position = UDim2.new(0.5, 0, 0.3, 0)
-		loadPump.Size = UDim2.fromOffset(72, 72)
-		loadPump.ZIndex = 8
-		deadGui(loadPump)
-		loadPump.Parent = loading
-		makePumpkin(loadPump, 72, true, 0)
-	end
 end
 
 -- Cached, repeatedly used in Luna:Notification hot path
