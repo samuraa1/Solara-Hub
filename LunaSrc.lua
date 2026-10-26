@@ -48,7 +48,7 @@ local Release = "Prerelease Beta 6.1"
 local Luna = { 
 	Folder = "Luna", 
 	Options = {}, 
-	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(117, 164, 206)), ColorSequenceKeypoint.new(0.50, Color3.fromRGB(123, 201, 201)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(224, 138, 175))} 
+	ThemeGradient = ColorSequence.new{ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 146, 48)), ColorSequenceKeypoint.new(0.55, Color3.fromRGB(168, 86, 188)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(86, 48, 148))} 
 }
 
 local function getService(serviceName)
@@ -1729,6 +1729,7 @@ local PIPED_API_HOSTS = {
 
 local tweeninfo = TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 local PresetGradients = {
+	Halloween = {Color3.fromRGB(255, 146, 48), Color3.fromRGB(168, 86, 188), Color3.fromRGB(86, 48, 148)},
 	["Nightlight (Classic)"] = {Color3.fromRGB(147, 255, 239), Color3.fromRGB(201,211,233), Color3.fromRGB(255, 167, 227)},
 	["Nightlight (Neo)"] = {Color3.fromRGB(117, 164, 206), Color3.fromRGB(123, 201, 201), Color3.fromRGB(224, 138, 175)},
 	Starlight = {Color3.fromRGB(147, 255, 239), Color3.fromRGB(181, 206, 241), Color3.fromRGB(214, 158, 243)},
@@ -2428,6 +2429,687 @@ local Tabs = Navigation.Tabs
 local Notifications = LunaUI.Notifications
 local KeySystem : Frame = Main.KeySystem
 
+-- Halloween theme. The window asset ships with a cool purple palette, and a lot of
+-- element code writes those colors back on hover, so both the baked GUI and the
+-- literals below are retinted. Decorations stay inside the window.
+do
+	local HW = {
+		Void = Color3.fromRGB(7, 6, 14),
+		Background = Color3.fromRGB(13, 10, 22),
+		Surface = Color3.fromRGB(22, 16, 36),
+		Elevated = Color3.fromRGB(34, 24, 52),
+		Lift = Color3.fromRGB(48, 34, 72),
+		Stroke = Color3.fromRGB(98, 68, 132),
+		StrokeHot = Color3.fromRGB(226, 132, 58),
+		Cream = Color3.fromRGB(248, 240, 232),
+		CreamDim = Color3.fromRGB(190, 174, 180),
+		Pumpkin = Color3.fromRGB(222, 112, 32),
+		PumpkinDeep = Color3.fromRGB(148, 54, 18),
+		Candle = Color3.fromRGB(255, 186, 88),
+		Witch = Color3.fromRGB(142, 88, 196),
+		WitchDeep = Color3.fromRGB(86, 48, 148),
+		Stem = Color3.fromRGB(42, 96, 40),
+		Leaf = Color3.fromRGB(72, 148, 52),
+	}
+
+	Luna.ThemeGradient = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 146, 48)),
+		ColorSequenceKeypoint.new(0.55, HW.Witch),
+		ColorSequenceKeypoint.new(1, HW.WitchDeep),
+	})
+
+	local function luma(c)
+		return c.R * 0.2126 + c.G * 0.7152 + c.B * 0.0722
+	end
+
+	local function sat(c)
+		local maxc = math.max(c.R, c.G, c.B)
+		local minc = math.min(c.R, c.G, c.B)
+		if maxc < 1e-4 then return 0 end
+		return (maxc - minc) / maxc
+	end
+
+	local function isCoolChrome(c)
+		local L = luma(c)
+		if L > 0.58 then return false end
+		if c.R > c.B + 0.08 and c.R >= c.G then return false end
+		local s = sat(c)
+		if c.B >= c.R and c.B >= c.G and L < 0.22 and s < 0.62 then
+			return true
+		end
+		if L < 0.34 then return s < 0.45 end
+		return s < 0.22
+	end
+
+	local function mapBackground(c)
+		if not isCoolChrome(c) then return nil end
+		local L = luma(c)
+		if L < 0.05 then return HW.Void end
+		if L < 0.11 then return HW.Background end
+		if L < 0.17 then return HW.Surface end
+		if L < 0.28 then return HW.Elevated end
+		if L < 0.45 then return HW.Lift end
+		return nil
+	end
+
+	local function mapStroke(c)
+		if c.R > c.B + 0.08 and c.R > c.G + 0.04 then return nil end
+		local s = sat(c)
+		if s > 0.55 then return nil end
+		local L = luma(c)
+		if L > 0.72 then return nil end
+		-- Only the brighter chrome picks up the orange accent. Idle frames stay violet.
+		if L > 0.5 then return HW.StrokeHot end
+		return HW.Stroke
+	end
+
+	local function mapText(c)
+		local L = luma(c)
+		if L < 0.5 then return nil end
+		if sat(c) > 0.45 then return nil end
+		if c.R > c.B + 0.12 and sat(c) > 0.2 then return nil end
+		if L > 0.84 then return HW.Cream end
+		if L > 0.6 then return HW.CreamDim end
+		return nil
+	end
+
+	local function themeBlocked(obj)
+		local cur = obj
+		while cur and cur ~= game do
+			if cur:GetAttribute("LunaNoTheme") then return true end
+			local n = cur.Name
+			if n == "Shadow" or n == "DropShadow" or n == "DropShadowHolder" then return true end
+			cur = cur.Parent
+		end
+		return false
+	end
+
+	local function skinOne(obj)
+		if not obj or themeBlocked(obj) then return end
+		if obj:IsA("UIGradient") then
+			if obj.Name == "color" then
+				obj.Color = Luna.ThemeGradient
+				return
+			end
+			local first = obj.Color.Keypoints[1]
+			if first and isCoolChrome(first.Value) then
+				obj.Color = ColorSequence.new(HW.Elevated, HW.Background)
+			end
+			return
+		end
+		if obj:IsA("UIStroke") then
+			local mapped = mapStroke(obj.Color)
+			if mapped then obj.Color = mapped end
+			return
+		end
+		if obj:IsA("GuiObject") then
+			local mapped = mapBackground(obj.BackgroundColor3)
+			if mapped and obj.BackgroundTransparency < 0.98 then
+				obj.BackgroundColor3 = mapped
+			end
+		end
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+			local mapped = mapText(obj.TextColor3)
+			if mapped then obj.TextColor3 = mapped end
+			if obj:IsA("TextBox") then
+				local ph = mapText(obj.PlaceholderColor3)
+				if ph then obj.PlaceholderColor3 = ph end
+			end
+		end
+	end
+
+	local function skinTree(root)
+		if not root then return end
+		pcall(skinOne, root)
+		for _, d in ipairs(root:GetDescendants()) do
+			pcall(skinOne, d)
+		end
+	end
+
+	LunaUI.DescendantAdded:Connect(function(obj)
+		task.defer(function()
+			if obj and obj.Parent then
+				pcall(skinOne, obj)
+			end
+		end)
+	end)
+
+	skinTree(LunaUI)
+
+	local function forceColor(inst, color)
+		if typeof(inst) == "Instance" and inst:IsA("GuiObject") then
+			inst.BackgroundColor3 = color
+		end
+	end
+
+	pcall(forceColor, Main, HW.Background)
+	pcall(forceColor, Navigation, HW.Surface)
+	pcall(function() forceColor(Elements.Parent, HW.Void) end)
+	pcall(forceColor, KeySystem, HW.Background)
+	pcall(function()
+		local line = Main.Line
+		line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		local g = line:FindFirstChildOfClass("UIGradient")
+		if not g then
+			g = Instance.new("UIGradient")
+			g.Parent = line
+		end
+		g.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, HW.StrokeHot),
+			ColorSequenceKeypoint.new(0.55, HW.Witch),
+			ColorSequenceKeypoint.new(1, HW.WitchDeep),
+		})
+		g:SetAttribute("LunaNoTheme", true)
+	end)
+	pcall(function() Navigation.Line.BackgroundColor3 = Color3.fromRGB(78, 54, 112) end)
+	pcall(function()
+		if dragBarCosmetic and dragBarCosmetic:IsA("GuiObject") then
+			dragBarCosmetic.BackgroundColor3 = HW.Candle
+		end
+	end)
+	pcall(function()
+		local stroke = Main:FindFirstChildOfClass("UIStroke")
+		if not stroke then
+			stroke = Instance.new("UIStroke")
+			stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			stroke.Thickness = 1.15
+			stroke.Parent = Main
+		end
+		stroke.Color = Color3.fromRGB(154, 104, 198)
+		if stroke.Thickness < 1 then stroke.Thickness = 1.15 end
+		if stroke.Transparency > 0.85 or stroke.Transparency < 0.2 then
+			stroke.Transparency = 0.4
+		end
+	end)
+
+	local sceneOn = true
+	LunaUI.Destroying:Connect(function()
+		sceneOn = false
+	end)
+
+	local function deadGui(gui)
+		gui.BorderSizePixel = 0
+		gui.Active = false
+		gui:SetAttribute("LunaNoTheme", true)
+		pcall(function()
+			gui.Interactable = false
+			gui.Selectable = false
+		end)
+	end
+
+	local function mark(inst)
+		inst:SetAttribute("LunaNoTheme", true)
+	end
+
+	local function makePumpkin(parent, px, withFace, tilt)
+		local root = Instance.new("Frame")
+		root.Name = RandomName()
+		root.BackgroundTransparency = 1
+		root.Size = UDim2.fromOffset(px, px)
+		root.AnchorPoint = Vector2.new(0.5, 0.5)
+		root.Position = UDim2.fromScale(0.5, 0.5)
+		root.Rotation = tilt or 0
+		root.ZIndex = (parent.ZIndex or 1) + 1
+		deadGui(root)
+		root.Parent = parent
+
+		local function part(props)
+			local f = Instance.new("Frame")
+			f.Name = RandomName()
+			f.AnchorPoint = props.Anchor or Vector2.new(0.5, 0.5)
+			f.Position = props.Pos
+			f.Size = props.Size
+			f.Rotation = props.Rot or 0
+			f.BackgroundColor3 = props.Color
+			f.BackgroundTransparency = props.Transparency or 0
+			f.ZIndex = props.Z or (root.ZIndex + 1)
+			deadGui(f)
+			if props.Corner then
+				local c = Instance.new("UICorner")
+				c.CornerRadius = props.Corner
+				c.Parent = f
+				mark(c)
+			end
+			f.Parent = props.Parent or root
+			return f
+		end
+
+		local glow = part({
+			Color = Color3.fromRGB(255, 120, 24),
+			Transparency = 0.78,
+			Pos = UDim2.fromScale(0.5, 0.58),
+			Size = UDim2.fromScale(1.2, 1.05),
+			Corner = UDim.new(1, 0),
+			Z = root.ZIndex,
+		})
+
+		local body = part({
+			Color = HW.Pumpkin,
+			Pos = UDim2.fromScale(0.5, 0.58),
+			Size = UDim2.fromScale(0.92, 0.76),
+			Corner = UDim.new(1, 0),
+		})
+		local bodyGrad = Instance.new("UIGradient")
+		bodyGrad.Rotation = 90
+		bodyGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 168, 52)),
+			ColorSequenceKeypoint.new(0.55, HW.Pumpkin),
+			ColorSequenceKeypoint.new(1, HW.PumpkinDeep),
+		})
+		bodyGrad.Parent = body
+		mark(bodyGrad)
+
+		local ridgeW = math.max(1, math.floor(px / 16))
+		for _, x in ipairs({0.34, 0.5, 0.66}) do
+			part({
+				Parent = body,
+				Color = HW.PumpkinDeep,
+				Transparency = 0.35,
+				Pos = UDim2.fromScale(x, 0.5),
+				Size = UDim2.new(0, ridgeW, 0.72, 0),
+				Corner = UDim.new(1, 0),
+				Z = body.ZIndex + 1,
+			})
+		end
+
+		part({
+			Color = HW.Stem,
+			Pos = UDim2.fromScale(0.5, 0.16),
+			Size = UDim2.fromScale(0.14, 0.2),
+			Rot = -14,
+			Corner = UDim.new(0.45, 0),
+			Z = root.ZIndex + 3,
+		})
+		part({
+			Color = HW.Leaf,
+			Pos = UDim2.fromScale(0.68, 0.2),
+			Size = UDim2.fromScale(0.28, 0.13),
+			Rot = 36,
+			Corner = UDim.new(1, 0),
+			Z = root.ZIndex + 3,
+		})
+
+		if withFace and px >= 32 then
+			local eye = math.max(4, math.floor(px * 0.15))
+			for _, x in ipairs({0.34, 0.66}) do
+				part({
+					Parent = body,
+					Color = HW.Candle,
+					Pos = UDim2.fromScale(x, 0.4),
+					Size = UDim2.fromOffset(eye, eye),
+					Rot = 45,
+					Z = body.ZIndex + 2,
+				})
+			end
+			part({
+				Parent = body,
+				Color = HW.Candle,
+				Pos = UDim2.fromScale(0.5, 0.56),
+				Size = UDim2.fromOffset(math.max(3, eye - 2), math.max(3, eye - 2)),
+				Rot = 45,
+				Z = body.ZIndex + 2,
+			})
+			local mouth = part({
+				Parent = body,
+				Color = Color3.fromRGB(255, 176, 48),
+				Pos = UDim2.fromScale(0.5, 0.74),
+				Size = UDim2.fromScale(0.48, 0.16),
+				Corner = UDim.new(0, 3),
+				Z = body.ZIndex + 2,
+			})
+			for _, x in ipairs({0.22, 0.5, 0.78}) do
+				part({
+					Parent = mouth,
+					Color = Color3.fromRGB(92, 36, 8),
+					Anchor = Vector2.new(0.5, 0),
+					Pos = UDim2.fromScale(x, 0),
+					Size = UDim2.fromScale(0.1, 0.62),
+					Z = mouth.ZIndex + 1,
+				})
+			end
+		end
+
+		local bob = _LunaRandom:NextNumber(2.6, 3.6)
+		TweenService:Create(root, TweenInfo.new(bob, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Position = UDim2.new(0.5, 0, 0.5, -3),
+			Rotation = (tilt or 0) + _LunaRandom:NextNumber(-2, 2),
+		}):Play()
+		TweenService:Create(glow, TweenInfo.new(bob, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			BackgroundTransparency = 0.62,
+		}):Play()
+		return root
+	end
+
+	-- Corner cobweb. Spokes share one origin so it reads as silk, not a scribble.
+	local function makeWeb(px)
+		local web = Instance.new("Frame")
+		web.Name = RandomName()
+		web.BackgroundTransparency = 1
+		web.Size = UDim2.fromOffset(px, px)
+		deadGui(web)
+
+		local silk = Color3.fromRGB(210, 202, 224)
+		local function strand(rot, len, trans)
+			local pivot = Instance.new("Frame")
+			pivot.Name = RandomName()
+			pivot.BackgroundTransparency = 1
+			pivot.AnchorPoint = Vector2.new(1, 0)
+			pivot.Position = UDim2.fromScale(1, 0)
+			pivot.Size = UDim2.fromOffset(0, 0)
+			pivot.Rotation = rot
+			pivot.ZIndex = web.ZIndex
+			deadGui(pivot)
+			pivot.Parent = web
+
+			local s = Instance.new("Frame")
+			s.Name = RandomName()
+			s.AnchorPoint = Vector2.new(0, 0.5)
+			s.Position = UDim2.fromOffset(0, 0)
+			s.Size = UDim2.fromOffset(len, 1)
+			s.BackgroundColor3 = silk
+			s.BackgroundTransparency = trans
+			s.BorderSizePixel = 0
+			s.ZIndex = web.ZIndex
+			deadGui(s)
+			s.Parent = pivot
+		end
+
+		for i, rot in ipairs({108, 128, 150, 172, 194}) do
+			strand(rot, math.floor(px * 0.96), 0.4 + (i % 2) * 0.16)
+		end
+		for _, dist in ipairs({0.38, 0.62, 0.84}) do
+			strand(146, math.floor(px * dist), 0.58)
+			strand(168, math.floor(px * dist * 0.85), 0.64)
+		end
+		return web
+	end
+
+	local function makeBat(px, z)
+		local root = Instance.new("Frame")
+		root.Name = RandomName()
+		root.BackgroundTransparency = 1
+		root.Size = UDim2.fromOffset(px, math.floor(px * 0.62))
+		root.AnchorPoint = Vector2.new(0.5, 0.5)
+		root.ZIndex = z or 8
+		deadGui(root)
+
+		local function piece(pos, size, rot, zLift)
+			local f = Instance.new("Frame")
+			f.Name = RandomName()
+			f.AnchorPoint = Vector2.new(0.5, 0.5)
+			f.Position = pos
+			f.Size = size
+			f.Rotation = rot or 0
+			f.BackgroundColor3 = Color3.fromRGB(14, 10, 22)
+			f.BackgroundTransparency = 0.06
+			f.ZIndex = root.ZIndex + (zLift or 1)
+			deadGui(f)
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(1, 0)
+			c.Parent = f
+			mark(c)
+			f.Parent = root
+			return f
+		end
+
+		local leftWing = piece(UDim2.fromScale(0.28, 0.58), UDim2.fromScale(0.5, 0.4), -16, 1)
+		local rightWing = piece(UDim2.fromScale(0.72, 0.58), UDim2.fromScale(0.5, 0.4), 16, 1)
+		piece(UDim2.fromScale(0.5, 0.6), UDim2.fromScale(0.22, 0.5), 0, 2)
+		piece(UDim2.fromScale(0.43, 0.3), UDim2.fromScale(0.1, 0.24), -18, 2)
+		piece(UDim2.fromScale(0.57, 0.3), UDim2.fromScale(0.1, 0.24), 18, 2)
+		return root, leftWing, rightWing
+	end
+
+	local function flap(wing, target, dur)
+		TweenService:Create(wing, TweenInfo.new(dur or 0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Rotation = target,
+		}):Play()
+	end
+
+	-- Bottom corners of the window. Clipped so nothing hangs past the frame.
+	-- Left one tracks the sidebar so it stays in the content corner, off the profile card.
+	-- Right one sits just left of the resize grip.
+	local cornerHost = Instance.new("Frame")
+	cornerHost.Name = RandomName()
+	cornerHost.BackgroundTransparency = 1
+	cornerHost.Size = UDim2.fromScale(1, 1)
+	cornerHost.ClipsDescendants = true
+	cornerHost.ZIndex = 6
+	deadGui(cornerHost)
+	cornerHost.Parent = Main
+
+	local function pinPumpkin(px, face, tilt)
+		local holder = Instance.new("Frame")
+		holder.Name = RandomName()
+		holder.BackgroundTransparency = 1
+		holder.Size = UDim2.fromOffset(px, px)
+		holder.ZIndex = cornerHost.ZIndex
+		deadGui(holder)
+		holder.Parent = cornerHost
+		makePumpkin(holder, px, face, tilt)
+		return holder
+	end
+
+	local leftPump = pinPumpkin(36, true, 6)
+	leftPump.AnchorPoint = Vector2.new(0, 1)
+	local rightPump = pinPumpkin(32, true, -7)
+	rightPump.AnchorPoint = Vector2.new(1, 1)
+	rightPump.Position = UDim2.new(1, -36, 1, -6)
+
+	local perch, perchLeft, perchRight = makeBat(14, cornerHost.ZIndex + 2)
+	perch.AnchorPoint = Vector2.new(1, 1)
+	perch.Position = UDim2.new(0, 6, 0, 2)
+	perch.Parent = rightPump
+	flap(perchLeft, -34, 0.85)
+	flap(perchRight, 34, 0.85)
+
+	local function navWidth()
+		local w = 0
+		pcall(function()
+			w = Navigation.AbsoluteSize.X
+		end)
+		if w < 40 then
+			pcall(function()
+				w = Navigation.Size.X.Offset
+			end)
+		end
+		if w < 40 then w = 205 end
+		return w
+	end
+
+	local function syncCorners()
+		if not sceneOn then return end
+		leftPump.Position = UDim2.new(0, navWidth() + 8, 1, -8)
+		local h = 0
+		pcall(function()
+			h = Main.AbsoluteSize.Y
+		end)
+		cornerHost.Visible = (h == 0 or h >= 90)
+	end
+
+	Navigation:GetPropertyChangedSignal("Size"):Connect(syncCorners)
+	Main:GetPropertyChangedSignal("Size"):Connect(syncCorners)
+	syncCorners()
+
+	local veil = Instance.new("Frame")
+	veil.Name = RandomName()
+	veil.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	veil.BackgroundTransparency = 0.25
+	veil.BorderSizePixel = 0
+	veil.Size = UDim2.new(1, 0, 0, 36)
+	veil.ZIndex = 3
+	deadGui(veil)
+	local veilGrad = Instance.new("UIGradient")
+	veilGrad.Rotation = 90
+	veilGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 150, 64)),
+		ColorSequenceKeypoint.new(0.42, HW.Witch),
+		ColorSequenceKeypoint.new(1, HW.Background),
+	})
+	veilGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.84),
+		NumberSequenceKeypoint.new(0.45, 0.94),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	veilGrad.Parent = veil
+	mark(veilGrad)
+	veil.Parent = Main
+	TweenService:Create(veil, TweenInfo.new(4.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		BackgroundTransparency = 0.4,
+	}):Play()
+
+	local emberHost = Instance.new("Frame")
+	emberHost.Name = RandomName()
+	emberHost.BackgroundTransparency = 1
+	emberHost.ClipsDescendants = true
+	emberHost.Size = UDim2.new(1, 0, 0, 68)
+	emberHost.ZIndex = 4
+	deadGui(emberHost)
+	emberHost.Parent = Main
+
+	local function runEmber()
+		task.spawn(function()
+			while sceneOn and emberHost.Parent do
+				local dot = Instance.new("Frame")
+				dot.Name = RandomName()
+				local sz = _LunaRandom:NextInteger(2, 3)
+				dot.Size = UDim2.fromOffset(sz, sz)
+				dot.AnchorPoint = Vector2.new(0.5, 0.5)
+				dot.BackgroundColor3 = (_LunaRandom:NextInteger(1, 4) == 1) and HW.Witch or HW.Candle
+				dot.BackgroundTransparency = 0.35
+				dot.ZIndex = emberHost.ZIndex + 1
+				deadGui(dot)
+				local c = Instance.new("UICorner")
+				c.CornerRadius = UDim.new(1, 0)
+				c.Parent = dot
+				mark(c)
+				local x = _LunaRandom:NextNumber(0.04, 0.96)
+				dot.Position = UDim2.new(x, 0, 1.05, 0)
+				dot.Parent = emberHost
+				local tw = TweenService:Create(dot, TweenInfo.new(_LunaRandom:NextNumber(3.4, 5.6), Enum.EasingStyle.Linear), {
+					Position = UDim2.new(x + _LunaRandom:NextNumber(-0.04, 0.04), 0, -0.15, 0),
+					BackgroundTransparency = 1,
+				})
+				tw:Play()
+				tw.Completed:Wait()
+				if dot.Parent then dot:Destroy() end
+				if not sceneOn then break end
+				task.wait(_LunaRandom:NextNumber(0.7, 1.6))
+			end
+		end)
+	end
+	for _ = 1, 2 do
+		runEmber()
+	end
+
+	-- Top-right cluster sits in the gap left of the window controls. Clipped so
+	-- the web, spider and bat cannot spill onto the title or the buttons.
+	local nest = Instance.new("Frame")
+	nest.Name = RandomName()
+	nest.BackgroundTransparency = 1
+	nest.AnchorPoint = Vector2.new(1, 0)
+	nest.Position = UDim2.new(1, -118, 0, 0)
+	nest.Size = UDim2.fromOffset(72, 46)
+	nest.ClipsDescendants = true
+	nest.ZIndex = 31
+	deadGui(nest)
+	nest.Parent = Main
+
+	local web = makeWeb(34)
+	web.AnchorPoint = Vector2.new(1, 0)
+	web.Position = UDim2.new(1, 4, 0, -2)
+	web.ZIndex = nest.ZIndex
+	web.Parent = nest
+
+	local flyer, flyerLeft, flyerRight = makeBat(14, nest.ZIndex + 1)
+	flyer.Position = UDim2.new(0, 16, 0, 18)
+	flyer.Parent = nest
+	flap(flyerLeft, -34, 0.62)
+	flap(flyerRight, 34, 0.62)
+	TweenService:Create(flyer, TweenInfo.new(3.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Position = UDim2.new(0, 26, 0, 22),
+		Rotation = -6,
+	}):Play()
+
+	local spiderHolder = Instance.new("Frame")
+	spiderHolder.Name = RandomName()
+	spiderHolder.BackgroundTransparency = 1
+	spiderHolder.AnchorPoint = Vector2.new(1, 0)
+	spiderHolder.Position = UDim2.new(1, -6, 0, 2)
+	spiderHolder.Size = UDim2.fromOffset(22, 40)
+	spiderHolder.ZIndex = nest.ZIndex + 1
+	deadGui(spiderHolder)
+	spiderHolder.Parent = nest
+
+	local thread = Instance.new("Frame")
+	thread.Name = RandomName()
+	thread.AnchorPoint = Vector2.new(0.5, 0)
+	thread.Position = UDim2.new(0.5, 0, 0, 0)
+	thread.Size = UDim2.new(0, 1, 0, 8)
+	thread.BackgroundColor3 = Color3.fromRGB(206, 198, 220)
+	thread.BackgroundTransparency = 0.35
+	thread.ZIndex = spiderHolder.ZIndex
+	deadGui(thread)
+	thread.Parent = spiderHolder
+
+	local spider = Instance.new("Frame")
+	spider.Name = RandomName()
+	spider.BackgroundTransparency = 1
+	spider.AnchorPoint = Vector2.new(0.5, 0)
+	spider.Position = UDim2.new(0.5, 0, 0, 8)
+	spider.Size = UDim2.fromOffset(20, 20)
+	spider.ZIndex = spiderHolder.ZIndex + 1
+	deadGui(spider)
+	spider.Parent = spiderHolder
+
+	for i = 0, 7 do
+		local leg = Instance.new("Frame")
+		leg.Name = RandomName()
+		leg.AnchorPoint = Vector2.new(0.5, 1)
+		leg.Position = UDim2.fromScale(0.5, 0.58)
+		leg.Size = UDim2.fromOffset(1, 8)
+		leg.Rotation = i * 45
+		leg.BackgroundColor3 = Color3.fromRGB(16, 12, 24)
+		leg.ZIndex = spider.ZIndex
+		deadGui(leg)
+		leg.Parent = spider
+	end
+	local sBody = Instance.new("Frame")
+	sBody.Name = RandomName()
+	sBody.AnchorPoint = Vector2.new(0.5, 0.5)
+	sBody.Position = UDim2.fromScale(0.5, 0.58)
+	sBody.Size = UDim2.fromOffset(7, 7)
+	sBody.BackgroundColor3 = Color3.fromRGB(12, 8, 18)
+	sBody.ZIndex = spider.ZIndex + 1
+	deadGui(sBody)
+	local sCorner = Instance.new("UICorner")
+	sCorner.CornerRadius = UDim.new(1, 0)
+	sCorner.Parent = sBody
+	mark(sCorner)
+	sBody.Parent = spider
+	for _, x in ipairs({0.35, 0.65}) do
+		local eye = Instance.new("Frame")
+		eye.Name = RandomName()
+		eye.AnchorPoint = Vector2.new(0.5, 0.5)
+		eye.Position = UDim2.fromScale(x, 0.4)
+		eye.Size = UDim2.fromOffset(2, 2)
+		eye.BackgroundColor3 = HW.Candle
+		eye.ZIndex = sBody.ZIndex + 1
+		deadGui(eye)
+		local ec = Instance.new("UICorner")
+		ec.CornerRadius = UDim.new(1, 0)
+		ec.Parent = eye
+		mark(ec)
+		eye.Parent = sBody
+	end
+	TweenService:Create(spider, TweenInfo.new(4.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Position = UDim2.new(0.5, 0, 0, 12),
+	}):Play()
+	TweenService:Create(thread, TweenInfo.new(4.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Size = UDim2.new(0, 1, 0, 12),
+	}):Play()
+end
+
 -- Cached, repeatedly used in Luna:Notification hot path
 local NotificationsListLayout = Notifications:FindFirstChild("UIListLayout")
 local NotificationsPaddingOffset = (NotificationsListLayout and NotificationsListLayout.Padding.Offset) or 0
@@ -2618,6 +3300,24 @@ function Luna:Notification(data) -- Action e.g Open Messages
 		newNotification.Title.Text = data.Title
 		newNotification.Description.Text = data.Content
 		ApplyIcon(newNotification.Icon, GetIcon(data.Icon, data.ImageSource))
+		pcall(function()
+			newNotification.BackgroundColor3 = Color3.fromRGB(24, 16, 38)
+			newNotification.UIStroke.Color = Color3.fromRGB(226, 132, 58)
+			newNotification.Title.TextColor3 = Color3.fromRGB(248, 240, 232)
+			newNotification.Description.TextColor3 = Color3.fromRGB(190, 174, 180)
+			newNotification.Icon.ImageColor3 = Color3.fromRGB(255, 186, 96)
+			local sheen = newNotification:FindFirstChildOfClass("UIGradient")
+			if not sheen then
+				sheen = Instance.new("UIGradient")
+				sheen.Parent = newNotification
+			end
+			sheen.Rotation = 118
+			sheen.Color = ColorSequence.new(Color3.new(1, 1, 1))
+			sheen.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.02),
+				NumberSequenceKeypoint.new(1, 0.2),
+			})
+		end)
 
 		-- Set initial transparency values
 		newNotification.BackgroundTransparency = 1
@@ -2654,7 +3354,7 @@ function Luna:Notification(data) -- Action e.g Open Messages
 
 		task.wait(0.05)
 		TweenService:Create(newNotification.Description, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {TextTransparency = 0.35}):Play()
-		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 0.95}):Play()
+		TweenService:Create(newNotification.UIStroke, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Transparency = 0.42}):Play()
 		TweenService:Create(newNotification.Shadow, TweenInfo.new(0.3, Enum.EasingStyle.Exponential), {ImageTransparency = 0.82}):Play()
 
 		local waitDuration = math.min(math.max((#newNotification.Description.Text * 0.1) + 2.5, 3), 10)
@@ -3130,7 +3830,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
 				if OtherTabButton.Name ~= "InActive Template" and OtherTabButton.ClassName == "Frame" and OtherTabButton ~= HomeTabButton then
-					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
+					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(198, 176, 210)})
 					tween(OtherTabButton, {BackgroundTransparency = 1})
 					tween(OtherTabButton.UIStroke, {Transparency = 1})
 				end
@@ -3360,8 +4060,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Description = "",
 				Icon = nil,
 				ImageSource = "Material",
-				Color = Color3.fromRGB(70, 60, 160),
-				Color2 = Color3.fromRGB(40, 30, 100),
+				Color = Color3.fromRGB(168, 86, 40),
+				Color2 = Color3.fromRGB(52, 28, 84),
 				Callback = function() end,
 			}, opts or {})
 
@@ -3387,8 +4087,9 @@ function Window:CreateHomeTab(HomeTabSettings)
 			gradient.Parent = card
 
 			local stroke = Instance.new("UIStroke")
-			stroke.Color = Color3.fromRGB(255, 255, 255)
-			stroke.Transparency = 0.85
+			stroke.Color = Color3.fromRGB(255, 186, 120)
+			stroke.Transparency = 0.68
+			stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 			stroke.Parent = card
 
 			-- Icon (optional)
@@ -3426,7 +4127,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 			subtitle.Position = UDim2.new(0, titleOffset, 0, 36)
 			subtitle.Size = UDim2.new(1, -titleOffset - 12, 0, 28)
 			subtitle.Text = tostring(opts.Description)
-			subtitle.TextColor3 = Color3.fromRGB(230, 230, 240)
+			subtitle.TextColor3 = Color3.fromRGB(255, 228, 204)
 			subtitle.TextTransparency = 0.15
 			subtitle.Font = Enum.Font.Gotham
 			subtitle.TextSize = 13
@@ -3444,12 +4145,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 			interact.Parent = card
 
 			interact.MouseEnter:Connect(function()
-				tween(stroke, {Transparency = 0.4})
-				tween(card, {BackgroundTransparency = 0.05})
+				tween(stroke, {Transparency = 0.28, Color = Color3.fromRGB(255, 176, 96)})
 			end)
 			interact.MouseLeave:Connect(function()
-				tween(stroke, {Transparency = 0.85})
-				tween(card, {BackgroundTransparency = 0})
+				tween(stroke, {Transparency = 0.68, Color = Color3.fromRGB(255, 186, 120)})
 			end)
 			interact.MouseButton1Click:Connect(function()
 				local ok, err = pcall(opts.Callback)
@@ -3624,7 +4323,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 			for _, OtherTabButton in ipairs(Navigation.Tabs:GetChildren()) do
 				if OtherTabButton.Name ~= "InActive Template" and OtherTabButton.ClassName == "Frame" and OtherTabButton ~= TabButton then
-					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(221,221,221)})
+					tween(OtherTabButton.ImageLabel, {ImageColor3 = Color3.fromRGB(198, 176, 210)})
 					tween(OtherTabButton, {BackgroundTransparency = 1})
 					tween(OtherTabButton.UIStroke, {Transparency = 1})
 				end
@@ -3729,7 +4428,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					label.Text = tostring(text)
 					label.Font = Enum.Font.GothamMedium
 					label.TextSize = 12
-					label.TextColor3 = Color3.fromRGB(200, 200, 210)
+					label.TextColor3 = Color3.fromRGB(186, 170, 176)
 					label.TextTransparency = 1
 					label.Parent = b
 					tween(label, {TextTransparency = 0.15})
@@ -3793,27 +4492,27 @@ function Window:CreateHomeTab(HomeTabSettings)
 						task.wait(0.5)
 						Button.Title.Text = ButtonSettings.Name
 						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+						TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 						TweenService:Create(Button.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					else
-						tween(Button.UIStroke, {Color = Color3.fromRGB(136, 131, 163)})
+						tween(Button.UIStroke, {Color = Color3.fromRGB(255, 178, 82), Transparency = 0.15})
 						wait(0.2)
 						if ButtonV.Hover then
-							tween(Button.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+							tween(Button.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 						else
-							tween(Button.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+							tween(Button.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 						end
 					end
 				end)
 
 				Button["MouseEnter"]:Connect(function()
 					ButtonV.Hover = true
-					tween(Button.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+					tween(Button.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 				end)
 
 				Button["MouseLeave"]:Connect(function()
 					ButtonV.Hover = false
-					tween(Button.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+					tween(Button.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 				end)
 
 				function ButtonV:Set(ButtonSettings2)
@@ -3992,11 +4691,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 				SliderSettings.Callback(SliderSettings.CurrentValue)
 
 				Slider["MouseEnter"]:Connect(function()
-					tween(Slider.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+					tween(Slider.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 				end)
 
 				Slider["MouseLeave"]:Connect(function()
-					tween(Slider.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+					tween(Slider.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 				end)
 
 				Slider.Interact.InputBegan:Connect(function(Input)
@@ -4057,7 +4756,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 									wait(0.5)
 									Slider.Title.Text = SliderSettings.Name
 									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+									TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 									TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 								end
 
@@ -4089,7 +4788,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						wait(0.5)
 						Slider.Title.Text = SliderSettings.Name
 						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(30, 33, 40)}):Play()
+						TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(22, 14, 36)}):Play()
 						TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 
@@ -4140,6 +4839,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Luna.Options[Flag] = SliderV
 				end
 
+				Slider.Main.color.Color = Luna.ThemeGradient
+				Slider.Main.UIStroke.color.Color = Luna.ThemeGradient
 				LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 					Slider.Main.color.Color = Luna.ThemeGradient
 					Slider.Main.UIStroke.color.Color = Luna.ThemeGradient
@@ -4203,16 +4904,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 						Toggle.toggle.UIStroke.color.Enabled = true
 						tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255)})
 
-						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0.45})
+						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255, 214, 120), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0.2})
 					else
 						Toggle.toggle.color.Enabled = false
 						Toggle.toggle.UIStroke.color.Enabled = false
 
-						Toggle.toggle.UIStroke.Color = Color3.fromRGB(97,97,97)
+						Toggle.toggle.UIStroke.Color = Color3.fromRGB(108, 82, 138)
 
 						tween(Toggle.toggle, {BackgroundTransparency = 1})
 
-						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(97,97,97), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
+						tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(108, 82, 138), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 					end
 
 					ToggleV.CurrentValue = bool
@@ -4234,17 +4935,17 @@ function Window:CreateHomeTab(HomeTabSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end)
 
 				Toggle["MouseEnter"]:Connect(function()
-					tween(Toggle.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+					tween(Toggle.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 				end)
 
 				Toggle["MouseLeave"]:Connect(function()
-					tween(Toggle.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+					tween(Toggle.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 				end)
 
 				if ToggleSettings.CurrentValue then
@@ -4261,7 +4962,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end
@@ -4305,7 +5006,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						wait(0.5)
 						Toggle.Title.Text = ToggleSettings.Name
 						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+						TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 						TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end
@@ -4315,6 +5016,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Toggle:Destroy()
 				end
 
+				Toggle.toggle.color.Color = Luna.ThemeGradient
+				Toggle.toggle.UIStroke.color.Color = Luna.ThemeGradient
 				LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 					Toggle.toggle.color.Color = Luna.ThemeGradient
 					Toggle.toggle.UIStroke.color.Color = Luna.ThemeGradient
@@ -4399,11 +5102,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end)
 
 				Bind["MouseEnter"]:Connect(function()
-					tween(Bind.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+					tween(Bind.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 				end)
 
 				Bind["MouseLeave"]:Connect(function()
-					tween(Bind.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+					tween(Bind.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 				end)
 				UserInputService.InputBegan:Connect(function(input, processed)
 
@@ -4425,7 +5128,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 							end
 							Bind.BindFrame.BindBox:ReleaseFocus()
@@ -4454,7 +5157,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 								wait(0.5)
 								Bind.Title.Text = BindSettings.Name
 								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+								TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 								TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 							end
 						else
@@ -4474,7 +5177,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 										end 
 										Loop:Disconnect()
@@ -4491,7 +5194,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 											wait(0.5)
 											Bind.Title.Text = BindSettings.Name
 											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+											TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 											TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 										end
 									end
@@ -4619,7 +5322,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 								wait(0.5)
 								Input.Title.Text = InputSettings.Name
 								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+								TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 								TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 							end
 						end
@@ -4660,7 +5363,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 						end
 					end
@@ -4668,11 +5371,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end)
 
 				Input["MouseEnter"]:Connect(function()
-					tween(Input.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+					tween(Input.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 				end)
 
 				Input["MouseLeave"]:Connect(function()
-					tween(Input.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+					tween(Input.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 				end)
 
 				function InputV:Set(NewInputSettings)
@@ -4777,7 +5480,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						wait(0.5)
 						Dropdown.Title.Text = DropdownSettings.Name
 						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+						TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 						TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 					if Success and c2 then
@@ -4811,7 +5514,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					end
 
 					Toggle()
-					LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
+					LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(248, 240, 232)})
 				end
 
 				local function Refresh()
@@ -4829,13 +5532,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 									RemoveTable(DropdownSettings.CurrentOption, v)
 									DropdownV.CurrentOption = DropdownSettings.CurrentOption
 									if not optionhover then
-										tween(Option, {TextColor3 = Color3.fromRGB(200,200,200)})
+										tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180)})
 									end
 									tween(Option, {BackgroundTransparency = 0.98})
 								else
 									table.insert(DropdownSettings.CurrentOption, v)
 									DropdownV.CurrentOption = DropdownSettings.CurrentOption
-									tween(Option, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+									tween(Option, {TextColor3 = Color3.fromRGB(248, 240, 232), BackgroundTransparency = 0.95})
 								end
 								bleh = DropdownSettings.CurrentOption
 							else
@@ -4873,7 +5576,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							if Option.BackgroundTransparency == 0.95 then
 								return
 							else
-								tween(Option, {TextColor3 = Color3.fromRGB(240,240,240)})
+								tween(Option, {TextColor3 = Color3.fromRGB(248, 240, 232)})
 							end
 						end)
 						Option.MouseLeave:Connect(function()
@@ -4881,7 +5584,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							if Option.BackgroundTransparency == 0.95 then
 								return
 							else
-								tween(Option, {TextColor3 = Color3.fromRGB(200,200,200)})
+								tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180)})
 							end
 						end)	
 					end
@@ -4902,11 +5605,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end)
 
 				Dropdown["MouseEnter"]:Connect(function()
-					tween(Dropdown.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+					tween(Dropdown.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 				end)
 
 				Dropdown["MouseLeave"]:Connect(function()
-					tween(Dropdown.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+					tween(Dropdown.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 				end)
 
 				if DropdownSettings.SpecialType == "Player" then
@@ -4947,15 +5650,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 				pcall(function() SafeCallback(bleh) end)
 				for _, Option in pairs(Dropdown.List:GetChildren()) do
 					if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
-						tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
+						tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180), BackgroundTransparency = 0.98})
 					end
 				end
 				if DropdownSettings.MultipleOptions then
 					for _, name in pairs(DropdownSettings.CurrentOption) do
-						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(255, 220, 186), BackgroundTransparency = 0.95})
 					end
 				else
-					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(248, 240, 232), BackgroundTransparency = 0.95})
 				end
 
 				if DropdownSettings.MultipleOptions then
@@ -5025,15 +5728,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 					pcall(function() SafeCallback(bleh) end)
 					for _, Option in pairs(Dropdown.List:GetChildren()) do
 						if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
-							tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
+							tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180), BackgroundTransparency = 0.98})
 						end
 					end
 					if DropdownSettings.MultipleOptions then
 						for _, name in pairs(DropdownSettings.CurrentOption) do
-							LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+							LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(255, 220, 186), BackgroundTransparency = 0.95})
 						end
 					else
-						LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+						LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(248, 240, 232), BackgroundTransparency = 0.95})
 					end
 
 					if DropdownSettings.MultipleOptions then
@@ -5106,10 +5809,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Display.BackgroundTransparency = 0
 
 				ColorPicker["MouseEnter"]:Connect(function()
-					tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+					tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 				end)
 				ColorPicker["MouseLeave"]:Connect(function()
-					tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+					tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 				end)
 
 				local function SafeCallback(param, c2)
@@ -5125,7 +5828,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						wait(0.5)
 						ColorPicker.Title.Text = ColorPickerSettings.Name
 						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+						TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 						TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 					if Success and c2 then
@@ -5359,7 +6062,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				label.Text = tostring(text)
 				label.Font = Enum.Font.GothamMedium
 				label.TextSize = 12
-				label.TextColor3 = Color3.fromRGB(200, 200, 210)
+				label.TextColor3 = Color3.fromRGB(186, 170, 176)
 				label.TextTransparency = 1
 				label.Parent = b
 				tween(label, {TextTransparency = 0.15})
@@ -5434,29 +6137,29 @@ function Window:CreateHomeTab(HomeTabSettings)
 					wait(0.5)
 					if btnTitle then LunaSetText(btnTitle, ButtonSettings.Name) end
 					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+					TweenService:Create(Button, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 					if btnStroke then
 						TweenService:Create(btnStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				else
-					LunaTweenStroke(Button, {Color = Color3.fromRGB(136, 131, 163)})
+					LunaTweenStroke(Button, {Color = Color3.fromRGB(255, 178, 82), Transparency = 0.15})
 					wait(0.2)
 					if ButtonV.Hover then
-						LunaTweenStroke(Button, {Color = Color3.fromRGB(87, 84, 104)})
+						LunaTweenStroke(Button, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 					else
-						LunaTweenStroke(Button, {Color = Color3.fromRGB(64,61,76)})
+						LunaTweenStroke(Button, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 					end
 				end
 			end)
 
 			Button["MouseEnter"]:Connect(function()
 				ButtonV.Hover = true
-				LunaTweenStroke(Button, {Color = Color3.fromRGB(87, 84, 104)})
+				LunaTweenStroke(Button, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 
 			Button["MouseLeave"]:Connect(function()
 				ButtonV.Hover = false
-				LunaTweenStroke(Button, {Color = Color3.fromRGB(64,61,76)})
+				LunaTweenStroke(Button, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 
 			function ButtonV:Set(ButtonSettings2)
@@ -5646,11 +6349,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			SliderSettings.Callback(SliderSettings.CurrentValue)
 
 			Slider["MouseEnter"]:Connect(function()
-				tween(Slider.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				tween(Slider.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 
 			Slider["MouseLeave"]:Connect(function()
-				tween(Slider.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				tween(Slider.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 
 			Slider.Interact.InputBegan:Connect(function(Input)
@@ -5711,7 +6414,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 								wait(0.5)
 								Slider.Title.Text = SliderSettings.Name
 								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+								TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 								TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 							end
 
@@ -5743,7 +6446,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					wait(0.5)
 					Slider.Title.Text = SliderSettings.Name
 					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(30, 33, 40)}):Play()
+					TweenService:Create(Slider, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(22, 14, 36)}):Play()
 					TweenService:Create(Slider.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 
@@ -5794,6 +6497,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Luna.Options[Flag] = SliderV
 			end
 
+			Slider.Main.color.Color = Luna.ThemeGradient
+			Slider.Main.UIStroke.color.Color = Luna.ThemeGradient
 			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 				Slider.Main.color.Color = Luna.ThemeGradient
 				Slider.Main.UIStroke.color.Color = Luna.ThemeGradient
@@ -5856,16 +6561,16 @@ function Window:CreateHomeTab(HomeTabSettings)
 					Toggle.toggle.UIStroke.color.Enabled = true
 					tween(Toggle.toggle.UIStroke, {Color = Color3.new(255,255,255)})
 
-					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255,255,255), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0.45})
+					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(255, 214, 120), Position = UDim2.new(1,-23,0.5,0), BackgroundTransparency = 0.2})
 				else
 					Toggle.toggle.color.Enabled = false
 					Toggle.toggle.UIStroke.color.Enabled = false
 
-					Toggle.toggle.UIStroke.Color = Color3.fromRGB(97,97,97)
+					Toggle.toggle.UIStroke.Color = Color3.fromRGB(108, 82, 138)
 
 					tween(Toggle.toggle, {BackgroundTransparency = 1})
 
-					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(97,97,97), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
+					tween(Toggle.toggle.val, {BackgroundColor3 = Color3.fromRGB(108, 82, 138), Position = UDim2.new(0,5,0.5,0), BackgroundTransparency = 0})
 				end
 
 				ToggleV.CurrentValue = bool
@@ -5887,17 +6592,17 @@ function Window:CreateHomeTab(HomeTabSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 			end)
 
 			Toggle["MouseEnter"]:Connect(function()
-				tween(Toggle.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				tween(Toggle.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 
 			Toggle["MouseLeave"]:Connect(function()
-				tween(Toggle.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				tween(Toggle.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 
 			if ToggleSettings.CurrentValue then
@@ -5914,7 +6619,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 			end
@@ -5958,7 +6663,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					wait(0.5)
 					Toggle.Title.Text = ToggleSettings.Name
 					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+					TweenService:Create(Toggle, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 					TweenService:Create(Toggle.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 			end
@@ -5968,6 +6673,8 @@ function Window:CreateHomeTab(HomeTabSettings)
 				Toggle:Destroy()
 			end
 
+			Toggle.toggle.color.Color = Luna.ThemeGradient
+			Toggle.toggle.UIStroke.color.Color = Luna.ThemeGradient
 			LunaUI.ThemeRemote:GetPropertyChangedSignal("Value"):Connect(function()
 				Toggle.toggle.color.Color = Luna.ThemeGradient
 				Toggle.toggle.UIStroke.color.Color = Luna.ThemeGradient
@@ -6051,11 +6758,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end)
 
 			Bind["MouseEnter"]:Connect(function()
-				tween(Bind.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				tween(Bind.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 
 			Bind["MouseLeave"]:Connect(function()
-				tween(Bind.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				tween(Bind.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 			UserInputService.InputBegan:Connect(function(input, processed)
 
@@ -6077,7 +6784,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 						end
 						Bind.BindFrame.BindBox:ReleaseFocus()
@@ -6106,7 +6813,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 						end
 					else
@@ -6126,7 +6833,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 									end 
 									Loop:Disconnect()
@@ -6143,7 +6850,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 									end
 								end
@@ -6260,11 +6967,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end)
 
 			Bind["MouseEnter"]:Connect(function()
-				tween(Bind.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				tween(Bind.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 
 			Bind["MouseLeave"]:Connect(function()
-				tween(Bind.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				tween(Bind.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 			UserInputService.InputBegan:Connect(function(input, processed)
 
@@ -6300,7 +7007,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							wait(0.5)
 							Bind.Title.Text = BindSettings.Name
 							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+							TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 							TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 						end
 					else
@@ -6320,7 +7027,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 									end 
 									Loop:Disconnect()
@@ -6337,7 +7044,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 										wait(0.5)
 										Bind.Title.Text = BindSettings.Name
 										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+										TweenService:Create(Bind, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 										TweenService:Create(Bind.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 									end
 								end
@@ -6458,7 +7165,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 							wait(0.5)
 							Input.Title.Text = InputSettings.Name
 							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+							TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 							TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 						end
 					end
@@ -6499,7 +7206,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						wait(0.5)
 						Input.Title.Text = InputSettings.Name
 						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+						TweenService:Create(Input, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 						TweenService:Create(Input.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 					end
 				end
@@ -6507,11 +7214,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end)
 
 			Input["MouseEnter"]:Connect(function()
-				tween(Input.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				tween(Input.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 
 			Input["MouseLeave"]:Connect(function()
-				tween(Input.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				tween(Input.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 
 			function InputV:Set(NewInputSettings)
@@ -6615,7 +7322,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					wait(0.5)
 					Dropdown.Title.Text = DropdownSettings.Name
 					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+					TweenService:Create(Dropdown, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 					TweenService:Create(Dropdown.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 				if Success and c2 then
@@ -6650,7 +7357,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 				end
 
 				Toggle()
-				LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(240,240,240)})
+				LunaTweenDropdownOption(Dropdown.List, name, {BackgroundTransparency = 0.95, TextColor3 = Color3.fromRGB(248, 240, 232)})
 			end
 
 			local function Refresh()
@@ -6668,13 +7375,13 @@ function Window:CreateHomeTab(HomeTabSettings)
 								RemoveTable(DropdownSettings.CurrentOption, v)
 								DropdownV.CurrentOption = DropdownSettings.CurrentOption
 								if not optionhover then
-									tween(Option, {TextColor3 = Color3.fromRGB(200,200,200)})
+									tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180)})
 								end
 								tween(Option, {BackgroundTransparency = 0.98})
 							else
 								table.insert(DropdownSettings.CurrentOption, v)
 								DropdownV.CurrentOption = DropdownSettings.CurrentOption
-								tween(Option, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+								tween(Option, {TextColor3 = Color3.fromRGB(248, 240, 232), BackgroundTransparency = 0.95})
 							end
 							bleh = DropdownSettings.CurrentOption
 						else
@@ -6712,7 +7419,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						if Option.BackgroundTransparency == 0.95 then
 							return
 						else
-							tween(Option, {TextColor3 = Color3.fromRGB(240,240,240)})
+							tween(Option, {TextColor3 = Color3.fromRGB(248, 240, 232)})
 						end
 					end)
 					Option.MouseLeave:Connect(function()
@@ -6720,7 +7427,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 						if Option.BackgroundTransparency == 0.95 then
 							return
 						else
-							tween(Option, {TextColor3 = Color3.fromRGB(200,200,200)})
+							tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180)})
 						end
 					end)	
 				end
@@ -6741,11 +7448,11 @@ function Window:CreateHomeTab(HomeTabSettings)
 			end)
 
 			Dropdown["MouseEnter"]:Connect(function()
-				tween(Dropdown.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				tween(Dropdown.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 
 			Dropdown["MouseLeave"]:Connect(function()
-				tween(Dropdown.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				tween(Dropdown.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 
 			if DropdownSettings.SpecialType == "Player" then
@@ -6786,15 +7493,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 			pcall(function() SafeCallback(bleh) end)
 			for _, Option in pairs(Dropdown.List:GetChildren()) do
 				if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
-					tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
+					tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180), BackgroundTransparency = 0.98})
 				end
 			end
 			if DropdownSettings.MultipleOptions then
 				for _, name in pairs(DropdownSettings.CurrentOption) do
-					LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+					LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(255, 220, 186), BackgroundTransparency = 0.95})
 				end
 			else
-				LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+				LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(248, 240, 232), BackgroundTransparency = 0.95})
 			end
 
 			if DropdownSettings.MultipleOptions then
@@ -6864,15 +7571,15 @@ function Window:CreateHomeTab(HomeTabSettings)
 				pcall(function() SafeCallback(bleh) end)
 				for _, Option in pairs(Dropdown.List:GetChildren()) do
 					if Option.ClassName == "TextLabel" and Option.Name ~= "Template" then
-						tween(Option, {TextColor3 = Color3.fromRGB(200,200,200), BackgroundTransparency = 0.98})
+						tween(Option, {TextColor3 = Color3.fromRGB(190, 174, 180), BackgroundTransparency = 0.98})
 					end
 				end
 				if DropdownSettings.MultipleOptions then
 					for _, name in pairs(DropdownSettings.CurrentOption) do
-						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(227,227,227), BackgroundTransparency = 0.95})
+						LunaTweenDropdownOption(Dropdown.List, name, {TextColor3 = Color3.fromRGB(255, 220, 186), BackgroundTransparency = 0.95})
 					end
 				else
-					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(240,240,240), BackgroundTransparency = 0.95})
+					LunaTweenDropdownOption(Dropdown.List, bleh, {TextColor3 = Color3.fromRGB(248, 240, 232), BackgroundTransparency = 0.95})
 				end
 
 				if DropdownSettings.MultipleOptions then
@@ -6944,10 +7651,10 @@ function Window:CreateHomeTab(HomeTabSettings)
 			Display.BackgroundTransparency = 0
 
 			ColorPicker["MouseEnter"]:Connect(function()
-				tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(87, 84, 104)})
+				tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.28})
 			end)
 			ColorPicker["MouseLeave"]:Connect(function()
-				tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(64,61,76)})
+				tween(ColorPicker.UIStroke, {Color = Color3.fromRGB(98, 68, 132), Transparency = 0.5})
 			end)
 
 			local function SafeCallback(param, c2)
@@ -6963,7 +7670,7 @@ function Window:CreateHomeTab(HomeTabSettings)
 					wait(0.5)
 					ColorPicker.Title.Text = ColorPickerSettings.Name
 					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundTransparency = 0.5}):Play()
-					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(32, 30, 38)}):Play()
+					TweenService:Create(ColorPicker, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {BackgroundColor3 = Color3.fromRGB(28, 18, 42)}):Play()
 					TweenService:Create(ColorPicker.UIStroke, TweenInfo.new(0.7, Enum.EasingStyle.Exponential), {Transparency = 0.5}):Play()
 				end
 				if Success and c2 then
@@ -7437,17 +8144,17 @@ function Window:CreateHomeTab(HomeTabSettings)
 
 			local c1cp = Tab:CreateColorPicker({
 				Name = "Color 1",
-				Color = Color3.fromRGB(117, 164, 206),
+				Color = Color3.fromRGB(255, 146, 48),
 			}, "LunaInterfaceSuitePrebuiltCPC1") -- A flag is the identifier for the configuration file, make sure every element has a different flag if you're using configuration saving to ensure no overlaps
 
 			local c2cp = Tab:CreateColorPicker({
 				Name = "Color 2",
-				Color = Color3.fromRGB(123, 201, 201),
+				Color = Color3.fromRGB(168, 86, 188),
 			}, "LunaInterfaceSuitePrebuiltCPC2")
 
 			local c3cp = Tab:CreateColorPicker({
 				Name = "Color 3",
-				Color = Color3.fromRGB(224, 138, 184),
+				Color = Color3.fromRGB(86, 48, 148),
 			}, "LunaInterfaceSuitePrebuiltCPC3") 
 
 			task.wait(1)
@@ -7762,7 +8469,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		headerTitle.Size = UDim2.new(1, -120, 1, 0)
 		headerTitle.Position = UDim2.new(0, 0, 0, 0)
 		headerTitle.Text = "Solara Hub AI"
-		headerTitle.TextColor3 = Color3.fromRGB(245, 240, 255)
+		headerTitle.TextColor3 = Color3.fromRGB(248, 240, 232)
 		headerTitle.Font = Enum.Font.GothamBold
 		headerTitle.TextSize = 16
 		headerTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -7776,16 +8483,22 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			btn.AnchorPoint = Vector2.new(1, 0.5)
 			btn.Position = UDim2.new(1, xOffset, 0.5, 0)
 			btn.Size = UDim2.fromOffset(26, 22)
-			btn.BackgroundColor3 = Color3.fromRGB(45, 40, 60)
+			btn.BackgroundColor3 = Color3.fromRGB(36, 24, 54)
 			btn.BackgroundTransparency = 0.2
-			btn.ImageColor3 = Color3.fromRGB(225, 220, 240)
+			btn.ImageColor3 = Color3.fromRGB(255, 220, 184)
 			btn.AutoButtonColor = false
 			btn.Parent = parent
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = btn
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(120, 110, 170); s.Transparency = 0.55; s.Parent = btn
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(118, 78, 148); s.Transparency = 0.55; s.Parent = btn
 			ApplyIcon(btn, GetIcon(iconName, "Material"))
-			btn.MouseEnter:Connect(function() tween(btn, {BackgroundTransparency = 0.05}) end)
-			btn.MouseLeave:Connect(function() tween(btn, {BackgroundTransparency = 0.2}) end)
+			btn.MouseEnter:Connect(function()
+				tween(btn, {BackgroundTransparency = 0.05})
+				tween(s, {Transparency = 0.2, Color = Color3.fromRGB(226, 132, 58)})
+			end)
+			btn.MouseLeave:Connect(function()
+				tween(btn, {BackgroundTransparency = 0.2})
+				tween(s, {Transparency = 0.55, Color = Color3.fromRGB(118, 78, 148)})
+			end)
 			return btn
 		end
 
@@ -7812,7 +8525,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		Messages.Position = UDim2.new(0, 0, 0, 0)
 		Messages.Size = UDim2.new(1, 0, 1, -56)
 		Messages.ScrollBarThickness = 3
-		Messages.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		Messages.ScrollBarImageColor3 = Color3.fromRGB(176, 108, 64)
 		Messages.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Messages.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Messages.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -7833,7 +8546,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		-- ---------- input area ----------
 		local InputBar = Instance.new("Frame")
 		InputBar.Name = RandomName()
-		InputBar.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
+		InputBar.BackgroundColor3 = Color3.fromRGB(28, 18, 44)
 		InputBar.BackgroundTransparency = 0.2
 		InputBar.BorderSizePixel = 0
 		InputBar.AnchorPoint = Vector2.new(0, 1)
@@ -7842,7 +8555,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		InputBar.Parent = Container
 
 		local inputCorner = Instance.new("UICorner"); inputCorner.CornerRadius = UDim.new(0, 12); inputCorner.Parent = InputBar
-		local inputStroke = Instance.new("UIStroke"); inputStroke.Color = Color3.fromRGB(130, 120, 170); inputStroke.Transparency = 0.55; inputStroke.Parent = InputBar
+		local inputStroke = Instance.new("UIStroke"); inputStroke.Color = Color3.fromRGB(108, 74, 140); inputStroke.Transparency = 0.5; inputStroke.Parent = InputBar
 		local inputGradient = Instance.new("UIGradient"); inputGradient.Rotation = 90; inputGradient.Transparency = NumberSequence.new(0.1, 0.35); inputGradient.Parent = InputBar
 
 		local InputBox = Instance.new("TextBox")
@@ -7851,9 +8564,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		InputBox.Position = UDim2.new(0, 14, 0, 0)
 		InputBox.Size = UDim2.new(1, -64, 1, 0)
 		InputBox.PlaceholderText = "Ask anything..."
-		InputBox.PlaceholderColor3 = Color3.fromRGB(170, 165, 195)
+		InputBox.PlaceholderColor3 = Color3.fromRGB(168, 156, 176)
 		InputBox.Text = ""
-		InputBox.TextColor3 = Color3.fromRGB(245, 245, 250)
+		InputBox.TextColor3 = Color3.fromRGB(255, 244, 230)
 		InputBox.Font = Enum.Font.GothamMedium
 		InputBox.TextSize = 15
 		InputBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -7861,13 +8574,19 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		InputBox.ClearTextOnFocus = false
 		InputBox.MultiLine = false
 		InputBox.Parent = InputBar
+		InputBox.Focused:Connect(function()
+			tween(inputStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.22})
+		end)
+		InputBox.FocusLost:Connect(function()
+			tween(inputStroke, {Color = Color3.fromRGB(108, 74, 140), Transparency = 0.5})
+		end)
 
 		local SendButton = Instance.new("ImageButton")
 		SendButton.Name = RandomName()
 		SendButton.AnchorPoint = Vector2.new(1, 0.5)
 		SendButton.Position = UDim2.new(1, -8, 0.5, 0)
 		SendButton.Size = UDim2.fromOffset(40, 30)
-		SendButton.BackgroundColor3 = Color3.fromRGB(110, 90, 220)
+		SendButton.BackgroundColor3 = Color3.fromRGB(214, 112, 40)
 		SendButton.BackgroundTransparency = 0.05
 		SendButton.AutoButtonColor = false
 		SendButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
@@ -7971,12 +8690,15 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Bubble.AutomaticSize = Enum.AutomaticSize.Y
 			Bubble.BackgroundTransparency = 0.15
 			if role == "user" then
-				Bubble.BackgroundColor3 = Color3.fromRGB(95, 75, 200)
+				Bubble.BackgroundColor3 = Color3.fromRGB(72, 38, 26)
 			else
-				Bubble.BackgroundColor3 = Color3.fromRGB(38, 34, 52)
+				Bubble.BackgroundColor3 = Color3.fromRGB(26, 18, 40)
 			end
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = Bubble
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255, 255, 255); s.Transparency = 0.88; s.Parent = Bubble
+			local s = Instance.new("UIStroke")
+			s.Color = (role == "user") and Color3.fromRGB(214, 122, 58) or Color3.fromRGB(120, 84, 156)
+			s.Transparency = (role == "user") and 0.4 or 0.5
+			s.Parent = Bubble
 			local pad = Instance.new("UIPadding")
 			pad.PaddingTop = UDim.new(0, 10); pad.PaddingBottom = UDim.new(0, 10)
 			pad.PaddingLeft = UDim.new(0, 14); pad.PaddingRight = UDim.new(0, 14)
@@ -7993,7 +8715,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Label.AutomaticSize = Enum.AutomaticSize.Y
 			Label.RichText = true
 			Label.Text = richText(text)
-			Label.TextColor3 = Color3.fromRGB(245, 245, 250)
+			Label.TextColor3 = Color3.fromRGB(255, 244, 230)
 			Label.TextSize = 14
 			Label.Font = Enum.Font.GothamMedium
 			Label.TextXAlignment = Enum.TextXAlignment.Left
@@ -8008,14 +8730,14 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		local function makeCodeBlock(parent, code, lang)
 			local Block = Instance.new("Frame")
 			Block.Name = RandomName()
-			Block.BackgroundColor3 = Color3.fromRGB(18, 16, 26)
+			Block.BackgroundColor3 = Color3.fromRGB(12, 9, 20)
 			Block.BackgroundTransparency = 0
 			Block.BorderSizePixel = 0
 			Block.Size = UDim2.new(1, 0, 0, 0)
 			Block.AutomaticSize = Enum.AutomaticSize.Y
 			Block.Parent = parent
 			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = Block
-			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(110, 95, 180); s.Transparency = 0.6; s.Parent = Block
+			local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(132, 64, 150); s.Transparency = 0.6; s.Parent = Block
 
 			local TitleBar = Instance.new("Frame")
 			TitleBar.BackgroundTransparency = 1
@@ -8029,7 +8751,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			langLabel.Text = (lang or "code"):lower()
 			langLabel.Font = Enum.Font.GothamMedium
 			langLabel.TextSize = 12
-			langLabel.TextColor3 = Color3.fromRGB(180, 170, 220)
+			langLabel.TextColor3 = Color3.fromRGB(198, 150, 214)
 			langLabel.TextXAlignment = Enum.TextXAlignment.Left
 			langLabel.TextYAlignment = Enum.TextYAlignment.Center
 			langLabel:SetAttribute("LunaNoTranslate", true)
@@ -8040,19 +8762,25 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				b.AnchorPoint = Vector2.new(1, 0.5)
 				b.Position = UDim2.new(1, xOffset, 0.5, 0)
 				b.Size = UDim2.fromOffset(54, 20)
-				b.BackgroundColor3 = Color3.fromRGB(70, 60, 130)
+				b.BackgroundColor3 = Color3.fromRGB(42, 28, 64)
 				b.BackgroundTransparency = 0.1
 				b.Text = text
 				b.Font = Enum.Font.GothamSemibold
 				b.TextSize = 11
-				b.TextColor3 = Color3.fromRGB(240, 235, 255)
+				b.TextColor3 = Color3.fromRGB(248, 240, 232)
 				b.AutoButtonColor = false
 				b:SetAttribute("LunaNoTranslate", true)
 				b.Parent = TitleBar
 				local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 5); bc.Parent = b
-				local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(160, 145, 230); bs.Transparency = 0.5; bs.Parent = b
-				b.MouseEnter:Connect(function() tween(b, {BackgroundTransparency = 0}) end)
-				b.MouseLeave:Connect(function() tween(b, {BackgroundTransparency = 0.1}) end)
+				local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(118, 78, 148); bs.Transparency = 0.5; bs.Parent = b
+				b.MouseEnter:Connect(function()
+					tween(b, {BackgroundTransparency = 0})
+					tween(bs, {Transparency = 0.18, Color = Color3.fromRGB(226, 132, 58)})
+				end)
+				b.MouseLeave:Connect(function()
+					tween(b, {BackgroundTransparency = 0.1})
+					tween(bs, {Transparency = 0.5, Color = Color3.fromRGB(118, 78, 148)})
+				end)
 				return b
 			end
 
@@ -8073,7 +8801,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			codeLabel.Text = code
 			codeLabel.Font = Enum.Font.Code
 			codeLabel.TextSize = 13
-			codeLabel.TextColor3 = Color3.fromRGB(220, 215, 240)
+			codeLabel.TextColor3 = Color3.fromRGB(255, 220, 190)
 			codeLabel.TextXAlignment = Enum.TextXAlignment.Left
 			codeLabel.TextYAlignment = Enum.TextYAlignment.Top
 			codeLabel.TextWrapped = true
@@ -8168,13 +8896,13 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				metaRow.Parent = Holder
 
 				local cpy = Instance.new("TextButton")
-				cpy.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
+				cpy.BackgroundColor3 = Color3.fromRGB(40, 26, 58)
 				cpy.BackgroundTransparency = 0.25
 				cpy.Size = UDim2.new(1, 0, 1, 0)
 				cpy.Text = "Copy"
 				cpy.Font = Enum.Font.GothamMedium
 				cpy.TextSize = 11
-				cpy.TextColor3 = Color3.fromRGB(220, 215, 240)
+				cpy.TextColor3 = Color3.fromRGB(255, 220, 190)
 				cpy.AutoButtonColor = false
 				cpy:SetAttribute("LunaNoTranslate", true)
 				cpy.Parent = metaRow
@@ -8366,7 +9094,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local function setSendEnabled(enabled)
 			SendButton.AutoButtonColor = enabled
-			SendButton.BackgroundColor3 = enabled and Color3.fromRGB(110, 90, 220) or Color3.fromRGB(60, 55, 80)
+			SendButton.BackgroundColor3 = enabled and Color3.fromRGB(214, 112, 40) or Color3.fromRGB(36, 24, 48)
 		end
 
 		local function saveChat()
@@ -8593,7 +9321,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local resultsHost = Instance.new("Frame")
 		resultsHost.Name = "ScriptSearcherResults"
-		resultsHost.BackgroundColor3 = Color3.fromRGB(20, 19, 26)
+		resultsHost.BackgroundColor3 = Color3.fromRGB(12, 9, 20)
 		resultsHost.BackgroundTransparency = 0.15
 		resultsHost.BorderSizePixel = 0
 		resultsHost.Size = UDim2.new(1, 0, 0, 340)
@@ -8603,8 +9331,8 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		hostCorner.CornerRadius = UDim.new(0, 8)
 		hostCorner.Parent = resultsHost
 		local hostStroke = Instance.new("UIStroke")
-		hostStroke.Color = Color3.fromRGB(70, 68, 85)
-		hostStroke.Transparency = 0.6
+		hostStroke.Color = Color3.fromRGB(98, 68, 132)
+		hostStroke.Transparency = 0.45
 		hostStroke.Parent = resultsHost
 
 		local Scroll = Instance.new("ScrollingFrame")
@@ -8614,7 +9342,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		Scroll.Size = UDim2.new(1, -8, 1, -8)
 		Scroll.Position = UDim2.new(0, 4, 0, 4)
 		Scroll.ScrollBarThickness = 5
-		Scroll.ScrollBarImageColor3 = Color3.fromRGB(110, 102, 153)
+		Scroll.ScrollBarImageColor3 = Color3.fromRGB(214, 112, 40)
 		Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Scroll.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -8695,7 +9423,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local function makeCard(data, order)
 			local card = Instance.new("Frame")
-			card.BackgroundColor3 = Color3.fromRGB(26, 25, 32)
+			card.BackgroundColor3 = Color3.fromRGB(26, 16, 40)
 			card.BackgroundTransparency = 0.05
 			card.Size = UDim2.fromOffset(cardWidth(), 88)
 			card.LayoutOrder = order
@@ -8705,8 +9433,8 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			cCorner.CornerRadius = UDim.new(0, 10)
 			cCorner.Parent = card
 			local cStroke = Instance.new("UIStroke")
-			cStroke.Color = Color3.fromRGB(70, 68, 85)
-			cStroke.Transparency = 0.75
+			cStroke.Color = Color3.fromRGB(98, 68, 132)
+			cStroke.Transparency = 0.55
 			cStroke.Parent = card
 
 			local title = Instance.new("TextLabel")
@@ -8715,7 +9443,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			title.Size = UDim2.new(1, -20, 0, 36)
 			title.Font = Enum.Font.GothamSemibold
 			title.TextSize = 13
-			title.TextColor3 = Color3.fromRGB(245, 245, 250)
+			title.TextColor3 = Color3.fromRGB(255, 244, 230)
 			title.TextWrapped = true
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.TextYAlignment = Enum.TextYAlignment.Top
@@ -8728,7 +9456,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			meta.Size = UDim2.new(1, -20, 0, 32)
 			meta.Font = Enum.Font.Gotham
 			meta.TextSize = 11
-			meta.TextColor3 = Color3.fromRGB(160, 160, 170)
+			meta.TextColor3 = Color3.fromRGB(176, 164, 178)
 			meta.TextWrapped = true
 			meta.TextXAlignment = Enum.TextXAlignment.Left
 			meta.TextYAlignment = Enum.TextYAlignment.Top
@@ -8747,7 +9475,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 			local function miniBtn(text, orderB, cb)
 				local b = Instance.new("TextButton")
-				b.BackgroundColor3 = Color3.fromRGB(110, 102, 153)
+				b.BackgroundColor3 = Color3.fromRGB(214, 112, 40)
 				b.Size = UDim2.new(0.5, -3, 1, 0)
 				b.Font = Enum.Font.GothamSemibold
 				b.TextSize = 11
@@ -8797,8 +9525,12 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 				end
 			end)
 
-			card.MouseEnter:Connect(function() tween(cStroke, {Transparency = 0.35}) end)
-			card.MouseLeave:Connect(function() tween(cStroke, {Transparency = 0.75}) end)
+			card.MouseEnter:Connect(function()
+				tween(cStroke, {Transparency = 0.28, Color = Color3.fromRGB(226, 132, 58)})
+			end)
+			card.MouseLeave:Connect(function()
+				tween(cStroke, {Transparency = 0.55, Color = Color3.fromRGB(98, 68, 132)})
+			end)
 		end
 
 		local function getQuery()
@@ -9001,7 +9733,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		tween(Main.Controls.Close.ImageLabel, {ImageColor3 = Color3.new(1,1,1)})
 	end)
 	Main.Controls.Close["MouseLeave"]:Connect(function()
-		tween(Main.Controls.Close.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
+		tween(Main.Controls.Close.ImageLabel, {ImageColor3 = Color3.fromRGB(214, 190, 216)})
 	end)
 
 	UserInputService.InputBegan:Connect(function(input, gpe)
@@ -9046,7 +9778,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		tween(Main.Controls.ToggleSize.ImageLabel, {ImageColor3 = Color3.new(1,1,1)})
 	end)
 	Main.Controls.ToggleSize["MouseLeave"]:Connect(function()
-		tween(Main.Controls.ToggleSize.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
+		tween(Main.Controls.ToggleSize.ImageLabel, {ImageColor3 = Color3.fromRGB(214, 190, 216)})
 	end)
 
 	Main.Controls.Theme.ImageLabel.MouseButton1Click:Connect(function()
@@ -9059,7 +9791,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		tween(Main.Controls.Theme.ImageLabel, {ImageColor3 = Color3.new(1,1,1)})
 	end)
 	Main.Controls.Theme["MouseLeave"]:Connect(function()
-		tween(Main.Controls.Theme.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
+		tween(Main.Controls.Theme.ImageLabel, {ImageColor3 = Color3.fromRGB(214, 190, 216)})
 	end)	
 
 
@@ -9135,7 +9867,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		Backdrop.AutoButtonColor = false
 		Backdrop.Text = ""
 		Backdrop.Size = UDim2.fromScale(1, 1)
-		Backdrop.BackgroundColor3 = Color3.fromRGB(8, 8, 14)
+		Backdrop.BackgroundColor3 = Color3.fromRGB(8, 6, 16)
 		Backdrop.BackgroundTransparency = 1
 		Backdrop.BorderSizePixel = 0
 		Backdrop.ZIndex = 5000
@@ -9155,7 +9887,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchModal.Name = RandomName()
 		SearchModal.AnchorPoint = Vector2.new(0.5, 0.5)
 		-- Slight cool tint behind the glass.
-		SearchModal.BackgroundColor3 = Color3.fromRGB(28, 26, 38)
+		SearchModal.BackgroundColor3 = Color3.fromRGB(18, 12, 30)
 		SearchModal.BackgroundTransparency = 0.08
 		SearchModal.BorderSizePixel = 0
 		SearchModal.ZIndex = 5010
@@ -9165,9 +9897,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		local modalGradient = Instance.new("UIGradient")
 		modalGradient.Rotation = 135
 		modalGradient.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 56, 82)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(28, 26, 38)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 18, 28)),
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(104, 58, 92)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(18, 12, 30)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 8, 18)),
 		})
 		modalGradient.Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.15),
@@ -9192,7 +9924,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		local modalStroke = Instance.new("UIStroke")
 		modalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		modalStroke.Color = Color3.fromRGB(120, 110, 160)
+		modalStroke.Color = Color3.fromRGB(176, 112, 72)
 		modalStroke.Thickness = 1.2
 		modalStroke.Transparency = 0.4
 		modalStroke.Parent = SearchModal
@@ -9218,7 +9950,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		local InputRow = Instance.new("Frame")
 		InputRow.Name = RandomName()
 		InputRow.Size = UDim2.new(1, 0, 0, 42)
-		InputRow.BackgroundColor3 = Color3.fromRGB(40, 36, 54)
+		InputRow.BackgroundColor3 = Color3.fromRGB(28, 18, 44)
 		InputRow.BackgroundTransparency = 0.25
 		InputRow.BorderSizePixel = 0
 		InputRow.ZIndex = 5011
@@ -9242,7 +9974,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchIconLeft.Position = UDim2.new(0, 12, 0.5, 0)
 		SearchIconLeft.Size = UDim2.fromOffset(18, 18)
 		SearchIconLeft.BackgroundTransparency = 1
-		SearchIconLeft.ImageColor3 = Color3.fromRGB(190, 185, 210)
+		SearchIconLeft.ImageColor3 = Color3.fromRGB(255, 200, 150)
 		SearchIconLeft.ImageTransparency = 0.2
 		SearchIconLeft.ZIndex = 5012
 		SearchIconLeft.Parent = InputRow
@@ -9256,9 +9988,9 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchInput.BackgroundTransparency = 1
 		SearchInput.BorderSizePixel = 0
 		SearchInput.PlaceholderText = "Search here..."
-		SearchInput.PlaceholderColor3 = Color3.fromRGB(170, 165, 195)
+		SearchInput.PlaceholderColor3 = Color3.fromRGB(168, 156, 176)
 		SearchInput.Text = ""
-		SearchInput.TextColor3 = Color3.fromRGB(245, 245, 250)
+		SearchInput.TextColor3 = Color3.fromRGB(255, 244, 230)
 		SearchInput.Font = Enum.Font.GothamMedium
 		SearchInput.TextSize = 16
 		SearchInput.TextXAlignment = Enum.TextXAlignment.Left
@@ -9267,9 +9999,15 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		SearchInput.Parent = InputRow
 
 		local inputStroke = Instance.new("UIStroke")
-		inputStroke.Color = Color3.fromRGB(130, 120, 170)
-		inputStroke.Transparency = 0.6
+		inputStroke.Color = Color3.fromRGB(108, 74, 140)
+		inputStroke.Transparency = 0.5
 		inputStroke.Parent = InputRow
+		SearchInput.Focused:Connect(function()
+			tween(inputStroke, {Color = Color3.fromRGB(226, 132, 58), Transparency = 0.22})
+		end)
+		SearchInput.FocusLost:Connect(function()
+			tween(inputStroke, {Color = Color3.fromRGB(108, 74, 140), Transparency = 0.5})
+		end)
 
 		local Results = Instance.new("ScrollingFrame")
 		Results.Name = RandomName()
@@ -9278,7 +10016,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		Results.BackgroundTransparency = 1
 		Results.BorderSizePixel = 0
 		Results.ScrollBarThickness = 3
-		Results.ScrollBarImageColor3 = Color3.fromRGB(140, 130, 180)
+		Results.ScrollBarImageColor3 = Color3.fromRGB(176, 108, 64)
 		Results.CanvasSize = UDim2.new(0, 0, 0, 0)
 		Results.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		Results.ZIndex = 5011
@@ -9294,7 +10032,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		EmptyLabel.Size = UDim2.new(1, 0, 0, 36)
 		EmptyLabel.BackgroundTransparency = 1
 		EmptyLabel.Text = "Start typing to search elements..."
-		EmptyLabel.TextColor3 = Color3.fromRGB(170, 165, 195)
+		EmptyLabel.TextColor3 = Color3.fromRGB(168, 156, 176)
 		EmptyLabel.Font = Enum.Font.Gotham
 		EmptyLabel.TextSize = 13
 		EmptyLabel.TextTransparency = 0.2
@@ -9317,7 +10055,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			Row.Name = RandomName()
 			Row.AutoButtonColor = false
 			Row.Size = UDim2.new(1, -4, 0, 42)
-			Row.BackgroundColor3 = Color3.fromRGB(48, 42, 64)
+			Row.BackgroundColor3 = Color3.fromRGB(40, 26, 62)
 			Row.BackgroundTransparency = 0.35
 			Row.BorderSizePixel = 0
 			Row.Text = ""
@@ -9338,8 +10076,8 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			rowGradient.Parent = Row
 
 			local rowStroke = Instance.new("UIStroke")
-			rowStroke.Color = Color3.fromRGB(150, 140, 200)
-			rowStroke.Transparency = 0.7
+			rowStroke.Color = Color3.fromRGB(108, 74, 140)
+			rowStroke.Transparency = 0.55
 			rowStroke.Parent = Row
 
 			local title = Instance.new("TextLabel")
@@ -9348,7 +10086,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			title.Position = UDim2.new(0, 12, 0, 5)
 			title.Size = UDim2.new(1, -24, 0, 18)
 			title.Text = entry.Name
-			title.TextColor3 = Color3.fromRGB(245, 245, 250)
+			title.TextColor3 = Color3.fromRGB(255, 244, 230)
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			title.Font = Enum.Font.GothamMedium
 			title.TextSize = 14
@@ -9361,7 +10099,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			sub.Position = UDim2.new(0, 12, 0, 23)
 			sub.Size = UDim2.new(1, -24, 0, 14)
 			sub.Text = entry.Type .. (entry.Tab ~= "" and (" • " .. entry.Tab) or "")
-			sub.TextColor3 = Color3.fromRGB(180, 175, 205)
+			sub.TextColor3 = Color3.fromRGB(190, 174, 180)
 			sub.TextXAlignment = Enum.TextXAlignment.Left
 			sub.Font = Enum.Font.Gotham
 			sub.TextSize = 11
@@ -9369,12 +10107,12 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			sub.Parent = Row
 
 			Row.MouseEnter:Connect(function()
-				tween(rowStroke, {Transparency = 0.25})
-				tween(Row, {BackgroundTransparency = 0.15})
+				tween(rowStroke, {Transparency = 0.2, Color = Color3.fromRGB(226, 132, 58)})
+				tween(Row, {BackgroundTransparency = 0.12})
 			end)
 			Row.MouseLeave:Connect(function()
-				tween(rowStroke, {Transparency = 0.7})
-				tween(Row, {BackgroundTransparency = 0.35})
+				tween(rowStroke, {Transparency = 0.55, Color = Color3.fromRGB(108, 74, 140)})
+				tween(Row, {BackgroundTransparency = 0.32})
 			end)
 
 			Row.MouseButton1Click:Connect(function()
@@ -9391,7 +10129,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 					local origStroke = frame:FindFirstChild("UIStroke")
 					local origColor = origStroke and origStroke.Color or nil
 					if origStroke then
-						origStroke.Color = Color3.fromRGB(180, 170, 220)
+						origStroke.Color = Color3.fromRGB(198, 150, 214)
 					end
 					task.delay(1.2, function()
 						if origStroke and origColor then
@@ -9544,7 +10282,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.new(1,1,1)})
 		end)
 		SearchControl["MouseLeave"]:Connect(function()
-			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.fromRGB(195,195,195)})
+			tween(SearchControl.ImageLabel, {ImageColor3 = Color3.fromRGB(214, 190, 216)})
 		end)
 
 		-- Click outside (backdrop) closes the modal.
@@ -9621,7 +10359,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		HandleBack.AnchorPoint = Vector2.new(1, 1)
 		HandleBack.Position = UDim2.new(1, -8, 1, -8)
 		HandleBack.Size = UDim2.fromOffset(24, 24)
-		HandleBack.BackgroundColor3 = Color3.fromRGB(32, 30, 38)
+		HandleBack.BackgroundColor3 = Color3.fromRGB(28, 18, 42)
 		HandleBack.BackgroundTransparency = 0.3
 		HandleBack.BorderSizePixel = 0
 		HandleBack.ZIndex = 30
@@ -9632,7 +10370,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		backCorner.Parent = HandleBack
 
 		local backStroke = Instance.new("UIStroke")
-		backStroke.Color = Color3.fromRGB(120, 117, 140)
+		backStroke.Color = Color3.fromRGB(108, 74, 140)
 		backStroke.Transparency = 0.5
 		backStroke.Parent = HandleBack
 
@@ -9644,7 +10382,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 		Handle.BackgroundTransparency = 1
 		-- Material "open_in_full" - diagonal expansion arrows
 		ApplyIcon(Handle, GetIcon("open_in_full", "Material"))
-		Handle.ImageColor3 = Color3.fromRGB(235, 235, 245)
+		Handle.ImageColor3 = Color3.fromRGB(255, 228, 200)
 		Handle.ImageTransparency = 0
 		Handle.AutoButtonColor = false
 		Handle.ZIndex = 31
@@ -9652,11 +10390,11 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		HandleBack.MouseEnter:Connect(function()
 			tween(HandleBack, {BackgroundTransparency = 0.05})
-			tween(backStroke, {Transparency = 0.1})
+			tween(backStroke, {Transparency = 0.15, Color = Color3.fromRGB(226, 132, 58)})
 		end)
 		HandleBack.MouseLeave:Connect(function()
 			tween(HandleBack, {BackgroundTransparency = 0.3})
-			tween(backStroke, {Transparency = 0.5})
+			tween(backStroke, {Transparency = 0.5, Color = Color3.fromRGB(108, 74, 140)})
 		end)
 
 		local resizing = false
@@ -9825,7 +10563,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 	-- they're cheap enough to wire to a colour-picker callback.
 	do
 		Window._Theme = {
-			Accent = Color3.fromRGB(110, 102, 153),
+			Accent = Color3.fromRGB(214, 112, 40),
 			Background = nil, -- nil = keep the original frame colour
 		}
 		Window._StrokeOriginals = {}
@@ -9900,7 +10638,7 @@ Compatibility: tags like [sUNC] mean widely supported; Potassium-only APIs may b
 
 		Window.ResetTheme = function()
 			Window.ClearThemeAccent()
-			Window._Theme.Accent = Color3.fromRGB(110, 102, 153)
+			Window._Theme.Accent = Color3.fromRGB(214, 112, 40)
 		end
 
 		Window.SetThemeGradient = function(c1, c2, c3)
