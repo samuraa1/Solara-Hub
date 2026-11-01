@@ -2355,8 +2355,15 @@ local function LunaAttachButtonTags(button, tags)
 		task.defer(fit)
 	end
 end
+local _LunaRandom = Random.new()
 local function RandomName()
-	return HIDDEN_NAME
+	local hex = "0123456789abcdef"
+	local out = {}
+	for i = 1, 16 do
+		local n = _LunaRandom:NextInteger(1, #hex)
+		out[i] = hex:sub(n, n)
+	end
+	return "_" .. table.concat(out)
 end
 local BindSettings, ButtonSettings, SliderSettings, ToggleSettings,
     InputSettings, DropdownSettings, ColorPickerSettings
